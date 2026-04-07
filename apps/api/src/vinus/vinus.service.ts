@@ -304,6 +304,13 @@ export class VinusService {
     if (!tid || !bet || win === null) {
       return { result: 99, status: 'ERROR', data: {} };
     }
+    if (this.stubCancelMeta.get(tid)?.cancelled) {
+      return {
+        result: 41,
+        status: 'ERROR',
+        data: { balance: this.stubGetWorking() },
+      };
+    }
     const cached = this.stubTxEndingBalance.get(tid);
     if (cached !== undefined) {
       return { result: 0, status: 'OK', data: { balance: cached } };
@@ -330,6 +337,13 @@ export class VinusService {
     const amount = toDec(data.amount);
     if (!tid || !amount || amount.lte(0)) {
       return { result: 99, status: 'ERROR', data: {} };
+    }
+    if (this.stubCancelMeta.get(tid)?.cancelled) {
+      return {
+        result: 41,
+        status: 'ERROR',
+        data: { balance: this.stubGetWorking() },
+      };
     }
     const cached = this.stubTxEndingBalance.get(tid);
     if (cached !== undefined) {
@@ -770,12 +784,16 @@ export class VinusService {
         const dup = await this.prisma.casinoVinusTx.findUnique({
           where: { externalId: tid },
         });
-        if (dup && !dup.cancelledAt) {
+        if (dup) {
           const w = await this.prisma.wallet.findUnique({
             where: { userId: userRow.id },
           });
           if (!w) return fail(99);
-          return ok(w.balance);
+          if (!dup.cancelledAt) {
+            return ok(w.balance);
+          }
+          /** 취소된 transaction_id 로 재베팅 불가 (문서·unique 제약) */
+          return fail(41, w.balance);
         }
         return this.prisma.$transaction(async (tx) => {
           const w0 = await tx.wallet.findUnique({
@@ -835,12 +853,15 @@ export class VinusService {
         const dup = await this.prisma.casinoVinusTx.findUnique({
           where: { externalId: tid },
         });
-        if (dup && !dup.cancelledAt) {
+        if (dup) {
           const w = await this.prisma.wallet.findUnique({
             where: { userId: userRow.id },
           });
           if (!w) return fail(99);
-          return ok(w.balance);
+          if (!dup.cancelledAt) {
+            return ok(w.balance);
+          }
+          return fail(41, w.balance);
         }
         const net = win.minus(bet);
         return this.prisma.$transaction(async (tx) => {
