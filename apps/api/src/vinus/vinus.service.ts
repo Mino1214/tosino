@@ -184,6 +184,12 @@ type VinusUserRow = {
   role: UserRole;
 };
 
+/** 스텁: 취소 가능한 거래 추적 (BET / WIN / bet-win) */
+type VinusStubCancelRow =
+  | { kind: 'bet'; stake: number; cancelled: boolean }
+  | { kind: 'win'; payout: number; cancelled: boolean }
+  | { kind: 'betwin'; bet: number; win: number; cancelled: boolean };
+
 @Injectable()
 export class VinusService {
   private readonly logger = new Logger(VinusService.name);
@@ -195,6 +201,7 @@ export class VinusService {
   private stubWinProcessed = new Map<string, number>();
   /** win-add: "tid:금액" → 처리 후 잔액 (동일 추가지급 재요청 멱등) */
   private stubWinAddIdem = new Map<string, number>();
+  private stubCancelMeta = new Map<string, VinusStubCancelRow>();
 
   constructor(
     private prisma: PrismaService,
@@ -267,6 +274,7 @@ export class VinusService {
     this.stubTxEndingBalance.clear();
     this.stubWinProcessed.clear();
     this.stubWinAddIdem.clear();
+    this.stubCancelMeta.clear();
   }
 
   private stubGetWorking(): number {
@@ -304,6 +312,12 @@ export class VinusService {
     const newBal = Number(cur.minus(bet).plus(win).toFixed(2));
     this.stubTxEndingBalance.set(tid, newBal);
     this.stubWorkingBal = newBal;
+    this.stubCancelMeta.set(tid, {
+      kind: 'betwin',
+      bet: Number(bet.toFixed(2)),
+      win: Number(win.toFixed(2)),
+      cancelled: false,
+    });
     return { result: 0, status: 'OK', data: { balance: newBal } };
   }
 
@@ -332,6 +346,11 @@ export class VinusService {
     const newBal = Number(cur.minus(amount).toFixed(2));
     this.stubTxEndingBalance.set(tid, newBal);
     this.stubWorkingBal = newBal;
+    this.stubCancelMeta.set(tid, {
+      kind: 'bet',
+      stake: Number(amount.toFixed(2)),
+      cancelled: false,
+    });
     return { result: 0, status: 'OK', data: { balance: newBal } };
   }
 
@@ -353,6 +372,11 @@ export class VinusService {
     const newBal = Number(cur.plus(amount).toFixed(2));
     this.stubWinProcessed.set(tid, newBal);
     this.stubWorkingBal = newBal;
+    this.stubCancelMeta.set(tid, {
+      kind: 'win',
+      payout: Number(amount.toFixed(2)),
+      cancelled: false,
+    });
     return { result: 0, status: 'OK', data: { balance: newBal } };
   }
 
@@ -376,6 +400,58 @@ export class VinusService {
     this.stubWinAddIdem.set(idemKey, newBal);
     this.stubWorkingBal = newBal;
     return { result: 0, status: 'OK', data: { balance: newBal } };
+  }
+
+  /** 스텁: cancel — BET(환급) / WIN(환수) / bet-win(순효과 역산), 동일 tid 재요청 멱등 */
+  private stubCancelOk(data: Record<string, unknown>): Record<string, unknown> {
+    const tid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const uid = (
+      this.config.get<string>('VINUS_STUB_USER_ID')?.trim() || 'stub-user-dev'
+    )
+      .replace(/\s/g, '')
+      .slice(0, 25);
+    if (!tid) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const row = this.stubCancelMeta.get(tid);
+    if (!row) {
+      return {
+        result: 42,
+        status: 'ERROR',
+        data: { balance: this.stubGetWorking() },
+      };
+    }
+    const okCancelBody = (bal: number) => ({
+      result: 0,
+      status: 'OK',
+      data: {
+        balance: bal,
+        user_id: uid,
+        transaction_id: tid,
+        trasaction_id: tid,
+      },
+    });
+    if (row.cancelled) {
+      return okCancelBody(this.stubGetWorking());
+    }
+    let newBal = this.stubGetWorking();
+    const d = new Prisma.Decimal(newBal);
+    if (row.kind === 'bet') {
+      newBal = Number(d.plus(row.stake).toFixed(2));
+      this.stubTxEndingBalance.delete(tid);
+    } else if (row.kind === 'win') {
+      newBal = Number(d.minus(row.payout).toFixed(2));
+      this.stubWinProcessed.delete(tid);
+    } else {
+      newBal = Number(d.plus(row.bet).minus(row.win).toFixed(2));
+      this.stubTxEndingBalance.delete(tid);
+    }
+    row.cancelled = true;
+    this.stubWorkingBal = newBal;
+    return okCancelBody(newBal);
   }
 
   private get baseUrl(): string {
@@ -493,6 +569,12 @@ export class VinusService {
           'VINUS_STUB_AUTHENTICATE: win-add 스텁 (동일 tid+금액 멱등). 운영 전 끌 것.',
         );
         return this.stubWinAddOk(data);
+      }
+      if (command === 'cancel') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: cancel 스텁 (check 21,42,22·멱등). 운영 전 끌 것.',
+        );
+        return this.stubCancelOk(data);
       }
     }
 
