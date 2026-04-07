@@ -1,0 +1,394 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  PLATFORM_ADMIN
+  MASTER_AGENT
+  USER
+}
+
+enum LedgerEntryType {
+  ADJUSTMENT
+  DEPOSIT
+  WITHDRAWAL
+  BET
+  WIN
+  PAYMENT_WEBHOOK
+}
+
+enum BankSmsIngestStatus {
+  RECEIVED
+  PARSE_ERROR
+  NO_PLATFORM
+  NO_MATCH
+  AUTO_CREDITED
+  IGNORE_WITHDRAWAL
+  DUPLICATE
+}
+
+enum SyncJobType {
+  ODDS
+  CASINO
+  AFFILIATE
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WalletRequestType {
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum WalletRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AgentInquiryStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+model Platform {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  /** 솔루션 미리보기 전용 인스턴스 포트 (NEXT_PUBLIC_PREVIEW_PORT 와 동일 값으로 서빙) */
+  previewPort Int?   @unique
+  themeJson Json     @default("{}")
+  flagsJson Json     @default("{}")
+  /** Sports / third-party feed wiring (no secrets — use credentialEnvKey → process.env) */
+  integrationsJson Json @default("{}")
+  /** 반가상: 은행 문자로 입금 자동 확인 (일반 결제 플로우와 분리) */
+  semiVirtualEnabled           Boolean @default(false)
+  /** 수신 단말에 등록된 번호(숫자만). 앱에서 전달한 recipientPhone 과 매칭 */
+  semiVirtualRecipientPhone    String? @unique
+  /** 계좌 줄에 포함되는 식별 문자열(예: 마스킹 계좌 일부). 휴대번호 미사용 시 구분용 */
+  semiVirtualAccountHint       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  domains       PlatformDomain[]
+  users         User[]
+  wallets       Wallet[]
+  ledgerEntries LedgerEntry[]
+  idempotency   IdempotencyKey[]
+  syncStates           SyncState[]
+  walletRequests       WalletRequest[]
+  sportsOddsSnapshots  SportsOddsSnapshot[]
+  announcements        PlatformAnnouncement[]
+  announcementAssets   PlatformAnnouncementAsset[]
+  bankSmsIngests       BankSmsIngest[]
+  agentInquiries       AgentInquiry[]
+  vinusSessionTokens   VinusSessionToken[]
+  casinoVinusTxs       CasinoVinusTx[]
+}
+
+/// Vinus Gaming 게임 실행 시 회원 식별용(15~25자). 입장 시마다 재발급.
+model VinusSessionToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformId String
+  platform   Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  token      String   @unique @db.VarChar(50)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([platformId])
+}
+
+/// Vinus 콜백 transaction_id 멱등·취소 추적
+model CasinoVinusTx {
+  id           String    @id @default(cuid())
+  platformId   String
+  platform     Platform  @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  externalId   String    @unique @db.VarChar(64)
+  kind         String    @db.VarChar(32)
+  gameId       String?   @db.VarChar(100)
+  roundId      String?   @db.VarChar(64)
+  stake        Decimal?  @db.Decimal(18, 2)
+  payout       Decimal?  @db.Decimal(18, 2)
+  cancelledAt  DateTime?
+  refundedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([platformId, userId])
+  @@index([userId, gameId, roundId])
+}
+
+/// 모바일 공지 팝업용 이미지(최대 4). 권장 비율 약 367×451px.
+model PlatformAnnouncement {
+  id          String   @id @default(cuid())
+  platformId  String
+  platform    Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  /** 절대 URL 또는 `/uploads/...` 상대 경로 */
+  imageUrl    String
+  imageWidth  Int?
+  imageHeight Int?
+  sortOrder   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([platformId, sortOrder])
+}
+
+/// 업로드된 공지용 이미지 라이브러리(플랫폼별)
+model PlatformAnnouncementAsset {
+  id           String   @id @default(cuid())
+  platformId   String
+  platform     Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  /** uploads 폴더 기준 상대 경로 e.g. announcements/{platformId}/uuid.png */
+  storagePath  String
+  mimeType     String
+  sizeBytes    Int
+  width        Int
+  height       Int
+  originalName String?
+  createdAt    DateTime @default(now())
+
+  @@index([platformId, createdAt])
+}
+
+/// 메인 서버(워커)가 외부 배당 API를 호출한 뒤 저장하는 스냅샷. integrationsJson은 설정만 담고 여기 갱신된다.
+model SportsOddsSnapshot {
+  id            String   @id @default(cuid())
+  platformId    String
+  platform      Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  sourceFeedId  String
+  sportLabel    String
+  market        String?
+  payloadJson   Json     @default("{}")
+  fetchedAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([platformId, sourceFeedId])
+  @@index([platformId, updatedAt])
+}
+
+model PlatformDomain {
+  id         String   @id @default(cuid())
+  host       String   @unique
+  platformId String
+  platform   Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model User {
+  id                   String             @id @default(cuid())
+  /** 로그인·가입 아이디. 플랫폼 소속은 (platformId, loginId) 유일 */
+  loginId              String
+  /** 선택 연락처(알림 등). 로그인에 사용하지 않음 */
+  email                String?
+  passwordHash         String
+  role                 UserRole
+  platformId           String?
+  platform             Platform?          @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  parentUserId         String?
+  parent               User?              @relation("AgentTree", fields: [parentUserId], references: [id], onDelete: SetNull)
+  children             User[]             @relation("AgentTree")
+  displayName          String?
+  /** 총판(또는 플랫폼)이 하위 회원에게 남기는 메모 */
+  agentMemo            String?            @db.Text
+  /** 회원 본인이 쓰는 메모(본인·플랫폼 관리자 조회) */
+  userMemo             String?            @db.Text
+  /** 플랫폼·슈퍼관리자만 조회·수정 (최상위 총판 식별 등). 총판 계정은 볼 수 없음 */
+  masterPrivateMemo    String?            @db.Text
+  /** 직속 상위 총판(MASTER_AGENT)만 조회·수정. 하위 총판·유저용 식별 메모 */
+  uplinePrivateMemo    String?            @db.Text
+  /** 총판이 하위 회원에 설정하는 롤링 배당(%) */
+  rollingEnabled       Boolean            @default(false)
+  rollingSportsDomesticPct  Decimal?      @db.Decimal(5, 2)
+  rollingSportsOverseasPct  Decimal?      @db.Decimal(5, 2)
+  rollingCasinoPct     Decimal?           @db.Decimal(5, 2)
+  rollingSlotPct       Decimal?           @db.Decimal(5, 2)
+  rollingMinigamePct   Decimal?           @db.Decimal(5, 2)
+  registrationStatus RegistrationStatus @default(APPROVED)
+  /** 승인·거절 처리 시각 (가입 승인 내역용) */
+  registrationResolvedAt DateTime?
+  referralCode         String?
+  /** 플랫폼(마스터)이 최상위 총판에 부여한 기준 요율(%). 상위가 총판이 아니면 사용 */
+  agentPlatformSharePct   Decimal?        @db.Decimal(5, 2)
+  /** 직속 상위가 총판일 때: 상위 실효 요율의 몇 %를 이 총판이 가져가는지(0~100). 실효 = 상위실효 × 이값/100 */
+  agentSplitFromParentPct Decimal?        @db.Decimal(5, 2)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  wallet                     Wallet?
+  ledgerEntries              LedgerEntry[]
+  walletRequests             WalletRequest[]
+  rollingRateRevisions       RollingRateRevision[]
+  agentCommissionRevisions   AgentCommissionRevision[]
+  agentInquiriesAuthored     AgentInquiry[]            @relation("AgentInquiryAuthor")
+  agentInquiriesReplied      AgentInquiry[]            @relation("AgentInquiryReplier")
+  vinusSessionTokens         VinusSessionToken[]
+  casinoVinusTxs             CasinoVinusTx[]
+
+  @@index([platformId])
+  @@index([parentUserId])
+  @@index([platformId, registrationResolvedAt])
+  @@index([loginId])
+  @@index([platformId, loginId])
+}
+
+/// 회원 롤링 % 변경 이력. 정산 시각 T에는 effectiveFrom ≤ T 인 최신 행 기준.
+model RollingRateRevision {
+  id                        String   @id @default(cuid())
+  userId                    String
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rollingEnabled            Boolean
+  rollingSportsDomesticPct  Decimal? @db.Decimal(5, 2)
+  rollingSportsOverseasPct  Decimal? @db.Decimal(5, 2)
+  rollingCasinoPct          Decimal? @db.Decimal(5, 2)
+  rollingSlotPct            Decimal? @db.Decimal(5, 2)
+  rollingMinigamePct        Decimal? @db.Decimal(5, 2)
+  effectiveFrom             DateTime
+  createdAt                 DateTime @default(now())
+
+  @@index([userId, effectiveFrom])
+}
+
+/// 총판 플랫폼 요율·상위분배% 변경 이력 (MASTER_AGENT 전용)
+model AgentCommissionRevision {
+  id                        String   @id @default(cuid())
+  userId                    String
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentPlatformSharePct     Decimal? @db.Decimal(5, 2)
+  agentSplitFromParentPct   Decimal? @db.Decimal(5, 2)
+  effectiveFrom             DateTime
+  createdAt                 DateTime @default(now())
+
+  @@index([userId, effectiveFrom])
+}
+
+model Wallet {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformId String
+  platform   Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  balance    Decimal  @default(0) @db.Decimal(18, 2)
+  updatedAt  DateTime @updatedAt
+
+  @@index([platformId])
+}
+
+model LedgerEntry {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platformId  String
+  platform    Platform        @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  type        LedgerEntryType
+  amount      Decimal         @db.Decimal(18, 2)
+  balanceAfter Decimal        @db.Decimal(18, 2)
+  reference   String?
+  metaJson    Json            @default("{}")
+  createdAt   DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([platformId])
+}
+
+model IdempotencyKey {
+  id         String   @id @default(cuid())
+  key        String
+  platformId String
+  platform   Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  responseJson Json?
+  createdAt  DateTime @default(now())
+
+  @@unique([platformId, key])
+}
+
+model SyncState {
+  id         String      @id @default(cuid())
+  platformId String
+  platform   Platform    @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  jobType    SyncJobType
+  lastRunAt  DateTime?
+  lastOkAt   DateTime?
+  lastError  String?
+  stubPayload Json?
+
+  @@unique([platformId, jobType])
+}
+
+model WalletRequest {
+  id           String              @id @default(cuid())
+  platformId   String
+  platform     Platform            @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         WalletRequestType
+  amount       Decimal             @db.Decimal(18, 2)
+  status       WalletRequestStatus @default(PENDING)
+  note         String?
+  /** 반가상 입금 매칭용 입금자명(은행 문자 ee 와 비교) */
+  depositorName String?
+  resolverNote String?
+  createdAt    DateTime            @default(now())
+  resolvedAt   DateTime?
+
+  bankSmsIngests BankSmsIngest[]
+
+  @@index([platformId, status])
+  @@index([userId, createdAt])
+}
+
+/// 은행 웹발신 문자 수신 기록 (sms-ingest 서버가 적재)
+model BankSmsIngest {
+  id                      String               @id @default(cuid())
+  platformId              String?
+  platform                Platform?            @relation(fields: [platformId], references: [id], onDelete: SetNull)
+  bodyHash                String               @unique
+  rawBody                 String               @db.Text
+  sender                  String?
+  recipientPhoneSnapshot  String?
+  parsedJson              Json?
+  status                  BankSmsIngestStatus
+  failureReason           String?
+  matchedWalletRequestId  String?
+  matchedWalletRequest    WalletRequest?       @relation(fields: [matchedWalletRequestId], references: [id], onDelete: SetNull)
+  createdAt               DateTime             @default(now())
+
+  @@index([platformId, createdAt])
+}
+
+/// 총판(MASTER_AGENT) → 플랫폼 관리자 1:1 문의
+model AgentInquiry {
+  id                String             @id @default(cuid())
+  platformId        String
+  platform          Platform           @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  agentUserId       String
+  agent             User               @relation("AgentInquiryAuthor", fields: [agentUserId], references: [id], onDelete: Cascade)
+  subject           String
+  body              String             @db.Text
+  status            AgentInquiryStatus @default(OPEN)
+  adminReply        String?            @db.Text
+  repliedAt         DateTime?
+  repliedByUserId   String?
+  repliedBy         User?              @relation("AgentInquiryReplier", fields: [repliedByUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([platformId, status])
+  @@index([platformId, createdAt])
+  @@index([agentUserId, createdAt])
+}

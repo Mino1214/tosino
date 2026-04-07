@@ -1,0 +1,14 @@
+# Named Tunnel 예시 (고정 도메인). 사용 전:
+# 1) cloudflared tunnel create tosino-sms
+# 2) Zero Trust → Networks → Tunnels → 해당 터널 → Public Hostname
+#    Subdomain: sms-ingest.yourdomain.com
+#    Service: http://localhost:4050
+# 3) cloudflared tunnel run --config 이파일
+#
+# tunnel: <TUNNEL_UUID>
+# credentials-file: /Users/you/.cloudflared/<TUNNEL_UUID>.json
+#
+# ingress:
+#   - hostname: sms-ingest.yourdomain.com
+#     service: http://127.0.0.1:4050
+#   - service: http_status:404

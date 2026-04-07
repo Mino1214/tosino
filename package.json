@@ -1,0 +1,36 @@
+{
+  "name": "tosino",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:all": "bash scripts/local-dev-urls.sh && bash scripts/kill-dev-ports.sh && sleep 1 && concurrently -k -c cyan,magenta -n core,sms \"pnpm turbo run dev --filter='!@tosino/sms-ingest'\" \"pnpm dev:sms-ingest:public\"",
+    "dev:clean": "rm -rf apps/admin-web/.next apps/solution-web/.next apps/agent-web/.next apps/api/dist && pnpm dev",
+    "dev:restart": "bash scripts/kill-dev-ports.sh && sleep 1 && pnpm dev",
+    "lint": "turbo run lint",
+    "db:generate": "pnpm --filter @tosino/api exec prisma generate",
+    "db:migrate": "pnpm --filter @tosino/api exec prisma migrate dev",
+    "db:push": "pnpm --filter @tosino/api exec prisma db push",
+    "db:seed": "pnpm --filter @tosino/api exec prisma db seed",
+    "db:migrate:deploy": "pnpm --filter @tosino/api exec prisma migrate deploy",
+    "dev:solution:preview": "bash scripts/dev-solution-preview.sh",
+    "solution:provision": "bash scripts/provision-solution-instance.sh",
+    "solution:provision-only": "env SOLUTION_NO_START=1 bash scripts/provision-solution-instance.sh",
+    "solution:instance": "bash scripts/run-solution-instance.sh",
+    "solution:dev": "bash scripts/solution-preview-dev.sh",
+    "solution:stack": "bash scripts/solution-preview-stack.sh",
+    "dev:sms-ingest": "pnpm --filter @tosino/sms-ingest dev",
+    "tunnel:sms-ingest": "bash scripts/cloudflared-sms-ingest.sh",
+    "dev:sms-ingest:public": "bash scripts/kill-sms-ingest-port.sh && concurrently -k -c blue,magenta -n ingest,tunnel \"pnpm dev:sms-ingest\" \"bash scripts/cloudflared-wait-and-tunnel.sh\"",
+    "dev:agent-web": "pnpm --filter @tosino/agent-web dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

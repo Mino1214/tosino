@@ -1,0 +1,179 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { apiFetch, getAccessToken } from "@/lib/api";
+import { usePlatform } from "@/context/PlatformContext";
+
+type ReqRow = {
+  id: string;
+  type: string;
+  amount: string;
+  status: string;
+  note: string | null;
+  depositorName: string | null;
+  createdAt: string;
+  user: { id: string; email: string; displayName: string | null };
+};
+
+export default function ConsoleWalletRequestsPage() {
+  const router = useRouter();
+  const { selectedPlatformId, loading: platformLoading } = usePlatform();
+  const [rows, setRows] = useState<ReqRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    if (!selectedPlatformId) return Promise.resolve();
+    return apiFetch<ReqRow[]>(
+      `/platforms/${selectedPlatformId}/wallet-requests?status=PENDING`,
+    )
+      .then(setRows)
+      .catch((e) => setErr(e instanceof Error ? e.message : "오류"));
+  }, [selectedPlatformId]);
+
+  useEffect(() => {
+    if (!getAccessToken()) {
+      router.replace("/login");
+      return;
+    }
+    if (!selectedPlatformId || platformLoading) {
+      setRows(null);
+      return;
+    }
+    setErr(null);
+    load();
+  }, [load, router, selectedPlatformId, platformLoading]);
+
+  async function approve(id: string) {
+    if (!selectedPlatformId) return;
+    setBusy(id);
+    setErr(null);
+    try {
+      await apiFetch(
+        `/platforms/${selectedPlatformId}/wallet-requests/${id}/approve`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reject(id: string) {
+    if (!selectedPlatformId) return;
+    setBusy(id);
+    setErr(null);
+    try {
+      await apiFetch(
+        `/platforms/${selectedPlatformId}/wallet-requests/${id}/reject`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "실패");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (platformLoading || !selectedPlatformId) {
+    return platformLoading ? (
+      <p className="text-zinc-500">불러오는 중…</p>
+    ) : null;
+  }
+  if (err && !rows) {
+    return <p className="text-red-400">{err}</p>;
+  }
+  if (!rows) {
+    return <p className="text-zinc-500">불러오는 중…</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold text-zinc-100">
+          충전·출금 요청 (대기)
+        </h1>
+        <button
+          type="button"
+          onClick={() => load()}
+          className="text-sm text-zinc-400 hover:text-zinc-200"
+        >
+          새로고침
+        </button>
+      </div>
+      <p className="text-sm text-zinc-500">
+        데모: 회원 신청 → 승인 시 잔액 반영
+      </p>
+      {err && <p className="text-sm text-red-400">{err}</p>}
+      {rows.length === 0 ? (
+        <p className="text-zinc-500">대기 중인 요청이 없습니다.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400">
+              <tr>
+                <th className="px-4 py-2">회원</th>
+                <th className="px-4 py-2">유형</th>
+                <th className="px-4 py-2">금액</th>
+                <th className="px-4 py-2">입금자명</th>
+                <th className="px-4 py-2">메모</th>
+                <th className="px-4 py-2">일시</th>
+                <th className="px-4 py-2">처리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b border-zinc-800/80">
+                  <td className="px-4 py-2 text-zinc-200">
+                    {r.user.email}
+                    <br />
+                    <span className="text-xs text-zinc-500">
+                      {r.user.displayName ?? ""}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-zinc-400">{r.type}</td>
+                  <td className="px-4 py-2 font-mono text-zinc-200">
+                    {r.amount}
+                  </td>
+                  <td className="max-w-[100px] truncate px-4 py-2 text-zinc-300">
+                    {r.depositorName ?? "—"}
+                  </td>
+                  <td className="max-w-[140px] truncate px-4 py-2 text-zinc-500">
+                    {r.note ?? "—"}
+                  </td>
+                  <td className="px-4 py-2 text-xs text-zinc-500">
+                    {new Date(r.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={busy === r.id}
+                        onClick={() => approve(r.id)}
+                        className="rounded bg-emerald-800 px-2 py-1 text-xs text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        승인
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy === r.id}
+                        onClick={() => reject(r.id)}
+                        className="rounded border border-red-900/50 px-2 py-1 text-xs text-red-300 hover:bg-red-950/30 disabled:opacity-50"
+                      >
+                        거절
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
