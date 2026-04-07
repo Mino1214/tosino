@@ -2,7 +2,7 @@ node_modules
 dist
 .next
 .turbo
-.env
+# .env 는 레포에 포함 (요청 시). 로컬만 쓸 값은 .env.local
 .env.local
 *.log
 .DS_Store
