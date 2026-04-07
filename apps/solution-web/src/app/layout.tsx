@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
 import "./globals.css";
 import { BootstrapProvider } from "@/components/BootstrapProvider";
 import { AnnouncementModal } from "@/components/AnnouncementModal";
@@ -22,16 +21,15 @@ export const metadata: Metadata = {
   description: "화이트라벨 솔루션",
 };
 
-export default async function RootLayout({
+/** SSG: 호스트는 BootstrapProvider 가 클라이언트에서 effectiveBootstrapHost 로 확정 */
+export const dynamic = "force-static";
+
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const h = await headers();
-  const forwarded = h.get("x-forwarded-host");
-  const rawHost =
-    (forwarded?.split(",")[0]?.trim() ?? h.get("host")) || "localhost";
-  const host = rawHost.split(":")[0];
+  const host = "localhost";
 
   return (
     <html lang="ko">

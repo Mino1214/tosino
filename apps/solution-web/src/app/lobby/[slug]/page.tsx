@@ -10,6 +10,12 @@ const TITLES: Record<string, string> = {
   promo: "이벤트",
 };
 
+export const dynamic = "force-static";
+
+export function generateStaticParams() {
+  return Object.keys(TITLES).map((slug) => ({ slug }));
+}
+
 export default async function LobbyPage({
   params,
 }: {

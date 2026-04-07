@@ -1,7 +1,31 @@
-const BASE =
-  typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api")
-    : "";
+const ENV_API_BASE = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api"
+).replace(/\/$/, "");
+
+function trimApiBase(s: string | undefined): string {
+  return (s || "").replace(/\/$/, "").trim();
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
+}
+
+function envLooksLikeLocalNestApi(base: string): boolean {
+  try {
+    const u = new URL(base);
+    return (
+      u.protocol === "http:" &&
+      /^(127\.0\.0\.1|localhost)$/i.test(u.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** 총판 로그인 시 플랫폼 식별(도메인 또는 미리보기 포트) */
 export function buildLoginPlatformBody(host: string): Record<string, unknown> {
@@ -16,7 +40,28 @@ export function buildLoginPlatformBody(host: string): Record<string, unknown> {
 }
 
 export function getApiBase(): string {
-  return BASE;
+  if (typeof window !== "undefined") {
+    const direct = trimApiBase(process.env.NEXT_PUBLIC_DIRECT_API_URL);
+    if (direct) return direct;
+  }
+
+  const same =
+    process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API === "1" ||
+    process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API === "true";
+  if (same && typeof window !== "undefined") {
+    if (isLoopbackHostname(window.location.hostname)) {
+      if (envLooksLikeLocalNestApi(ENV_API_BASE)) {
+        return ENV_API_BASE;
+      }
+      const p = process.env.NEXT_PUBLIC_API_LOOPBACK_PORT || "4001";
+      return `http://127.0.0.1:${p}/api`;
+    }
+    return `${window.location.origin}/api`;
+  }
+  if (typeof window !== "undefined") {
+    return ENV_API_BASE;
+  }
+  return ENV_API_BASE;
 }
 
 export function getAccessToken(): string | null {
@@ -64,7 +109,7 @@ export async function apiFetch<T = unknown>(
     headers.set("Content-Type", "application/json");
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const url = `${BASE}${path}`;
+  const url = `${getApiBase()}${path}`;
   const res = await fetch(url, { ...opts, headers });
   if (res.status === 401) {
     clearSession();

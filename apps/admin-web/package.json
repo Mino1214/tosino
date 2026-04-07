@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "clean": "rm -rf .next out",
+    "build:clean": "pnpm clean && pnpm build",
+    "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start",
+    "start": "serve out -l 3000 --no-clipboard",
     "lint": "eslint"
   },
   "dependencies": {
@@ -14,6 +16,7 @@
     "next": "15.5.14"
   },
   "devDependencies": {
+    "serve": "^14.2.4",
     "typescript": "^5",
     "@types/node": "^20",
     "@types/react": "^19",

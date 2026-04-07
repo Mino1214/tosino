@@ -18,6 +18,8 @@ export const metadata: Metadata = {
   description: "중앙 관리자",
 };
 
+export const dynamic = "force-static";
+
 export default function RootLayout({
   children,
 }: Readonly<{

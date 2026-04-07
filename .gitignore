@@ -1,6 +1,9 @@
 node_modules
 dist
 .next
+apps/admin-web/out
+apps/solution-web/out
+apps/agent-web/out
 .turbo
 # .env 는 레포에 포함 (요청 시). 로컬만 쓸 값은 .env.local
 .env.local

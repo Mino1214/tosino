@@ -1,6 +1,8 @@
 "use client";
 
+/** 운영 빌드에 실수로 PREVIEW_PORT가 들어가도 노출되지 않도록 개발 전용 */
 export function PreviewRibbon() {
+  if (process.env.NODE_ENV !== "development") return null;
   const port = process.env.NEXT_PUBLIC_PREVIEW_PORT;
   if (!port) return null;
   return (

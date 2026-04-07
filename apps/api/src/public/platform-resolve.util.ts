@@ -2,10 +2,12 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export function bootstrapHostCandidates(host?: string): string[] {
   const h = (host || 'localhost').toLowerCase().split(':')[0];
+  const apexIfWww = h.startsWith('www.') ? h.slice(4) : null;
   return Array.from(
     new Set(
       [
         h,
+        apexIfWww,
         h === '127.0.0.1' ? 'localhost' : null,
         h === 'localhost' ? '127.0.0.1' : null,
       ].filter((x): x is string => !!x),

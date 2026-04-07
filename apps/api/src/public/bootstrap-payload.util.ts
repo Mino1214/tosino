@@ -1,6 +1,9 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { publicSportsSectionsFromIntegrations } from './sports-sections.util';
-import { resolvePublicMediaUrl } from '../common/utils/media-url.util';
+import {
+  normalizePublicAssetUrl,
+  resolvePublicMediaUrl,
+} from '../common/utils/media-url.util';
 
 /**
  * 솔루션 부트스트랩의 공지 팝업 노출 여부.
@@ -43,6 +46,9 @@ export async function buildBootstrapPayload(
     take: 4,
     select: { imageUrl: true, imageWidth: true, imageHeight: true },
   });
+  const bannerUrlsRaw = Array.isArray(theme.bannerUrls)
+    ? (theme.bannerUrls as string[])
+    : [];
   return {
     platformId: p.id,
     slug: p.slug,
@@ -50,11 +56,11 @@ export async function buildBootstrapPayload(
     previewPort: p.previewPort,
     theme: {
       primaryColor: (theme.primaryColor as string) || '#c9a227',
-      logoUrl: (theme.logoUrl as string) || null,
+      logoUrl: normalizePublicAssetUrl(theme.logoUrl as string | undefined),
       siteName: (theme.siteName as string) || p.name,
-      bannerUrls: Array.isArray(theme.bannerUrls)
-        ? (theme.bannerUrls as string[])
-        : [],
+      bannerUrls: bannerUrlsRaw
+        .map((u) => normalizePublicAssetUrl(u))
+        .filter((u): u is string => !!u),
       ui: {
         headerStyle: (ui.headerStyle as string) || 'glass',
         homeLayout: (ui.homeLayout as string) || 'banner',

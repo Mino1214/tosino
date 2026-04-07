@@ -39,8 +39,10 @@ export class PublicPlatformResolveService {
     }
     const p = await resolvePlatformFromRequestHost(this.prisma, host);
     if (!p) {
+      const tried = bootstrapHostCandidates(host).join(', ');
       throw new NotFoundException(
-        `Unknown host / platform domain (tried: ${bootstrapHostCandidates(host).join(', ')})`,
+        `Bootstrap 404: DB에 이 Host용 플랫폼 도메인이 없습니다 (시도: ${tried}). ` +
+          `총관 콘솔에서 플랫폼 도메인을 추가하거나, 저장소 루트에서 SEED_PLATFORM_HOSTS=nexus001.vip,www.nexus001.vip pnpm db:seed`,
       );
     }
     return p;

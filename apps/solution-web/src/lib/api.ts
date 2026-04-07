@@ -1,4 +1,61 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api";
+const ENV_API_BASE = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api"
+).replace(/\/$/, "");
+
+function trimApiBase(s: string | undefined): string {
+  return (s || "").replace(/\/$/, "").trim();
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
+}
+
+function envLooksLikeLocalNestApi(base: string): boolean {
+  try {
+    const u = new URL(base);
+    return (
+      u.protocol === "http:" &&
+      /^(127\.0\.0\.1|localhost)$/i.test(u.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * API 베이스 URL.
+ * - `NEXT_PUBLIC_DIRECT_API_URL` 이 있으면(빌드에 박힘) 클라이언트에서 최우선 — LAN·정적 serve 등 직통 Nest URL.
+ * - `NEXT_PUBLIC_USE_SAME_ORIGIN_API=true` 이면 보통 `현재 호스트 + /api` (nginx 가 /api 프록시).
+ * - 다만 localhost/127 로 `serve out` 만 켠 경우 `/api` 는 404 이므로 Nest(:4001) 로 직통.
+ * - 운영 도메인(demo1 등)은 그대로 `origin + /api`.
+ */
+export function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    const direct = trimApiBase(process.env.NEXT_PUBLIC_DIRECT_API_URL);
+    if (direct) return direct;
+  }
+
+  const same =
+    process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API === "1" ||
+    process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API === "true";
+
+  if (same && typeof window !== "undefined") {
+    if (isLoopbackHostname(window.location.hostname)) {
+      if (envLooksLikeLocalNestApi(ENV_API_BASE)) {
+        return ENV_API_BASE;
+      }
+      const p = process.env.NEXT_PUBLIC_API_LOOPBACK_PORT || "4001";
+      return `http://127.0.0.1:${p}/api`;
+    }
+    return `${window.location.origin}/api`;
+  }
+  return ENV_API_BASE;
+}
 
 /** 호스트 기반 또는 NEXT_PUBLIC_PREVIEW_PORT 기반 공개 API 쿼리 */
 export function buildPublicApiQuery(host: string): URLSearchParams {
@@ -46,7 +103,7 @@ export async function apiFetch<T = unknown>(
     headers.set("Content-Type", "application/json");
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  const res = await fetch(`${getApiBase()}${path}`, { ...opts, headers });
   if (res.status === 401) {
     clearSession();
   }
@@ -68,7 +125,7 @@ export async function apiFetch<T = unknown>(
 export async function fetchReferral(code: string, host: string) {
   const q = buildPublicApiQuery(host);
   q.set("code", code.trim());
-  const res = await fetch(`${BASE}/public/referral?${q}`, { cache: "no-store" });
+  const res = await fetch(`${getApiBase()}/public/referral?${q}`, { cache: "no-store" });
   if (!res.ok) {
     let msg = "코드를 확인할 수 없습니다";
     try {
@@ -96,7 +153,7 @@ export async function publicRegister(
   },
   host: string,
 ) {
-  const res = await fetch(`${BASE}/public/register`, {
+  const res = await fetch(`${getApiBase()}/public/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -134,7 +191,7 @@ export type BootstrapThemeUi = {
 
 export async function fetchBootstrap(host: string) {
   const q = buildPublicApiQuery(host);
-  const res = await fetch(`${BASE}/public/bootstrap?${q}`, {
+  const res = await fetch(`${getApiBase()}/public/bootstrap?${q}`, {
     cache: "no-store",
   });
   if (!res.ok) {
@@ -183,7 +240,7 @@ export type PublicSportsOddsFeed = {
 
 export async function fetchSportsOdds(host: string) {
   const q = buildPublicApiQuery(host);
-  const res = await fetch(`${BASE}/public/sports-odds?${q}`, {
+  const res = await fetch(`${getApiBase()}/public/sports-odds?${q}`, {
     cache: "no-store",
   });
   if (!res.ok) {

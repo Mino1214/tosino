@@ -121,6 +121,34 @@ function needsDemoSportsFeeds(integrationsJson: unknown): boolean {
   return !Array.isArray(feeds) || feeds.length === 0;
 }
 
+/** SEED_PLATFORM_HOSTS / SEED_DEMO_PLATFORM_HOSTS — 쉼표·공백 구분, demo 플랫폼에 platform_domains 행 추가 */
+async function ensureHostsOnPlatform(
+  platformId: string,
+  rawEnv: string | undefined,
+): Promise<void> {
+  const hosts = (rawEnv || '')
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  for (const host of hosts) {
+    const taken = await prisma.platformDomain.findUnique({
+      where: { host },
+    });
+    if (taken) {
+      if (taken.platformId !== platformId) {
+        console.warn(
+          `시드 스킵: host "${host}" 는 이미 다른 플랫폼(${taken.platformId})에 연결됨`,
+        );
+      }
+      continue;
+    }
+    await prisma.platformDomain.create({
+      data: { host, platformId },
+    });
+    console.log(`Seeded platform_domain: ${host} → platform ${platformId}`);
+  }
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const superEmail = 'super@tosino.local';
@@ -187,6 +215,10 @@ async function main() {
       }
     }
   }
+
+  const extraHosts =
+    process.env.SEED_PLATFORM_HOSTS || process.env.SEED_DEMO_PLATFORM_HOSTS;
+  await ensureHostsOnPlatform(platform.id, extraHosts);
 
   const paEmail = 'platform@tosino.local';
   const paLid = loginIdOf(paEmail);

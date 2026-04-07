@@ -31,6 +31,20 @@ function shellClass(ui: BootstrapData["theme"]["ui"] | undefined): string {
   return "min-h-screen bg-[#050505] text-zinc-100";
 }
 
+/**
+ * 공개 API ?host= 와 DB platform_domains 가 맞아야 함.
+ * - SSR 로 들어온 헤더만 쓰면 Cloudflare·프록시 뒤에서 어긋날 수 있음 → 클라이언트에선 주소창 hostname 우선.
+ * - LAN IP 로만 열 때는 .env 에 NEXT_PUBLIC_PLATFORM_DOMAIN=nexus001.vip 처럼 고정.
+ */
+export function effectiveBootstrapHost(serverHost: string): string {
+  const override = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN?.trim();
+  if (override) return override;
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    return window.location.hostname;
+  }
+  return serverHost;
+}
+
 export function BootstrapProvider({
   host,
   children,
@@ -40,11 +54,14 @@ export function BootstrapProvider({
 }) {
   const [data, setData] = useState<BootstrapData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [requestHost, setRequestHost] = useState(host);
   const previewPort = process.env.NEXT_PUBLIC_PREVIEW_PORT;
 
   useEffect(() => {
+    const h = effectiveBootstrapHost(host);
+    setRequestHost(h);
     let cancelled = false;
-    fetchBootstrap(host)
+    fetchBootstrap(h)
       .then((d) => {
         if (!cancelled) setData(d);
       })
@@ -68,10 +85,31 @@ export function BootstrapProvider({
 
   const ctxValue = useMemo((): BootstrapCtx | null => {
     if (!data) return null;
-    return { bootstrap: data, requestHost: host };
-  }, [data, host]);
+    return { bootstrap: data, requestHost };
+  }, [data, requestHost]);
 
   if (error) {
+    const isProd = process.env.NODE_ENV === "production";
+    if (isProd) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-zinc-950 p-6 text-center text-zinc-200">
+          <div>
+            <p className="font-medium">일시적으로 연결할 수 없습니다</p>
+            <p className="mt-2 text-sm text-zinc-500">
+              잠시 후 다시 시도해 주세요.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-lg bg-zinc-200 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-300"
+          >
+            새로고침
+          </button>
+        </div>
+      );
+    }
+
     const isNotFound =
       /\b404\b/.test(error) ||
       /Unknown host/i.test(error) ||

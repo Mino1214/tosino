@@ -1,10 +1,60 @@
-const BASE =
-  typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api")
-    : "";
+const ENV_API_BASE = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api"
+).replace(/\/$/, "");
 
+function trimApiBase(s: string | undefined): string {
+  return (s || "").replace(/\/$/, "").trim();
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
+}
+
+function envLooksLikeLocalNestApi(base: string): boolean {
+  try {
+    const u = new URL(base);
+    return (
+      u.protocol === "http:" &&
+      /^(127\.0\.0\.1|localhost)$/i.test(u.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * - 운영(nginx): 보통 `현재 호스트 + /api`.
+ * - 로컬에서 `serve out` 만 쓰면 `/api` 가 없으므로 loopback 일 때 Nest(:4001) 직통 (solution-web 과 동일 규칙).
+ */
 export function getApiBase(): string {
-  return BASE;
+  if (typeof window !== "undefined") {
+    const direct = trimApiBase(process.env.NEXT_PUBLIC_DIRECT_API_URL);
+    if (direct) return direct;
+  }
+
+  const same =
+    process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API === "1" ||
+    process.env.NEXT_PUBLIC_USE_SAME_ORIGIN_API === "true";
+
+  if (same && typeof window !== "undefined") {
+    if (isLoopbackHostname(window.location.hostname)) {
+      if (envLooksLikeLocalNestApi(ENV_API_BASE)) {
+        return ENV_API_BASE;
+      }
+      const p = process.env.NEXT_PUBLIC_API_LOOPBACK_PORT || "4001";
+      return `http://127.0.0.1:${p}/api`;
+    }
+    return `${window.location.origin}/api`;
+  }
+  if (typeof window !== "undefined") {
+    return ENV_API_BASE;
+  }
+  return ENV_API_BASE;
 }
 
 export function getAccessToken(): string | null {
@@ -53,15 +103,16 @@ export async function apiFetch<T = unknown>(
     headers.set("Content-Type", "application/json");
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const url = `${BASE}${path}`;
+  const base = getApiBase();
+  const url = `${base}${path}`;
   let res: Response;
   try {
     res = await fetch(url, { ...opts, headers });
   } catch (e) {
     const isLocal =
-      !BASE || /localhost|127\.0\.0\.1/i.test(BASE);
+      !base || /localhost|127\.0\.0\.1/i.test(base);
     const hint = isLocal
-      ? " Nest API(기본 :4001)가 실행 중인지 확인하세요. 휴대폰/other PC에서 접속 중이면 localhost가 아니라 그 컴퓨터의 LAN IP로 NEXT_PUBLIC_API_URL을 설정해야 합니다."
+      ? " Nest API(기본 :4001)가 실행 중인지 확인하세요. 휴대폰/other PC에서 접속 중이면 localhost가 아니라 그 컴퓨터의 LAN IP로 NEXT_PUBLIC_API_URL을 설정하거나 운영에선 NEXT_PUBLIC_USE_SAME_ORIGIN_API=true 를 쓰세요."
       : " 네트워크·방화벽·HTTPS 혼합 콘텐츠를 확인하세요.";
     const msg = e instanceof Error ? e.message : "연결 실패";
     throw new Error(`${msg}.${hint}`);
@@ -111,7 +162,7 @@ export async function apiUploadAnnouncementAsset(
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch(
-    `${BASE}/platforms/${platformId}/announcements/assets`,
+    `${getApiBase()}/platforms/${platformId}/announcements/assets`,
     {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
