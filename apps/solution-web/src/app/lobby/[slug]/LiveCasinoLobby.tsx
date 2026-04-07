@@ -5,7 +5,19 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getAccessToken } from "@/lib/api";
 
-export function LiveCasinoLobby() {
+type LiveCasinoLobbyProps = {
+  /** 기본 evolution */
+  vendor?: string;
+  title?: string;
+  /** 프라그마틱 등 트랜스퍼만 쓰는 경우 버튼 단순화 */
+  transferOnly?: boolean;
+};
+
+export function LiveCasinoLobby({
+  vendor = "evolution",
+  title = "라이브 카지노",
+  transferOnly = false,
+}: LiveCasinoLobbyProps = {}) {
   const router = useRouter();
   const [loadingMode, setLoadingMode] = useState<null | "seamless" | "transfer">(
     null,
@@ -41,7 +53,7 @@ export function LiveCasinoLobby() {
         const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
           method: "POST",
           body: JSON.stringify({
-            vendor: "evolution",
+            vendor,
             game: "lobby",
             platform: mobile ? "MOBILE" : "WEB",
             method: walletMethod,
@@ -59,13 +71,13 @@ export function LiveCasinoLobby() {
         setLoadingMode(null);
       }
     },
-    [router],
+    [router, vendor],
   );
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <p className="text-sm text-zinc-500">Vinus Gaming · 라이브 카지노</p>
-      <h1 className="mt-2 text-2xl font-bold text-white">라이브 카지노</h1>
+      <p className="text-sm text-zinc-500">Vinus Gaming</p>
+      <h1 className="mt-2 text-2xl font-bold text-white">{title}</h1>
       {walletBalance !== null ? (
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-left">
           <p className="text-xs text-zinc-500">충전·입금과 같은 지갑 (심리스)</p>
@@ -92,23 +104,37 @@ export function LiveCasinoLobby() {
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>
       ) : null}
       <div className="mx-auto mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
-        <button
-          type="button"
-          onClick={() => void launch("seamless")}
-          disabled={loadingMode !== null}
-          className="inline-flex flex-1 justify-center rounded-xl px-6 py-3 text-sm font-medium text-black disabled:opacity-60"
-          style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
-        >
-          {loadingMode === "seamless" ? "연결 중…" : "심리스 입장"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void launch("transfer")}
-          disabled={loadingMode !== null}
-          className="inline-flex flex-1 justify-center rounded-xl px-6 py-3 text-sm font-medium text-zinc-100 ring-1 ring-white/25 hover:bg-white/10 disabled:opacity-60"
-        >
-          {loadingMode === "transfer" ? "연결 중…" : "트랜스퍼 입장"}
-        </button>
+        {transferOnly ? (
+          <button
+            type="button"
+            onClick={() => void launch("transfer")}
+            disabled={loadingMode !== null}
+            className="inline-flex w-full justify-center rounded-xl px-6 py-3 text-sm font-medium text-black disabled:opacity-60"
+            style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+          >
+            {loadingMode === "transfer" ? "연결 중…" : "트랜스퍼로 입장"}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => void launch("seamless")}
+              disabled={loadingMode !== null}
+              className="inline-flex flex-1 justify-center rounded-xl px-6 py-3 text-sm font-medium text-black disabled:opacity-60"
+              style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+            >
+              {loadingMode === "seamless" ? "연결 중…" : "심리스 입장"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void launch("transfer")}
+              disabled={loadingMode !== null}
+              className="inline-flex flex-1 justify-center rounded-xl px-6 py-3 text-sm font-medium text-zinc-100 ring-1 ring-white/25 hover:bg-white/10 disabled:opacity-60"
+            >
+              {loadingMode === "transfer" ? "연결 중…" : "트랜스퍼 입장"}
+            </button>
+          </>
+        )}
       </div>
       <p className="mt-4 text-xs text-zinc-600">
         API 스모크: <code className="text-zinc-500">pnpm run vinus:flows-smoke</code>{" "}

@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useBootstrap } from "@/components/BootstrapProvider";
 import { CategoryGrid } from "@/components/CategoryGrid";
-import { SportsFeedsPanel } from "@/components/SportsFeedsPanel";
 import { cardRadiusClass } from "@/lib/theme-ui";
 
 export default function HomePage() {
@@ -71,8 +70,6 @@ export default function HomePage() {
           ))
         )}
       </div>
-
-      <SportsFeedsPanel />
 
       <CategoryGrid />
     </div>
