@@ -118,8 +118,16 @@ export default function WalletPage() {
         ← 홈
       </Link>
       <h1 className="mt-4 text-2xl font-bold text-white">충전 · 출금</h1>
-      <p className="mt-1 text-sm text-zinc-500">
-        데모: 신청 후 관리자가 승인하면 잔액이 반영됩니다.
+      <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+        아래 <strong className="text-zinc-200">보유 머니</strong>는 라이브 카지노{" "}
+        <strong className="text-zinc-200">심리스 지갑</strong>과{" "}
+        <strong className="text-zinc-200">동일한 DB 지갑</strong>입니다. 충전
+        신청 승인·반가상(은행 문자) 자동 입금이 반영되면, 카지노 베팅/당첨과
+        같은 잔액이 즉시 이어집니다.
+      </p>
+      <p className="mt-1 text-xs text-zinc-600">
+        게임 중 화면에 보이는 금액은 게임사가 잔액을 다시 조회할 때 갱신될 수
+        있습니다.
       </p>
 
       {err && (
@@ -131,10 +139,16 @@ export default function WalletPage() {
       {profile?.role === "USER" && (
         <>
           <div className="mt-6 rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900 to-black p-6">
-            <p className="text-sm text-zinc-500">보유 머니</p>
+            <p className="text-sm text-zinc-500">보유 머니 (심리스 공용)</p>
             <p className="mt-1 font-mono text-3xl font-bold text-[var(--theme-primary,#c9a227)]">
               {balance ?? "—"} <span className="text-lg text-zinc-400">원</span>
             </p>
+            <Link
+              href="/lobby/live-casino"
+              className="mt-4 inline-flex w-full justify-center rounded-xl border border-white/15 py-2.5 text-sm font-medium text-zinc-200 hover:bg-white/5"
+            >
+              라이브 카지노 입장 →
+            </Link>
           </div>
 
           <div className="mt-6 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-5">

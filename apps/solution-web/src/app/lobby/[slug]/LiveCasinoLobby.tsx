@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getAccessToken } from "@/lib/api";
 
 export function LiveCasinoLobby() {
@@ -11,6 +11,19 @@ export function LiveCasinoLobby() {
     null,
   );
   const [err, setErr] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!getAccessToken()) return;
+    void (async () => {
+      try {
+        const w = await apiFetch<{ balance: string }>("/me/wallet");
+        setWalletBalance(w.balance);
+      } catch {
+        setWalletBalance(null);
+      }
+    })();
+  }, []);
 
   const launch = useCallback(
     async (walletMethod: "seamless" | "transfer") => {
@@ -53,12 +66,27 @@ export function LiveCasinoLobby() {
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
       <p className="text-sm text-zinc-500">Vinus Gaming · 라이브 카지노</p>
       <h1 className="mt-2 text-2xl font-bold text-white">라이브 카지노</h1>
+      {walletBalance !== null ? (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-left">
+          <p className="text-xs text-zinc-500">충전·입금과 같은 지갑 (심리스)</p>
+          <p className="mt-0.5 font-mono text-xl font-semibold text-[var(--theme-primary,#c9a227)]">
+            {walletBalance}{" "}
+            <span className="text-sm font-normal text-zinc-400">원</span>
+          </p>
+          <Link
+            href="/wallet"
+            className="mt-2 inline-block text-xs text-zinc-400 underline decoration-zinc-600 underline-offset-2 hover:text-zinc-200"
+          >
+            모바일 충전 · 입금 신청 →
+          </Link>
+        </div>
+      ) : null}
       <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">
-        입장 시 서버에서 세션 토큰을 발급하고, Vinus{" "}
-        <code className="text-zinc-500">play-game</code> 의{" "}
+        <strong className="text-zinc-200">심리스</strong> 입장 시 베팅/당첨은
+        모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 Vinus{" "}
+        <code className="text-zinc-500">play-game</code>{" "}
         <code className="text-zinc-500">method=seamless|transfer</code> 로
-        실행 URL을 받습니다. 벤더 쪽에서는 두 방식 모두 테스트·컨펌(에볼루션)까지
-        완료해야 합니다.
+        이동합니다.
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>
