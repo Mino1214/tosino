@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -113,6 +114,8 @@ type VinusUserRow = {
 
 @Injectable()
 export class VinusService {
+  private readonly logger = new Logger(VinusService.name);
+
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
@@ -250,10 +253,9 @@ export class VinusService {
           : undefined;
 
     if (this.envFlag('VINUS_STUB_AUTHENTICATE') && command === 'authenticate') {
-      const tok = typeof data.token === 'string' ? data.token.trim() : '';
-      if (!tok) {
-        return { result: 11, status: 'ERROR', data: {} };
-      }
+      this.logger.warn(
+        'VINUS_STUB_AUTHENTICATE: authenticate 고정 성공 응답 (토큰·DB 무시). 운영 전 끌 것.',
+      );
       return this.stubAuthenticateOk();
     }
 
