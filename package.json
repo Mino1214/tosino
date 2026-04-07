@@ -36,6 +36,7 @@
     "start:admin": "bash scripts/serve-fixed-port.sh 3000 apps/admin-web/out",
     "start:solution": "bash scripts/serve-fixed-port.sh 3002 apps/solution-web/out",
     "start:agent": "bash scripts/serve-fixed-port.sh 3003 apps/agent-web/out",
+    "start:web": "concurrently -k -c cyan,green,yellow -n admin,solution,agent \"pnpm start:admin\" \"pnpm start:solution\" \"pnpm start:agent\"",
     "start:apps": "bash scripts/start-prod-stack.sh",
     "apps:prod": "pnpm build:apps && pnpm start:apps",
     "smoke:webhooks": "bash scripts/smoke-webhooks.sh",
