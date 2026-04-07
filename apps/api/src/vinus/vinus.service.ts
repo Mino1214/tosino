@@ -54,6 +54,7 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     balance: 'balance',
     bet: 'bet',
     'bet-win': 'bet-win',
+    betwin: 'bet-win',
     win: 'win',
     'win-add': 'win-add',
     cancel: 'cancel',
@@ -90,6 +91,75 @@ function asVinusCallbackRoot(input: unknown): Record<string, unknown> {
   return input as Record<string, unknown>;
 }
 
+/** 루트 키 앞뒤 공백만 다른 경우 (예: " command") → 표준 키로 복사 */
+function normalizeVinusRootKeys(raw: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...raw };
+  const roots = new Set([
+    'command',
+    'check',
+    'data',
+    'timestamp',
+    'transfer',
+    'request_timestamp',
+  ]);
+  for (const k of Object.keys(raw)) {
+    const t = k.trim();
+    if (roots.has(t) && out[t] === undefined && raw[k] !== undefined) {
+      out[t] = raw[k];
+    }
+  }
+  return out;
+}
+
+/**
+ * data 키에 끼는 공백·오타 보정 (JSON 키가 "game _id", "amoun t" 등일 때)
+ * 공백 제거한 키명으로 표준 필드에 매핑
+ */
+function normalizeVinusDataKeys(data: Record<string, unknown>) {
+  const byCompact: Record<string, string> = {
+    token: 'token',
+    user_id: 'user_id',
+    userid: 'user_id',
+    transaction_id: 'transaction_id',
+    game_id: 'game_id',
+    round_id: 'round_id',
+    game_type: 'game_type',
+    gametype: 'game_type',
+    game_sort: 'game_sort',
+    gamesort: 'game_sort',
+    vendor: 'vendor',
+    game: 'game',
+    amount: 'amount',
+    bet: 'bet',
+    win: 'win',
+    transfer: 'transfer',
+    r: 'vendor',
+  };
+  const keys = Object.keys(data);
+  for (const k of keys) {
+    const compact = k.replace(/\s/g, '').toLowerCase();
+    const canon = byCompact[compact];
+    if (canon && data[canon] === undefined && data[k] !== undefined) {
+      data[canon] = data[k];
+    }
+  }
+  for (const k of [
+    'user_id',
+    'transaction_id',
+    'game_id',
+    'round_id',
+    'token',
+    'game',
+    'vendor',
+    'game_type',
+    'game_sort',
+  ]) {
+    if (typeof data[k] === 'string') {
+      data[k] = (data[k] as string).trim();
+    }
+  }
+}
+
 function mergeVinusDataPayload(raw: Record<string, unknown>): Record<string, unknown> {
   const nested =
     raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)
@@ -123,6 +193,10 @@ type VinusUserRow = {
 @Injectable()
 export class VinusService {
   private readonly logger = new Logger(VinusService.name);
+
+  /** 스텁: 멱등·잔액 시뮬 (프로세스 메모리, 재시작 시 초기화) */
+  private stubWorkingBal: number | null = null;
+  private stubTxEndingBalance = new Map<string, number>();
 
   constructor(
     private prisma: PrismaService,
@@ -175,7 +249,9 @@ export class VinusService {
     if (userNickname.length < 2) {
       userNickname = 'UU';
     }
+    this.resetStubWalletSimulation();
     const balance = this.stubBalanceNumber();
+    this.stubWorkingBal = balance;
     return {
       result: 0,
       status: 'OK',
@@ -188,13 +264,75 @@ export class VinusService {
     };
   }
 
-  /** 스텁: balance 명령 → 문서대로 data.balance 만 */
+  private resetStubWalletSimulation() {
+    this.stubWorkingBal = null;
+    this.stubTxEndingBalance.clear();
+  }
+
+  private stubGetWorking(): number {
+    if (this.stubWorkingBal === null) {
+      this.stubWorkingBal = this.stubBalanceNumber();
+    }
+    return this.stubWorkingBal;
+  }
+
+  /** 스텁: balance 명령 → 시뮬 잔액 (bet-win/bet 이후 반영) */
   private stubBalanceOk(): Record<string, unknown> {
     return {
       result: 0,
       status: 'OK',
-      data: { balance: this.stubBalanceNumber() },
+      data: { balance: this.stubGetWorking() },
     };
+  }
+
+  /** 스텁: bet-win — 동일 transaction_id 재요청 시 잔액만 반환 (멱등) */
+  private stubBetWinOk(data: Record<string, unknown>): Record<string, unknown> {
+    const tid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const bet = toDec(data.bet) ?? toDec(data.amount);
+    const win = toDec(data.win);
+    if (!tid || !bet || win === null) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const cached = this.stubTxEndingBalance.get(tid);
+    if (cached !== undefined) {
+      return { result: 0, status: 'OK', data: { balance: cached } };
+    }
+    const cur = new Prisma.Decimal(this.stubGetWorking());
+    const newBal = Number(cur.minus(bet).plus(win).toFixed(2));
+    this.stubTxEndingBalance.set(tid, newBal);
+    this.stubWorkingBal = newBal;
+    return { result: 0, status: 'OK', data: { balance: newBal } };
+  }
+
+  /** 스텁: bet — 동일 transaction_id 재요청 멱등 */
+  private stubBetOk(data: Record<string, unknown>): Record<string, unknown> {
+    const tid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const amount = toDec(data.amount);
+    if (!tid || !amount || amount.lte(0)) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const cached = this.stubTxEndingBalance.get(tid);
+    if (cached !== undefined) {
+      return { result: 0, status: 'OK', data: { balance: cached } };
+    }
+    const cur = new Prisma.Decimal(this.stubGetWorking());
+    if (cur.lt(amount)) {
+      return {
+        result: 31,
+        status: 'ERROR',
+        data: { balance: Number(cur.toFixed(2)) },
+      };
+    }
+    const newBal = Number(cur.minus(amount).toFixed(2));
+    this.stubTxEndingBalance.set(tid, newBal);
+    this.stubWorkingBal = newBal;
+    return { result: 0, status: 'OK', data: { balance: newBal } };
   }
 
   private get baseUrl(): string {
@@ -257,9 +395,9 @@ export class VinusService {
 
   async handleCallback(body: unknown) {
     this.assertConfigured();
-    const raw = asVinusCallbackRoot(body);
+    const raw = normalizeVinusRootKeys(asVinusCallbackRoot(body));
     const command = normalizeVinusCommand(raw.command);
-    const checkStr = String(raw.check ?? '');
+    const checkStr = String(raw.check ?? '').replace(/\s/g, '');
     const checks = checkStr
       .split(',')
       .map((s) => s.trim())
@@ -267,6 +405,7 @@ export class VinusService {
       .map((s) => Number(s));
 
     const data = mergeVinusDataPayload(raw);
+    normalizeVinusDataKeys(data);
     normalizeVinusTokenInData(data);
     const timestamp =
       typeof raw.timestamp === 'number'
@@ -287,6 +426,18 @@ export class VinusService {
           'VINUS_STUB_AUTHENTICATE: balance 고정 성공 (check 21,22·DB 무시). 운영 전 끌 것.',
         );
         return this.stubBalanceOk();
+      }
+      if (command === 'bet-win') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: bet-win 스텁 (동일 transaction_id 멱등). 운영 전 끌 것.',
+        );
+        return this.stubBetWinOk(data);
+      }
+      if (command === 'bet') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: bet 스텁 (동일 transaction_id 멱등). 운영 전 끌 것.',
+        );
+        return this.stubBetOk(data);
       }
     }
 
