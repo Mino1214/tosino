@@ -103,6 +103,14 @@ function mergeVinusDataPayload(raw: Record<string, unknown>): Record<string, unk
   return nested;
 }
 
+/** 벤더/전송 과정에서 토큰에 끼는 공백·줄바꿈 제거 */
+function normalizeVinusTokenInData(data: Record<string, unknown>) {
+  const t = data.token;
+  if (typeof t === 'string') {
+    data.token = t.replace(/\s/g, '');
+  }
+}
+
 type VinusUserRow = {
   id: string;
   loginId: string;
@@ -136,6 +144,17 @@ export class VinusService {
     return v === 'true' || v === '1' || v === 'yes';
   }
 
+  /** 스텁 모드 공통 잔액 (authenticate·balance 동일) */
+  private stubBalanceNumber(): number {
+    const balRaw = this.config.get<string>('VINUS_STUB_BALANCE')?.trim();
+    return Number(
+      (balRaw !== undefined && balRaw !== ''
+        ? parseFloat(balRaw)
+        : 100000
+      ).toFixed(2),
+    );
+  }
+
   /**
    * 벤더 연동 테스트용: DB·토큰 매칭 없이 authenticate 성공 응답.
    * 운영 전에 VINUS_STUB_AUTHENTICATE 끄고 실제 유저·토큰 연동 사용.
@@ -156,13 +175,7 @@ export class VinusService {
     if (userNickname.length < 2) {
       userNickname = 'UU';
     }
-    const balRaw = this.config.get<string>('VINUS_STUB_BALANCE')?.trim();
-    const balance = Number(
-      (balRaw !== undefined && balRaw !== ''
-        ? parseFloat(balRaw)
-        : 100000
-      ).toFixed(2),
-    );
+    const balance = this.stubBalanceNumber();
     return {
       result: 0,
       status: 'OK',
@@ -172,6 +185,15 @@ export class VinusService {
         user_nickname: userNickname,
         balance,
       },
+    };
+  }
+
+  /** 스텁: balance 명령 → 문서대로 data.balance 만 */
+  private stubBalanceOk(): Record<string, unknown> {
+    return {
+      result: 0,
+      status: 'OK',
+      data: { balance: this.stubBalanceNumber() },
     };
   }
 
@@ -245,6 +267,7 @@ export class VinusService {
       .map((s) => Number(s));
 
     const data = mergeVinusDataPayload(raw);
+    normalizeVinusTokenInData(data);
     const timestamp =
       typeof raw.timestamp === 'number'
         ? raw.timestamp
@@ -252,11 +275,19 @@ export class VinusService {
           ? raw.request_timestamp
           : undefined;
 
-    if (this.envFlag('VINUS_STUB_AUTHENTICATE') && command === 'authenticate') {
-      this.logger.warn(
-        'VINUS_STUB_AUTHENTICATE: authenticate 고정 성공 응답 (토큰·DB 무시). 운영 전 끌 것.',
-      );
-      return this.stubAuthenticateOk();
+    if (this.envFlag('VINUS_STUB_AUTHENTICATE')) {
+      if (command === 'authenticate') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: authenticate 고정 성공 (토큰·DB 무시). 운영 전 끌 것.',
+        );
+        return this.stubAuthenticateOk();
+      }
+      if (command === 'balance') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: balance 고정 성공 (check 21,22·DB 무시). 운영 전 끌 것.',
+        );
+        return this.stubBalanceOk();
+      }
     }
 
     let userRow: VinusUserRow | null = null;
