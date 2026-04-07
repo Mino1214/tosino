@@ -35,7 +35,7 @@ function loadDotEnv() {
 
 function makeToken() {
   const pattern =
-    '1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    '23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
   let s = '';
   for (let j = 0; j < 12; j++) {
     s += pattern[randomBytes(1)[0] % pattern.length];

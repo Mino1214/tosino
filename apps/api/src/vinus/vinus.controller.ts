@@ -14,16 +14,22 @@ export class VinusWebhookController {
    */
   @Post('vinus')
   @HttpCode(200)
-  async vinusCallback(@Req() req: Request, @Body() body: Record<string, unknown>) {
-    const payload = body ?? {};
+  async vinusCallback(@Req() req: Request, @Body() body: unknown) {
     const xf = req.headers['x-forwarded-for'];
     const ip =
       (typeof xf === 'string' ? xf.split(',')[0]?.trim() : undefined) ||
       req.socket.remoteAddress ||
       'unknown';
+    const summary =
+      body !== null &&
+      body !== undefined &&
+      typeof body === 'object' &&
+      !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
     this.logger.log(
-      `[vinus recv] ip=${ip} command=${String(payload['command'] ?? '')} check=${String(payload['check'] ?? '')} body=${JSON.stringify(payload)}`,
+      `[vinus recv] ip=${ip} command=${String(summary['command'] ?? '')} check=${String(summary['check'] ?? '')} body=${JSON.stringify(body ?? null)}`,
     );
-    return this.vinus.handleCallback(payload);
+    return this.vinus.handleCallback(body);
   }
 }

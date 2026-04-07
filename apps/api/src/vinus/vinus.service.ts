@@ -13,10 +13,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import type { VinusLaunchDto } from './dto/vinus-launch.dto';
 
-/** 문서: 15~25자 토큰 (랜덤 + 시간 일부) */
+/** 문서: 15~25자 토큰 (랜덤 + 시간 일부). 0/O·1/I/l 등 헷갈리는 문자 제외 */
 function generateVinusToken(): string {
   const pattern =
-    '1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    '23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ';
   let s = '';
   for (let i = 0; i < 12; i++) {
     s += pattern[Math.floor(Math.random() * pattern.length)];
@@ -66,6 +66,42 @@ function normalizeVinusCommand(rawCmd: unknown): string {
   return m[lc] ?? lc;
 }
 
+/** data 객체 + JSON 루트에만 온 필드 병합 (벤더 페이로드 형태 차이) */
+const VINUS_PAYLOAD_FIELDS_IN_DATA = [
+  'token',
+  'user_id',
+  'transaction_id',
+  'amount',
+  'game_id',
+  'round_id',
+  'game_type',
+  'game_sort',
+  'vendor',
+  'game',
+  'bet',
+  'win',
+  'transfer',
+] as const;
+
+function asVinusCallbackRoot(input: unknown): Record<string, unknown> {
+  if (input === null || input === undefined) return {};
+  if (typeof input !== 'object' || Array.isArray(input)) return {};
+  return input as Record<string, unknown>;
+}
+
+function mergeVinusDataPayload(raw: Record<string, unknown>): Record<string, unknown> {
+  const nested =
+    raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)
+      ? { ...(raw.data as Record<string, unknown>) }
+      : {};
+  for (const k of VINUS_PAYLOAD_FIELDS_IN_DATA) {
+    if (nested[k] === undefined && raw[k] !== undefined) {
+      nested[k] = raw[k];
+    }
+  }
+  return nested;
+}
+
 type VinusUserRow = {
   id: string;
   loginId: string;
@@ -89,6 +125,51 @@ export class VinusService {
         'Vinus 연동이 설정되지 않았습니다 (VINUS_AGENT_KEY).',
       );
     }
+  }
+
+  /** true / 1 / yes (대소문자 무관) */
+  private envFlag(key: string): boolean {
+    const v = this.config.get<string>(key)?.trim().toLowerCase();
+    return v === 'true' || v === '1' || v === 'yes';
+  }
+
+  /**
+   * 벤더 연동 테스트용: DB·토큰 매칭 없이 authenticate 성공 응답.
+   * 운영 전에 VINUS_STUB_AUTHENTICATE 끄고 실제 유저·토큰 연동 사용.
+   */
+  private stubAuthenticateOk(): Record<string, unknown> {
+    let userId = (
+      this.config.get<string>('VINUS_STUB_USER_ID')?.trim() || 'stub-user-dev'
+    ).slice(0, 25);
+    let userUsername = (
+      this.config.get<string>('VINUS_STUB_USERNAME')?.trim() || 'stub_login'
+    ).slice(0, 25);
+    let userNickname = (
+      this.config.get<string>('VINUS_STUB_NICKNAME')?.trim() || 'StubUser'
+    ).slice(0, 25);
+    if (userUsername.length < 2) {
+      userUsername = userUsername.padEnd(2, '0').slice(0, 25);
+    }
+    if (userNickname.length < 2) {
+      userNickname = 'UU';
+    }
+    const balRaw = this.config.get<string>('VINUS_STUB_BALANCE')?.trim();
+    const balance = Number(
+      (balRaw !== undefined && balRaw !== ''
+        ? parseFloat(balRaw)
+        : 100000
+      ).toFixed(2),
+    );
+    return {
+      result: 0,
+      status: 'OK',
+      data: {
+        user_id: userId,
+        user_username: userUsername,
+        user_nickname: userNickname,
+        balance,
+      },
+    };
   }
 
   private get baseUrl(): string {
@@ -149,8 +230,9 @@ export class VinusService {
     throw new BadRequestException(msg);
   }
 
-  async handleCallback(raw: Record<string, unknown>) {
+  async handleCallback(body: unknown) {
     this.assertConfigured();
+    const raw = asVinusCallbackRoot(body);
     const command = normalizeVinusCommand(raw.command);
     const checkStr = String(raw.check ?? '');
     const checks = checkStr
@@ -159,13 +241,21 @@ export class VinusService {
       .filter(Boolean)
       .map((s) => Number(s));
 
-    const data = (raw.data ?? {}) as Record<string, unknown>;
+    const data = mergeVinusDataPayload(raw);
     const timestamp =
       typeof raw.timestamp === 'number'
         ? raw.timestamp
         : typeof raw.request_timestamp === 'number'
           ? raw.request_timestamp
           : undefined;
+
+    if (this.envFlag('VINUS_STUB_AUTHENTICATE') && command === 'authenticate') {
+      const tok = typeof data.token === 'string' ? data.token.trim() : '';
+      if (!tok) {
+        return { result: 11, status: 'ERROR', data: {} };
+      }
+      return this.stubAuthenticateOk();
+    }
 
     let userRow: VinusUserRow | null = null;
     let walletBal: Prisma.Decimal | null = null;
@@ -183,10 +273,11 @@ export class VinusService {
       const out: Record<string, unknown> = {
         result: code,
         status: 'ERROR',
+        data:
+          balance !== undefined
+            ? { balance: Number(balance.toFixed(2)) }
+            : {},
       };
-      if (balance !== undefined) {
-        out.data = { balance: Number(balance.toFixed(2)) };
-      }
       return out;
     };
 
@@ -774,7 +865,7 @@ export class VinusService {
       }
 
       default:
-        return { result: 99, status: 'ERROR' };
+        return { result: 99, status: 'ERROR', data: {} };
     }
   }
 }
