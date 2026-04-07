@@ -44,19 +44,18 @@ function nickForVinus(displayName: string | null, loginId: string): string {
   return raw.length >= 2 ? raw : `${loginId}`.slice(0, 25).padEnd(2, '0');
 }
 
-/** 콜백 command 대소문자·표기 정규화 */
+/** 콜백 command 대소문자·공백·하이픈 정규화 ("w in" → win, bet-win ↔ betwin) */
 function normalizeVinusCommand(rawCmd: unknown): string {
-  const lc = String(rawCmd ?? '')
-    .trim()
-    .toLowerCase();
+  const raw = String(rawCmd ?? '').trim().toLowerCase();
+  if (!raw) return '';
+  const compact = raw.replace(/\s+/g, '').replace(/-/g, '');
   const m: Record<string, string> = {
     authenticate: 'authenticate',
     balance: 'balance',
     bet: 'bet',
-    'bet-win': 'bet-win',
     betwin: 'bet-win',
     win: 'win',
-    'win-add': 'win-add',
+    winadd: 'win-add',
     cancel: 'cancel',
     refund: 'refund',
     bonuswin: 'bonusWin',
@@ -65,7 +64,7 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     bonus: 'bonus',
     confirm: 'confirm',
   };
-  return m[lc] ?? lc;
+  return m[raw] ?? m[compact] ?? raw;
 }
 
 /** data 객체 + JSON 루트에만 온 필드 병합 (벤더 페이로드 형태 차이) */
@@ -143,17 +142,12 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
       data[canon] = data[k];
     }
   }
-  for (const k of [
-    'user_id',
-    'transaction_id',
-    'game_id',
-    'round_id',
-    'token',
-    'game',
-    'vendor',
-    'game_type',
-    'game_sort',
-  ]) {
+  for (const k of ['user_id', 'transaction_id', 'game_id', 'round_id', 'token']) {
+    if (typeof data[k] === 'string') {
+      data[k] = (data[k] as string).replace(/\s/g, '');
+    }
+  }
+  for (const k of ['game', 'vendor', 'game_type', 'game_sort']) {
     if (typeof data[k] === 'string') {
       data[k] = (data[k] as string).trim();
     }
@@ -197,6 +191,10 @@ export class VinusService {
   /** 스텁: 멱등·잔액 시뮬 (프로세스 메모리, 재시작 시 초기화) */
   private stubWorkingBal: number | null = null;
   private stubTxEndingBalance = new Map<string, number>();
+  /** win: transaction_id → 처리 후 잔액 (동일 tid 재요청 멱등) */
+  private stubWinProcessed = new Map<string, number>();
+  /** win-add: "tid:금액" → 처리 후 잔액 (동일 추가지급 재요청 멱등) */
+  private stubWinAddIdem = new Map<string, number>();
 
   constructor(
     private prisma: PrismaService,
@@ -267,6 +265,8 @@ export class VinusService {
   private resetStubWalletSimulation() {
     this.stubWorkingBal = null;
     this.stubTxEndingBalance.clear();
+    this.stubWinProcessed.clear();
+    this.stubWinAddIdem.clear();
   }
 
   private stubGetWorking(): number {
@@ -331,6 +331,49 @@ export class VinusService {
     }
     const newBal = Number(cur.minus(amount).toFixed(2));
     this.stubTxEndingBalance.set(tid, newBal);
+    this.stubWorkingBal = newBal;
+    return { result: 0, status: 'OK', data: { balance: newBal } };
+  }
+
+  /** 스텁: win — 적중 금액만 가산, 동일 transaction_id 멱등 */
+  private stubWinOk(data: Record<string, unknown>): Record<string, unknown> {
+    const tid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const amount = toDec(data.amount);
+    if (!tid || amount === null) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const cached = this.stubWinProcessed.get(tid);
+    if (cached !== undefined) {
+      return { result: 0, status: 'OK', data: { balance: cached } };
+    }
+    const cur = new Prisma.Decimal(this.stubGetWorking());
+    const newBal = Number(cur.plus(amount).toFixed(2));
+    this.stubWinProcessed.set(tid, newBal);
+    this.stubWorkingBal = newBal;
+    return { result: 0, status: 'OK', data: { balance: newBal } };
+  }
+
+  /** 스텁: win-add — 추가 지급, 동일 tid+금액 재요청 멱등 */
+  private stubWinAddOk(data: Record<string, unknown>): Record<string, unknown> {
+    const tid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const amount = toDec(data.amount);
+    if (!tid || amount === null || amount.lte(0)) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const idemKey = `${tid}:${amount.toFixed(2)}`;
+    const cached = this.stubWinAddIdem.get(idemKey);
+    if (cached !== undefined) {
+      return { result: 0, status: 'OK', data: { balance: cached } };
+    }
+    const cur = new Prisma.Decimal(this.stubGetWorking());
+    const newBal = Number(cur.plus(amount).toFixed(2));
+    this.stubWinAddIdem.set(idemKey, newBal);
     this.stubWorkingBal = newBal;
     return { result: 0, status: 'OK', data: { balance: newBal } };
   }
@@ -438,6 +481,18 @@ export class VinusService {
           'VINUS_STUB_AUTHENTICATE: bet 스텁 (동일 transaction_id 멱등). 운영 전 끌 것.',
         );
         return this.stubBetOk(data);
+      }
+      if (command === 'win') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: win 스텁 (동일 transaction_id 멱등). 운영 전 끌 것.',
+        );
+        return this.stubWinOk(data);
+      }
+      if (command === 'win-add') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: win-add 스텁 (동일 tid+금액 멱등). 운영 전 끌 것.',
+        );
+        return this.stubWinAddOk(data);
       }
     }
 
