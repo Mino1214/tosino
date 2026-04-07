@@ -3,7 +3,7 @@ import { LiveCasinoLobby } from "./LiveCasinoLobby";
 
 const TITLES: Record<string, string> = {
   "live-casino": "라이브 카지노",
-  "pragmatic-casino": "프라그마틱 카지노",
+  "cq9-casino": "CQ9 카지노",
   slots: "슬롯",
   "sports-kr": "국내 스포츠",
   "sports-eu": "유럽 스포츠",
@@ -29,11 +29,11 @@ export default async function LobbyPage({
     return <LiveCasinoLobby />;
   }
 
-  if (slug === "pragmatic-casino") {
+  if (slug === "cq9-casino") {
     return (
       <LiveCasinoLobby
-        title="프라그마틱 카지노"
-        vendor="pragmatic_casino"
+        title="CQ9 카지노"
+        vendor="cq9_casino"
         transferOnly
       />
     );
