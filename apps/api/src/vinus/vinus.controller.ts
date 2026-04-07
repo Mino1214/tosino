@@ -1,8 +1,11 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Logger, Post, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { VinusService } from './vinus.service';
 
 @Controller('webhooks')
 export class VinusWebhookController {
+  private readonly logger = new Logger(VinusWebhookController.name);
+
   constructor(private vinus: VinusService) {}
 
   /**
@@ -11,7 +14,16 @@ export class VinusWebhookController {
    */
   @Post('vinus')
   @HttpCode(200)
-  async vinusCallback(@Body() body: Record<string, unknown>) {
-    return this.vinus.handleCallback(body ?? {});
+  async vinusCallback(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const payload = body ?? {};
+    const xf = req.headers['x-forwarded-for'];
+    const ip =
+      (typeof xf === 'string' ? xf.split(',')[0]?.trim() : undefined) ||
+      req.socket.remoteAddress ||
+      'unknown';
+    this.logger.log(
+      `[vinus recv] ip=${ip} command=${String(payload['command'] ?? '')} check=${String(payload['check'] ?? '')} body=${JSON.stringify(payload)}`,
+    );
+    return this.vinus.handleCallback(payload);
   }
 }
