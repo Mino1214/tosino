@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import type { IncomingMessage } from 'http';
@@ -32,6 +32,14 @@ async function bootstrap() {
     origin: true,
     credentials: true,
   });
+  /** apex(nexus001.vip)에서 Next 관리자와 경로 충돌을 피하기 위해 /api 접두사 */
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: 'health', method: RequestMethod.GET },
+      { path: 'webhooks/(.*)', method: RequestMethod.ALL },
+    ],
+  });
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1));
   const port = Number(process.env.API_PORT || process.env.PORT || 4001);
   await app.listen(port);
 }

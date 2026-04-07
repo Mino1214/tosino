@@ -8,6 +8,7 @@
 # 예:
 #   bash scripts/provision-solution-instance.sh brand-b 3201
 #   bash scripts/provision-solution-instance.sh brand-b 3201 http://192.168.0.5:4001
+# 세 번째 인자는 API 오리진(포트까지, /api 제외). .env 에는 …/api 가 붙습니다.
 #
 # 기본 동작: 설치가 끝나면 곧바로 next dev 를 띄웁니다 (터미널이 붙잡힘).
 # 설치만 하려면: SOLUTION_NO_START=1 bash scripts/provision-solution-instance.sh ...
@@ -21,6 +22,11 @@ while [ "${1:-}" = "--" ]; do shift; done
 SLUG="${1:?첫 인자: 인스턴스 슬러그(폴더명, 예: brand-b)}"
 PORT_RAW="${2:?두 번째 인자: 미리보기 포트(예: 3201)}"
 API_URL="${3:-http://localhost:4001}"
+API_PUBLIC_URL="${API_URL%/}"
+case "$API_PUBLIC_URL" in
+  */api) ;;
+  *) API_PUBLIC_URL="${API_PUBLIC_URL}/api" ;;
+esac
 
 PORT="$(printf '%s' "$PORT_RAW" | tr -cd '0-9')"
 if [ -z "$PORT" ] || [ "$PORT" -lt 1024 ] || [ "$PORT" -gt 65535 ]; then
@@ -73,7 +79,7 @@ fi
 
 cat > "$DEST/solution-web/.env.local" << EOF
 # 자동 생성 (${SLUG} / 포트 ${PORT}) — API·비밀값은 환경에 맞게 수정
-NEXT_PUBLIC_API_URL=${API_URL}
+NEXT_PUBLIC_API_URL=${API_PUBLIC_URL}
 NEXT_PUBLIC_PREVIEW_PORT=${PORT}
 ${PREVIEW_SECRET_LINE}
 EOF

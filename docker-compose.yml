@@ -10,12 +10,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # 호스트에 Redis가 있으면 REDIS_URL=redis://127.0.0.1:6379 로 사용.
-  # 전용 컨테이너가 필요하면 아래 주석을 해제하고 포트를 6380 등으로 바꿉니다.
-  # redis:
-  #   image: redis:7-alpine
-  #   ports:
-  #     - "6380:6379"
+  # API(BullMQ)·로컬 개발용. 호스트에 이미 Redis가 있으면 이 서비스는 끄고 REDIS_URL 만 맞추면 됩니다.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
 volumes:
   pgdata:

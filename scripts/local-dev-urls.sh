@@ -7,6 +7,6 @@ printf '%s\n' \
   "  관리자(플랫폼)  http://localhost:3001" \
   "  솔루션(유저)    http://localhost:3002" \
   "  총판 관리       http://localhost:3003  ← 로그인: 총판(MASTER_AGENT)" \
-  "  API             http://localhost:4001  (health: /health)" \
+  "  API             http://localhost:4001  (health: /health, REST: /api/...)" \
   "  sms-ingest      http://localhost:4050  (+ 터널은 터미널 로그 참고)" \
   ""

@@ -13,6 +13,8 @@
     "db:push": "pnpm --filter @tosino/api exec prisma db push",
     "db:seed": "pnpm --filter @tosino/api exec prisma db seed",
     "db:migrate:deploy": "pnpm --filter @tosino/api exec prisma migrate deploy",
+    "db:up": "bash scripts/db-up.sh",
+    "db:down": "bash scripts/db-down.sh",
     "dev:solution:preview": "bash scripts/dev-solution-preview.sh",
     "solution:provision": "bash scripts/provision-solution-instance.sh",
     "solution:provision-only": "env SOLUTION_NO_START=1 bash scripts/provision-solution-instance.sh",
@@ -22,7 +24,11 @@
     "dev:sms-ingest": "pnpm --filter @tosino/sms-ingest dev",
     "tunnel:sms-ingest": "bash scripts/cloudflared-sms-ingest.sh",
     "dev:sms-ingest:public": "bash scripts/kill-sms-ingest-port.sh && concurrently -k -c blue,magenta -n ingest,tunnel \"pnpm dev:sms-ingest\" \"bash scripts/cloudflared-wait-and-tunnel.sh\"",
-    "dev:agent-web": "pnpm --filter @tosino/agent-web dev"
+    "dev:agent-web": "pnpm --filter @tosino/agent-web dev",
+    "smoke:webhooks": "bash scripts/smoke-webhooks.sh",
+    "vinus:callback-smoke": "pnpm --filter @tosino/api run vinus:callback-smoke",
+    "vinus:flows-smoke": "pnpm --filter @tosino/api run vinus:flows-smoke",
+    "nginx:enable": "echo 'nginx: scripts/nginx-migrate-to-tosino.sh | scripts/nginx-quick-https-selfsigned.sh | 점검: scripts/nginx-doctor.sh'"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

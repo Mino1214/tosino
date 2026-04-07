@@ -1,6 +1,6 @@
 const BASE =
   typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001")
+    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api")
     : "";
 
 /** 총판 로그인 시 플랫폼 식별(도메인 또는 미리보기 포트) */

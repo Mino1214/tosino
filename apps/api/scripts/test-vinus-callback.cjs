@@ -3,9 +3,10 @@
  *
  * pnpm run vinus:callback-smoke
  *
- * 필요: apps/api/.env 에 VINUS_AGENT_KEY
+ * 필요: apps/api/.env (DATABASE_URL, VINUS_AGENT_KEY)
+ *      DB: 프로젝트 루트에서 pnpm db:migrate:deploy && pnpm db:seed
  *      API 서버 실행 중 (기본 127.0.0.1:4001)
- *      (선택) VINUS_AUTH_KEY 를 넣으면 요청에 authKey 헤더로 붙임
+ *      (선택) VINUS_AUTH_KEY → 요청에 authKey 헤더
  */
 const { existsSync, readFileSync } = require('fs');
 const { resolve } = require('path');
@@ -59,23 +60,44 @@ async function main() {
   const base = process.env.VINUS_CALLBACK_TEST_URL || `http://127.0.0.1:${port}`;
 
   const prisma = new PrismaClient();
-  let user = await prisma.user.findFirst({
-    where: { loginId: 'user@tosino.local', role: UserRole.USER },
-    include: { wallet: true },
-  });
-  if (!user?.wallet) {
+  let user;
+  try {
     user = await prisma.user.findFirst({
-      where: {
-        role: UserRole.USER,
-        platformId: { not: null },
-        wallet: { isNot: null },
-      },
+      where: { loginId: 'user@tosino.local', role: UserRole.USER },
       include: { wallet: true },
     });
+    if (!user?.wallet) {
+      user = await prisma.user.findFirst({
+        where: {
+          role: UserRole.USER,
+          platformId: { not: null },
+          wallet: { isNot: null },
+        },
+        include: { wallet: true },
+      });
+    }
+  } catch (e) {
+    if (
+      e &&
+      (e.code === 'P2021' ||
+        e.code === 'P1003' ||
+        e.code === 'P1001' ||
+        e.code === 'P1017')
+    ) {
+      console.error(
+        'DB에 Prisma 테이블이 없거나 연결할 수 없습니다 (예: User 테이블 없음).',
+      );
+      console.error('프로젝트 루트에서 순서대로 실행하세요:');
+      console.error('  pnpm db:migrate:deploy');
+      console.error('  pnpm db:seed');
+      await prisma.$disconnect();
+      process.exit(1);
+    }
+    throw e;
   }
   if (!user?.platformId || !user.wallet) {
     console.error(
-      '승인된 일반 회원·지갑이 없습니다. npx prisma db seed 를 실행하세요.',
+      '승인된 일반 회원·지갑이 없습니다. 프로젝트 루트에서 pnpm db:seed 를 실행하세요.',
     );
     await prisma.$disconnect();
     process.exit(1);

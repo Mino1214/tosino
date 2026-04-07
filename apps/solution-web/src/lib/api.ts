@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api";
 
 /** 호스트 기반 또는 NEXT_PUBLIC_PREVIEW_PORT 기반 공개 API 쿼리 */
 export function buildPublicApiQuery(host: string): URLSearchParams {

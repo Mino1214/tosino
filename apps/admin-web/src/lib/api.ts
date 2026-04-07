@@ -1,6 +1,6 @@
 const BASE =
   typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001")
+    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api")
     : "";
 
 export function getApiBase(): string {

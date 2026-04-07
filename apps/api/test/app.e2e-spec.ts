@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  RequestMethod,
+  ValidationPipe,
+} from '@nestjs/common';
 import * as request from 'supertest';
 import { json, urlencoded } from 'express';
 import type { IncomingMessage } from 'http';
@@ -30,6 +34,12 @@ describe.skip('API (e2e)', () => {
         forbidNonWhitelisted: true,
       }),
     );
+    app.setGlobalPrefix('api', {
+      exclude: [
+        { path: 'health', method: RequestMethod.GET },
+        { path: 'webhooks/(.*)', method: RequestMethod.ALL },
+      ],
+    });
     await app.init();
   });
 
@@ -37,9 +47,9 @@ describe.skip('API (e2e)', () => {
     await app.close();
   });
 
-  it('GET /public/bootstrap', async () => {
+  it('GET /api/public/bootstrap', async () => {
     const res = await request(app.getHttpServer()).get(
-      '/public/bootstrap?host=localhost',
+      '/api/public/bootstrap?host=localhost',
     );
     expect(res.status).toBe(200);
   });

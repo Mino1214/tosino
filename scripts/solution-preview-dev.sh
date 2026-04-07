@@ -38,6 +38,12 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+API_PUBLIC_FOR_ENV="${API_URL%/}"
+case "$API_PUBLIC_FOR_ENV" in
+  */api) ;;
+  *) API_PUBLIC_FOR_ENV="${API_PUBLIC_FOR_ENV}/api" ;;
+esac
+
 PORT="$(printf '%s' "$PORT_RAW" | tr -cd '0-9')"
 if [ -z "$PORT" ] || [ "$PORT" -lt 1024 ] || [ "$PORT" -gt 65535 ]; then
   echo "포트는 1024–65535 숫자여야 합니다: $PORT_RAW" >&2
@@ -48,6 +54,9 @@ DEST="$ROOT/deployments/solution-instances/$SLUG"
 
 wait_for_api() {
   local base="${API_URL%/}"
+  case "$base" in
+    */api) base="${base%/api}" ;;
+  esac
   local url="${base}/health"
   echo "→ API 응답 대기: $url"
   local i=0
@@ -78,7 +87,8 @@ else
 const fs = require('fs');
 const path = process.argv[1];
 const port = Number(process.argv[2]);
-const apiUrl = process.argv[3];
+let apiUrl = process.argv[3];
+if (apiUrl.endsWith('/api')) apiUrl = apiUrl.slice(0, -4);
 const j = JSON.parse(fs.readFileSync(path, 'utf8'));
 j.previewPort = port;
 j.apiUrl = apiUrl;
@@ -93,9 +103,9 @@ NODE
         echo "NEXT_PUBLIC_PREVIEW_PORT=${PORT}" >>"$ENV_FILE"
       fi
       if grep -q '^NEXT_PUBLIC_API_URL=' "$ENV_FILE"; then
-        sed -i.bak "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${API_URL}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
+        sed -i.bak "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=${API_PUBLIC_FOR_ENV}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
       else
-        echo "NEXT_PUBLIC_API_URL=${API_URL}" >>"$ENV_FILE"
+        echo "NEXT_PUBLIC_API_URL=${API_PUBLIC_FOR_ENV}" >>"$ENV_FILE"
       fi
     fi
     echo "  (DB Platform.previewPort 도 콘솔에서 $PORT 로 맞췄는지 확인하세요.)"
