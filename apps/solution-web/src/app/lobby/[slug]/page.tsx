@@ -26,7 +26,14 @@ export default async function LobbyPage({
   const title = TITLES[slug] ?? "게임";
 
   if (slug === "live-casino") {
-    return <LiveCasinoLobby />;
+    return (
+      <LiveCasinoLobby
+        title="라이브 카지노"
+        vendor="pragmatic_casino"
+        transferOnly
+        launchSurface="casino-window"
+      />
+    );
   }
 
   if (slug === "cq9-casino") {
@@ -35,6 +42,7 @@ export default async function LobbyPage({
         title="CQ9 카지노"
         vendor="cq9_casino"
         transferOnly
+        launchSurface="casino-window"
       />
     );
   }
@@ -45,6 +53,7 @@ export default async function LobbyPage({
         title="슬롯 (프라그마틱)"
         vendor="pragmatic_slot"
         transferOnly
+        launchSurface="slot-iframe"
       />
     );
   }

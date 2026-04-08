@@ -10,6 +10,7 @@ apps/agent-web/out
 *.log
 .DS_Store
 apps/api/uploads
+apps/api/tmp
 
 # provision-solution-instance.sh 가 만드는 복사본(README만 추적)
 deployments/solution-instances/*

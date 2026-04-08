@@ -4,23 +4,27 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getAccessToken } from "@/lib/api";
-import { useGameIframeModal } from "@/components/GameIframeModal";
+import { useGameLaunch } from "@/components/GameIframeModal";
+import type { LaunchSurface } from "@/lib/vinus-home-cards";
 
 type LiveCasinoLobbyProps = {
-  /** 기본 evolution */
+  /** 기본 pragmatic_casino (에이전트에서 에볼루션 미개통 시) */
   vendor?: string;
   title?: string;
   /** 프라그마틱 등 트랜스퍼만 쓰는 경우 버튼 단순화 */
   transferOnly?: boolean;
+  /** 카지노·라이브: 팝업 / 슬롯·로비 슬롯: 16:9 모달 */
+  launchSurface?: LaunchSurface;
 };
 
 export function LiveCasinoLobby({
-  vendor = "evolution",
+  vendor = "pragmatic_casino",
   title = "라이브 카지노",
   transferOnly = false,
+  launchSurface = "casino-window",
 }: LiveCasinoLobbyProps = {}) {
   const router = useRouter();
-  const gameModal = useGameIframeModal();
+  const { launch: openGame } = useGameLaunch();
   const [loadingMode, setLoadingMode] = useState<null | "seamless" | "transfer">(
     null,
   );
@@ -63,7 +67,7 @@ export function LiveCasinoLobby({
           }),
         });
         if (out?.url) {
-          gameModal.open({ url: out.url, title });
+          openGame({ url: out.url, title, mode: launchSurface });
           return;
         }
         setErr("게임 URL을 받지 못했습니다.");
@@ -73,7 +77,7 @@ export function LiveCasinoLobby({
         setLoadingMode(null);
       }
     },
-    [router, vendor, title, gameModal],
+    [router, vendor, title, openGame, launchSurface],
   );
 
   return (
@@ -98,9 +102,10 @@ export function LiveCasinoLobby({
       <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">
         <strong className="text-zinc-200">심리스</strong> 입장 시 베팅/당첨은
         모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 게임을
-        아래 <strong className="text-zinc-200">iframe 팝업</strong>으로 띄웁니다.
-        일부 제공사는 iframe을 막을 수 있어 그때는 상단 <strong className="text-zinc-200">새 탭</strong>
-        으로 여세요.
+        <strong className="text-zinc-200">카지노·라이브</strong>는 별도 창(내부
+        iframe), <strong className="text-zinc-200">슬롯</strong> 로비는 이 사이트
+        위 16:9 모달로 띄웁니다. 막히면 각 화면의{" "}
+        <strong className="text-zinc-200">새 탭</strong>을 쓰세요.
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>

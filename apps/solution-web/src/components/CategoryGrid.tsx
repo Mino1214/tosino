@@ -4,56 +4,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useBootstrap } from "./BootstrapProvider";
-import { useGameIframeModal } from "./GameIframeModal";
+import { useGameLaunch } from "./GameIframeModal";
 import { apiFetch, getAccessToken } from "@/lib/api";
 import { cardRadiusClass } from "@/lib/theme-ui";
+import {
+  type VinusHomeCard,
+  VINUS_VERIFIED_HOME_CARDS,
+} from "@/lib/vinus-home-cards";
 
-type VinusLaunchCfg = {
-  vendor: string;
-  game: string;
-  method: "seamless" | "transfer";
-};
-
-type CategoryDef = {
+type StaticCategory = {
   slug: string;
   title: string;
   subtitle: string;
   icon: string;
   gradient: string;
-  vinusLaunch?: VinusLaunchCfg;
 };
 
-const CATEGORIES: CategoryDef[] = [
+const STATIC_CATEGORIES: StaticCategory[] = [
   {
     slug: "live-casino",
     title: "라이브 카지노",
-    subtitle: "바카라 · 블랙잭",
+    subtitle: "프라그마틱 라이브 로비",
     icon: "🎰",
     gradient: "from-rose-900/40 to-zinc-950",
-  },
-  {
-    slug: "cq9-casino",
-    title: "CQ9 카지노",
-    subtitle: "로비 입장",
-    icon: "🎴",
-    gradient: "from-teal-900/45 to-zinc-950",
-    vinusLaunch: {
-      vendor: "cq9_casino",
-      game: "lobby",
-      method: "transfer",
-    },
-  },
-  {
-    slug: "slots",
-    title: "슬롯",
-    subtitle: "프라그마틱 · 로비",
-    icon: "🎡",
-    gradient: "from-violet-900/40 to-zinc-950",
-    vinusLaunch: {
-      vendor: "pragmatic_slot",
-      game: "lobby",
-      method: "transfer",
-    },
   },
   {
     slug: "sports-kr",
@@ -87,7 +60,7 @@ const CATEGORIES: CategoryDef[] = [
 
 export function CategoryGrid() {
   const b = useBootstrap();
-  const gameModal = useGameIframeModal();
+  const { launch } = useGameLaunch();
   const router = useRouter();
   const [launchingSlug, setLaunchingSlug] = useState<string | null>(null);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
@@ -110,9 +83,7 @@ export function CategoryGrid() {
     ? "absolute right-3 top-3 text-zinc-400 transition group-hover:text-[var(--theme-primary,#c9a227)]"
     : "absolute right-3 top-3 text-zinc-600 transition group-hover:text-[var(--theme-primary,#c9a227)]";
 
-  async function runVinusLaunch(c: CategoryDef) {
-    const cfg = c.vinusLaunch;
-    if (!cfg) return;
+  async function runVinusLaunch(c: VinusHomeCard) {
     setLaunchErr(null);
     if (!getAccessToken()) {
       router.push("/login");
@@ -127,15 +98,19 @@ export function CategoryGrid() {
       const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
         method: "POST",
         body: JSON.stringify({
-          vendor: cfg.vendor,
-          game: cfg.game,
+          vendor: c.vendor,
+          game: c.game,
           platform: mobile ? "MOBILE" : "WEB",
-          method: cfg.method,
+          method: c.method,
           lang: "ko",
         }),
       });
       if (out?.url) {
-        gameModal.open({ url: out.url, title: c.title });
+        launch({
+          url: out.url,
+          title: c.title,
+          mode: c.surface,
+        });
         return;
       }
       setLaunchErr("게임 URL을 받지 못했습니다.");
@@ -156,7 +131,7 @@ export function CategoryGrid() {
         게임 입장
       </h2>
       <p className={`mb-4 text-sm ${isLight ? "text-zinc-600" : "text-zinc-500"}`}>
-        탭처럼 크게 배치 — 모바일 엄지존에 맞춤
+        Vinus 매트릭스에서 확인된 연동만 표시 · 카지노는 팝업, 슬롯은 16:9 모달
       </p>
       {launchErr ? (
         <p className="mb-3 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
@@ -164,39 +139,38 @@ export function CategoryGrid() {
         </p>
       ) : null}
       <div className={`grid grid-cols-2 md:grid-cols-3 ${gap}`}>
-        {CATEGORIES.map((c) =>
-          c.vinusLaunch ? (
-            <button
-              key={c.slug}
-              type="button"
-              disabled={launchingSlug !== null}
-              onClick={() => void runVinusLaunch(c)}
-              className={`${cardBase} ${c.gradient} cursor-pointer text-left disabled:opacity-60`}
-            >
-              <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
-              <div>
-                <h3 className={titleClass}>{c.title}</h3>
-                <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
-              </div>
-              <span className={arrowClass}>
-                {launchingSlug === c.slug ? "…" : "→"}
-              </span>
-            </button>
-          ) : (
-            <Link
-              key={c.slug}
-              href={`/lobby/${c.slug}`}
-              className={`${cardBase} ${c.gradient}`}
-            >
-              <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
-              <div>
-                <h3 className={titleClass}>{c.title}</h3>
-                <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
-              </div>
-              <span className={arrowClass}>→</span>
-            </Link>
-          ),
-        )}
+        {STATIC_CATEGORIES.map((c) => (
+          <Link
+            key={c.slug}
+            href={`/lobby/${c.slug}`}
+            className={`${cardBase} ${c.gradient}`}
+          >
+            <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
+            <div>
+              <h3 className={titleClass}>{c.title}</h3>
+              <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
+            </div>
+            <span className={arrowClass}>→</span>
+          </Link>
+        ))}
+        {VINUS_VERIFIED_HOME_CARDS.map((c) => (
+          <button
+            key={c.slug}
+            type="button"
+            disabled={launchingSlug !== null}
+            onClick={() => void runVinusLaunch(c)}
+            className={`${cardBase} ${c.gradient} cursor-pointer text-left disabled:opacity-60`}
+          >
+            <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
+            <div>
+              <h3 className={titleClass}>{c.title}</h3>
+              <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
+            </div>
+            <span className={arrowClass}>
+              {launchingSlug === c.slug ? "…" : "→"}
+            </span>
+          </button>
+        ))}
       </div>
     </section>
   );
