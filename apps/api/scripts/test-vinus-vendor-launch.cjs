@@ -182,7 +182,7 @@ async function main() {
     url.searchParams.set('game', game);
     url.searchParams.set('vendor', vendor);
     url.searchParams.set('platform', 'WEB');
-    url.searchParams.set('method', 'transfer');
+    url.searchParams.set('method', 'seamless');
     url.searchParams.set('lang', 'ko');
 
     let line = `${vendor}\t${game}\t`;

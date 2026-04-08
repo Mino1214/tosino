@@ -11,8 +11,6 @@ type LiveCasinoLobbyProps = {
   /** 기본 pragmatic_casino (에이전트에서 에볼루션 미개통 시) */
   vendor?: string;
   title?: string;
-  /** 프라그마틱 등 트랜스퍼만 쓰는 경우 버튼 단순화 */
-  transferOnly?: boolean;
   /** 카지노·라이브: 앱 내 전체 iframe / 슬롯: 16:9 모달 */
   launchSurface?: LaunchSurface;
 };
@@ -20,14 +18,11 @@ type LiveCasinoLobbyProps = {
 export function LiveCasinoLobby({
   vendor = "pragmatic_casino",
   title = "라이브 카지노",
-  transferOnly = false,
   launchSurface = "casino-window",
 }: LiveCasinoLobbyProps = {}) {
   const router = useRouter();
   const { launch: openGame } = useGameLaunch();
-  const [loadingMode, setLoadingMode] = useState<null | "seamless" | "transfer">(
-    null,
-  );
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
 
@@ -43,60 +38,57 @@ export function LiveCasinoLobby({
     })();
   }, []);
 
-  const launch = useCallback(
-    async (walletMethod: "seamless" | "transfer") => {
-      setErr(null);
-      if (!getAccessToken()) {
-        router.push("/login");
-        return;
-      }
-      setLoadingMode(walletMethod);
-      const mobile =
-        typeof window !== "undefined" &&
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(max-width: 767px)").matches;
-      /** `new-tab`만 비동기 전 빈 탭 선오픈(차단 완화). 카지노·슬롯 iframe은 앱 내부 */
-      const needsPreTab = launchSurface === "new-tab";
-      const pre =
-        needsPreTab && typeof window !== "undefined"
-          ? window.open("about:blank", "_blank", "noopener,noreferrer")
-          : null;
-      if (needsPreTab && !pre) {
-        setErr("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용해 주세요.");
-        setLoadingMode(null);
-        return;
-      }
-      try {
-        const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
-          method: "POST",
-          body: JSON.stringify({
-            vendor,
-            game: "lobby",
-            platform: mobile ? "MOBILE" : "WEB",
-            method: walletMethod,
-            lang: "ko",
-          }),
+  const launch = useCallback(async () => {
+    setErr(null);
+    if (!getAccessToken()) {
+      router.push("/login");
+      return;
+    }
+    setLoading(true);
+    const mobile =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 767px)").matches;
+    /** `new-tab`만 비동기 전 빈 탭 선오픈(차단 완화). 카지노·슬롯 iframe은 앱 내부 */
+    const needsPreTab = launchSurface === "new-tab";
+    const pre =
+      needsPreTab && typeof window !== "undefined"
+        ? window.open("about:blank", "_blank", "noopener,noreferrer")
+        : null;
+    if (needsPreTab && !pre) {
+      setErr("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용해 주세요.");
+      setLoading(false);
+      return;
+    }
+    try {
+      const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
+        method: "POST",
+        body: JSON.stringify({
+          vendor,
+          game: "lobby",
+          platform: mobile ? "MOBILE" : "WEB",
+          method: "seamless",
+          lang: "ko",
+        }),
+      });
+      if (out?.url) {
+        openGame({
+          url: out.url,
+          title,
+          mode: launchSurface,
+          preOpenedWindow: pre,
         });
-        if (out?.url) {
-          openGame({
-            url: out.url,
-            title,
-            mode: launchSurface,
-            preOpenedWindow: pre,
-          });
-          return;
-        }
-        if (pre && !pre.closed) pre.close();
-        setErr("게임 URL을 받지 못했습니다.");
-      } catch (e) {
-        if (pre && !pre.closed) pre.close();
-        setErr(e instanceof Error ? e.message : "오류");
-      } finally {
-        setLoadingMode(null);
+        return;
       }
-    },
-    [router, vendor, title, openGame, launchSurface],
-  );
+      if (pre && !pre.closed) pre.close();
+      setErr("게임 URL을 받지 못했습니다.");
+    } catch (e) {
+      if (pre && !pre.closed) pre.close();
+      setErr(e instanceof Error ? e.message : "오류");
+    } finally {
+      setLoading(false);
+    }
+  }, [router, vendor, title, openGame, launchSurface]);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -118,48 +110,26 @@ export function LiveCasinoLobby({
         </div>
       ) : null}
       <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">
-        <strong className="text-zinc-200">심리스</strong> 입장 시 베팅/당첨은
-        모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 게임을
-        <strong className="text-zinc-200">카지노·라이브</strong>는 브라우저
-        팝업 없이 이 사이트 안에 iframe으로 열립니다.{" "}
+        <strong className="text-zinc-200">심리스</strong>만 사용합니다. 베팅·당첨은
+        위 지갑 잔액과 동일하게 처리됩니다.{" "}
+        <strong className="text-zinc-200">카지노·라이브</strong>는 이 사이트 안
+        iframe으로 열립니다.{" "}
         <strong className="text-zinc-200">슬롯(iframe 모드)</strong>은 PC에서
         16:9, 모바일은 넓게 표시됩니다.
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>
       ) : null}
-      <div className="mx-auto mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
-        {transferOnly ? (
-          <button
-            type="button"
-            onClick={() => void launch("transfer")}
-            disabled={loadingMode !== null}
-            className="inline-flex w-full justify-center rounded-xl px-6 py-3 text-sm font-medium text-black disabled:opacity-60"
-            style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
-          >
-            {loadingMode === "transfer" ? "연결 중…" : "트랜스퍼로 입장"}
-          </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => void launch("seamless")}
-              disabled={loadingMode !== null}
-              className="inline-flex flex-1 justify-center rounded-xl px-6 py-3 text-sm font-medium text-black disabled:opacity-60"
-              style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
-            >
-              {loadingMode === "seamless" ? "연결 중…" : "심리스 입장"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void launch("transfer")}
-              disabled={loadingMode !== null}
-              className="inline-flex flex-1 justify-center rounded-xl px-6 py-3 text-sm font-medium text-zinc-100 ring-1 ring-white/25 hover:bg-white/10 disabled:opacity-60"
-            >
-              {loadingMode === "transfer" ? "연결 중…" : "트랜스퍼 입장"}
-            </button>
-          </>
-        )}
+      <div className="mx-auto mt-8 flex w-full max-w-md justify-center">
+        <button
+          type="button"
+          onClick={() => void launch()}
+          disabled={loading}
+          className="inline-flex w-full justify-center rounded-xl px-6 py-3 text-sm font-medium text-black disabled:opacity-60"
+          style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+        >
+          {loading ? "연결 중…" : "입장"}
+        </button>
       </div>
       <p className="mt-4 text-xs text-zinc-600">
         API 스모크: <code className="text-zinc-500">pnpm run vinus:flows-smoke</code>{" "}

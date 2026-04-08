@@ -84,7 +84,7 @@ export function SlotVendorCatalog() {
             vendor: entry.vendor,
             game: entry.game,
             platform: mobile ? "MOBILE" : "WEB",
-            method: "transfer",
+            method: "seamless",
             lang: "ko",
           }),
         });

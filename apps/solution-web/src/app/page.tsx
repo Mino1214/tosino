@@ -2,8 +2,10 @@
 
 import Image from "next/image";
 import { useBootstrap } from "@/components/BootstrapProvider";
-import { CategoryGrid } from "@/components/CategoryGrid";
+import { HomePageSections } from "@/components/HomePageSections";
 import { cardRadiusClass } from "@/lib/theme-ui";
+
+/** 홈 큰 구성(채널·슬롯 키): `@/lib/home-layout-registry` */
 
 export default function HomePage() {
   const b = useBootstrap();
@@ -41,37 +43,48 @@ export default function HomePage() {
         <p
           className={`mt-2 text-sm md:text-base ${isLight ? "text-zinc-600" : "text-zinc-400"}`}
         >
-          모바일·웹 동시에 보기 편한 홈 — 카드를 눌러 입장
+          채널별 구역(카지노·스포츠·슬롯·미니게임·이벤트) — 아래부터 섹션 단위로 확장
         </p>
       </section>
 
-      <div className={`grid ${bannerGap} md:grid-cols-2`}>
-        {b.theme.bannerUrls.length === 0 ? (
-          <div
-            className={`flex aspect-[21/9] items-center justify-center border border-white/10 bg-gradient-to-br from-zinc-900 to-black text-sm text-zinc-500 md:col-span-2 ${radius}`}
-          >
-            배너는 관리자에서 플랫폼 테마로 설정
-          </div>
-        ) : (
-          b.theme.bannerUrls.map((src, i) => (
+      <section
+        id="section-hero-banner"
+        aria-label="메인 배너"
+        className="mb-10"
+      >
+        <p
+          className={`mb-2 text-xs font-medium uppercase tracking-wide ${isLight ? "text-zinc-500" : "text-zinc-500"}`}
+        >
+          배너 · 카지노 / 스포츠 / 슬롯 … (테마 URL)
+        </p>
+        <div className={`grid ${bannerGap} md:grid-cols-2`}>
+          {b.theme.bannerUrls.length === 0 ? (
             <div
-              key={`${src}-${i}`}
-              className={`relative aspect-[21/9] overflow-hidden border border-white/10 ${radius}`}
+              className={`flex aspect-[21/9] items-center justify-center border border-white/10 bg-gradient-to-br from-zinc-900 to-black text-sm text-zinc-500 md:col-span-2 ${radius}`}
             >
-              <Image
-                src={src}
-                alt=""
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, 50vw"
-                priority={i === 0}
-              />
+              배너는 관리자에서 플랫폼 테마로 설정 (hero_banner)
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            b.theme.bannerUrls.map((src, i) => (
+              <div
+                key={`${src}-${i}`}
+                className={`relative aspect-[21/9] overflow-hidden border border-white/10 ${radius}`}
+              >
+                <Image
+                  src={src}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  priority={i === 0}
+                />
+              </div>
+            ))
+          )}
+        </div>
+      </section>
 
-      <CategoryGrid />
+      <HomePageSections />
     </div>
   );
 }

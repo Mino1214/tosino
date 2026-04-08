@@ -15,9 +15,10 @@ export class VinusLaunchDto {
   @IsIn(['WEB', 'MOBILE'])
   platform?: 'WEB' | 'MOBILE';
 
+  /** 무시됨 — 서버에서 항상 `seamless`로 Vinus 호출 */
   @IsOptional()
-  @IsIn(['seamless', 'transfer'])
-  method?: 'seamless' | 'transfer';
+  @IsIn(['seamless'])
+  method?: 'seamless';
 
   @IsOptional()
   @IsString()

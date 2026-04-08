@@ -482,7 +482,8 @@ export class VinusService {
     const vendor = (dto.vendor ?? 'evolution').trim();
     const game = (dto.game ?? 'lobby').trim();
     const platform = dto.platform ?? 'WEB';
-    const method = dto.method ?? 'transfer';
+    /** 심리스만 사용 — 클라이언트 `method`는 무시 */
+    const method = 'seamless';
     const lang = (dto.lang ?? 'ko').trim();
 
     const token = generateVinusToken();

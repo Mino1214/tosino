@@ -28,7 +28,7 @@ export type VinusHomeCard = {
   gradient: string;
   vendor: string;
   game: string;
-  method: "transfer";
+  method: "seamless";
   surface: LaunchSurface;
   category: "casino" | "slot";
   embedNote?: string;
@@ -50,7 +50,7 @@ export const VINUS_VERIFIED_HOME_CARDS: VinusHomeCard[] = [
     gradient: "from-emerald-900/45 to-zinc-950",
     vendor: "evolution",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
     paused: true,
   },
@@ -63,7 +63,7 @@ export const VINUS_VERIFIED_HOME_CARDS: VinusHomeCard[] = [
     gradient: "from-red-900/35 to-zinc-950",
     vendor: "AGIN",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
   },
   {
@@ -75,7 +75,7 @@ export const VINUS_VERIFIED_HOME_CARDS: VinusHomeCard[] = [
     gradient: "from-violet-900/40 to-zinc-950",
     vendor: "MICRO_Casino",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
   },
   {
@@ -87,60 +87,58 @@ export const VINUS_VERIFIED_HOME_CARDS: VinusHomeCard[] = [
     gradient: "from-amber-900/40 to-zinc-950",
     vendor: "pragmatic_casino",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
   },
   {
     slug: "dream",
     category: "casino",
     title: "드리밍게임",
-    subtitle: "카지노 · 로비",
+    subtitle: "일시중지",
     icon: "💎",
     gradient: "from-sky-900/35 to-zinc-950",
     vendor: "dream",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
+    paused: true,
   },
   {
     slug: "wm",
     category: "casino",
     title: "WM게이밍",
-    subtitle: "일시중지",
+    subtitle: "라이브 · 로비",
     icon: "♠️",
     gradient: "from-zinc-700/50 to-zinc-950",
     vendor: "wm",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
-    paused: true,
   },
   {
     slug: "betgame-tv",
     category: "casino",
     title: "벳게임TV",
-    subtitle: "일시중지",
+    subtitle: "라이브 · 로비",
     icon: "📺",
     gradient: "from-rose-900/35 to-zinc-950",
     vendor: "betgames",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
     embedNote: "Vinus vendor가 betgames가 아니면 계약서 vendor명으로 교체",
-    paused: true,
   },
   {
     slug: "skywind",
     category: "casino",
     title: "스카이윈드",
-    subtitle: "일시중지",
+    subtitle: "라이브 · 로비",
     icon: "🌪️",
     gradient: "from-cyan-900/40 to-zinc-950",
     vendor: "skywind",
     game: "lobby",
-    method: "transfer",
+    method: "seamless",
     surface: "casino-window",
-    paused: true,
   },
 ];
 
