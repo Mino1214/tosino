@@ -51,6 +51,34 @@ function vinusStrId(v: unknown): string {
   return String(v).replace(/\s/g, '');
 }
 
+/** BT1 등: user_id가 빈 값이거나 UserId·member_id 등 다른 키로만 올 때 */
+function coerceVinusUserIdFromPayload(
+  data: Record<string, unknown>,
+  raw: Record<string, unknown>,
+): void {
+  if (vinusStrId(data.user_id)) {
+    data.user_id = vinusStrId(data.user_id);
+    return;
+  }
+  const pools: Record<string, unknown>[] = [data];
+  if (raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)) {
+    pools.push(raw.data as Record<string, unknown>);
+  }
+  pools.push(raw);
+  for (const obj of pools) {
+    for (const k of Object.keys(obj)) {
+      const compact = k.replace(/[\s_-]/g, '').toLowerCase();
+      if (compact === 'userid' || compact === 'memberid') {
+        const s = vinusStrId(obj[k]);
+        if (s) {
+          data.user_id = s;
+          return;
+        }
+      }
+    }
+  }
+}
+
 function nickForVinus(displayName: string | null, loginId: string): string {
   const raw = (displayName?.trim() || loginId).slice(0, 25);
   return raw.length >= 2 ? raw : `${loginId}`.slice(0, 25).padEnd(2, '0');
@@ -378,7 +406,7 @@ export class VinusService {
     return v === 'true' || v === '1' || v === 'yes';
   }
 
-  /** Vinus user_id: PK(cuid) 또는 loginId(플랫폼별 유일)로 조회 — BT1이 stub-user-dev 등 고정값 보낼 때 대응 */
+  /** Vinus user_id: id 정확 일치 또는 loginId 대소문자 무시. 동일 loginId 다행 시 지갑 있는 행 우선. */
   private async findUserForVinus(uid: string): Promise<VinusUserRow | null> {
     const sel = {
       select: {
@@ -390,15 +418,31 @@ export class VinusService {
         role: true,
       },
     };
-    const byId = await this.prisma.user.findUnique({
-      where: { id: uid },
+    if (!uid) return null;
+    const rows = await this.prisma.user.findMany({
+      where: {
+        OR: [
+          { id: uid },
+          { loginId: { equals: uid, mode: 'insensitive' } },
+        ],
+      },
       ...sel,
+      take: 25,
+      orderBy: { updatedAt: 'desc' },
     });
-    if (byId) return byId;
-    return this.prisma.user.findFirst({
-      where: { loginId: uid },
-      ...sel,
-    });
+    if (rows.length === 0) return null;
+    if (rows.length === 1) return rows[0];
+    const ranked = await Promise.all(
+      rows.map(async (u) => {
+        const w = await this.prisma.wallet.findUnique({
+          where: { userId: u.id },
+          select: { id: true },
+        });
+        return { u, hasWallet: !!w };
+      }),
+    );
+    ranked.sort((a, b) => Number(b.hasWallet) - Number(a.hasWallet));
+    return ranked[0].u;
   }
 
   /** 스텁 모드 공통 잔액 (authenticate·balance 동일) */
@@ -1434,6 +1478,7 @@ export class VinusService {
 
     const data = mergeVinusDataPayload(raw);
     normalizeVinusDataKeys(data);
+    coerceVinusUserIdFromPayload(data, raw);
     normalizeVinusTokenInData(data);
     const timestamp =
       typeof raw.timestamp === 'number'
@@ -1561,15 +1606,20 @@ export class VinusService {
         case 21: {
           const uid = vinusStrId(data.user_id);
           if (!uid) return fail(21, new Prisma.Decimal(0));
-          if (!userRow || userRow.id !== uid) {
+          const sameUser =
+            userRow &&
+            (userRow.id === uid ||
+              userRow.loginId.toLowerCase() === uid.toLowerCase());
+          if (!sameUser) {
             const resolved = await this.findUserForVinus(uid);
             if (!resolved) return fail(21, new Prisma.Decimal(0));
             userRow = resolved;
-            const w = await this.prisma.wallet.findUnique({
-              where: { userId: userRow.id },
-            });
-            walletBal = w?.balance ?? new Prisma.Decimal(0);
           }
+          if (!userRow) return fail(21, new Prisma.Decimal(0));
+          const w = await this.prisma.wallet.findUnique({
+            where: { userId: userRow.id },
+          });
+          walletBal = w?.balance ?? new Prisma.Decimal(0);
           break;
         }
         case 22: {
