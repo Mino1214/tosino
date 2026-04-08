@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getAccessToken } from "@/lib/api";
+import { useGameIframeModal } from "@/components/GameIframeModal";
 
 type LiveCasinoLobbyProps = {
   /** 기본 evolution */
@@ -19,6 +20,7 @@ export function LiveCasinoLobby({
   transferOnly = false,
 }: LiveCasinoLobbyProps = {}) {
   const router = useRouter();
+  const gameModal = useGameIframeModal();
   const [loadingMode, setLoadingMode] = useState<null | "seamless" | "transfer">(
     null,
   );
@@ -61,7 +63,7 @@ export function LiveCasinoLobby({
           }),
         });
         if (out?.url) {
-          window.location.href = out.url;
+          gameModal.open({ url: out.url, title });
           return;
         }
         setErr("게임 URL을 받지 못했습니다.");
@@ -71,7 +73,7 @@ export function LiveCasinoLobby({
         setLoadingMode(null);
       }
     },
-    [router, vendor],
+    [router, vendor, title, gameModal],
   );
 
   return (
@@ -95,10 +97,10 @@ export function LiveCasinoLobby({
       ) : null}
       <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">
         <strong className="text-zinc-200">심리스</strong> 입장 시 베팅/당첨은
-        모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 Vinus{" "}
-        <code className="text-zinc-500">play-game</code>{" "}
-        <code className="text-zinc-500">method=seamless|transfer</code> 로
-        이동합니다.
+        모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 게임을
+        아래 <strong className="text-zinc-200">iframe 팝업</strong>으로 띄웁니다.
+        일부 제공사는 iframe을 막을 수 있어 그때는 상단 <strong className="text-zinc-200">새 탭</strong>
+        으로 여세요.
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>

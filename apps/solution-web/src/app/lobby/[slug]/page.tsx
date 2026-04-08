@@ -39,6 +39,16 @@ export default async function LobbyPage({
     );
   }
 
+  if (slug === "slots") {
+    return (
+      <LiveCasinoLobby
+        title="슬롯 (프라그마틱)"
+        vendor="pragmatic_slot"
+        transferOnly
+      />
+    );
+  }
+
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
       <p className="text-sm text-zinc-500">준비 중</p>

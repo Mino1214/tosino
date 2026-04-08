@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useBootstrap } from "./BootstrapProvider";
+import { useGameIframeModal } from "./GameIframeModal";
 import { apiFetch, getAccessToken } from "@/lib/api";
 import { cardRadiusClass } from "@/lib/theme-ui";
 
@@ -45,9 +46,14 @@ const CATEGORIES: CategoryDef[] = [
   {
     slug: "slots",
     title: "슬롯",
-    subtitle: "인기 게임",
+    subtitle: "프라그마틱 · 로비",
     icon: "🎡",
     gradient: "from-violet-900/40 to-zinc-950",
+    vinusLaunch: {
+      vendor: "pragmatic_slot",
+      game: "lobby",
+      method: "transfer",
+    },
   },
   {
     slug: "sports-kr",
@@ -81,6 +87,7 @@ const CATEGORIES: CategoryDef[] = [
 
 export function CategoryGrid() {
   const b = useBootstrap();
+  const gameModal = useGameIframeModal();
   const router = useRouter();
   const [launchingSlug, setLaunchingSlug] = useState<string | null>(null);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
@@ -128,7 +135,7 @@ export function CategoryGrid() {
         }),
       });
       if (out?.url) {
-        window.location.href = out.url;
+        gameModal.open({ url: out.url, title: c.title });
         return;
       }
       setLaunchErr("게임 URL을 받지 못했습니다.");

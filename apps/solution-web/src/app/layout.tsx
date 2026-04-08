@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { BootstrapProvider } from "@/components/BootstrapProvider";
 import { AnnouncementModal } from "@/components/AnnouncementModal";
+import { GameIframeModalProvider } from "@/components/GameIframeModal";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PreviewRibbon } from "@/components/PreviewRibbon";
 
@@ -38,9 +39,11 @@ export default function RootLayout({
       >
         <PreviewRibbon />
         <BootstrapProvider host={host}>
-          <AnnouncementModal />
-          <SiteHeader />
-          {children}
+          <GameIframeModalProvider>
+            <AnnouncementModal />
+            <SiteHeader />
+            {children}
+          </GameIframeModalProvider>
         </BootstrapProvider>
       </body>
     </html>
