@@ -34,6 +34,8 @@
     "build:web": "turbo run build --filter=admin-web --filter=solution-web --filter=@tosino/agent-web",
     "build:apps": "turbo run build --filter=@tosino/api --filter=admin-web --filter=solution-web --filter=@tosino/agent-web",
     "deploy:web": "pnpm install && pnpm build:web && pm2 reload ecosystem.config.js --only admin-web,solution-web,agent-web",
+    "deploy:api": "pnpm install && pnpm --filter @tosino/api build && pm2 reload ecosystem.config.js --only api",
+    "deploy:api:migrate": "pnpm install && pnpm db:migrate:deploy && pnpm --filter @tosino/api build && pm2 reload ecosystem.config.js --only api",
     "deploy:all": "pnpm install && pnpm build:apps && pm2 reload ecosystem.config.js",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop ecosystem.config.js",
