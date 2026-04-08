@@ -112,6 +112,28 @@ function coerceVinusReserveIdFromPayload(
   }
 }
 
+/** BT1 등: 확정 콜백에 reserve_id 없이 round_id·transaction_id 만 오는 경우 */
+function coerceVinusReserveIdForCommitConfirm(
+  command: string,
+  data: Record<string, unknown>,
+): void {
+  if (command !== 'sports-bet-commit' && command !== 'sports-confirm') {
+    return;
+  }
+  if (vinusStrId(data.reserve_id)) {
+    return;
+  }
+  const fromRound = vinusStrId(data.round_id);
+  if (fromRound) {
+    data.reserve_id = fromRound;
+    return;
+  }
+  const fromTid = vinusStrId(data.transaction_id);
+  if (fromTid) {
+    data.reserve_id = fromTid;
+  }
+}
+
 function nickForVinus(displayName: string | null, loginId: string): string {
   const raw = (displayName?.trim() || loginId).slice(0, 25);
   return raw.length >= 2 ? raw : `${loginId}`.slice(0, 25).padEnd(2, '0');
@@ -145,6 +167,9 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     /** 예약 베팅 확정 (BT1 sports-bet-commit): sports-confirm 과 동일 단계 */
     'sports-bet-commit': 'sports-bet-commit',
     sportsbetcommit: 'sports-bet-commit',
+    /** 벤더 오타 conmit → commit */
+    'sports-bet-conmit': 'sports-bet-commit',
+    sportsbetconmit: 'sports-bet-commit',
     'sports-win': 'sports-win',
     sportswin: 'sports-win',
   };
@@ -198,6 +223,16 @@ function normalizeVinusRootKeys(raw: Record<string, unknown>): Record<string, un
     const t = k.trim();
     if (roots.has(t) && out[t] === undefined && raw[k] !== undefined) {
       out[t] = raw[k];
+    }
+  }
+  /** timestap 등 벤더 오타 */
+  if (out.timestamp === undefined || out.timestamp === null || out.timestamp === '') {
+    for (const typo of ['timestap', 'timstamp', 'timesatmp', 'time_stamp']) {
+      const v = raw[typo];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        out.timestamp = v;
+        break;
+      }
     }
   }
   return out;
@@ -915,20 +950,21 @@ export class VinusService {
     fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
     ok: (balance: Prisma.Decimal) => Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
+    const w0 = await this.prisma.wallet.findUnique({ where: { userId } });
+    const balFail = w0?.balance ?? new Prisma.Decimal(0);
     const rid =
       typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
     if (!rid) {
-      return fail(99);
+      return fail(99, balFail);
     }
     const existing = await this.prisma.sportsBetReservation.findUnique({
       where: { platformId_reserveId: { platformId, reserveId: rid } },
     });
-    const w = await this.prisma.wallet.findUnique({ where: { userId } });
-    if (!existing || existing.userId !== userId || !w) {
-      return fail(99);
+    if (!existing || existing.userId !== userId || !w0) {
+      return fail(99, balFail);
     }
     if (existing.status === 'CONFIRMED') {
-      return ok(w.balance);
+      return ok(w0.balance);
     }
     await this.prisma.sportsBetReservation.update({
       where: { id: existing.id },
@@ -1518,6 +1554,7 @@ export class VinusService {
     normalizeVinusDataKeys(data);
     coerceVinusUserIdFromPayload(data, raw);
     coerceVinusReserveIdFromPayload(data, raw);
+    coerceVinusReserveIdForCommitConfirm(command, data);
     normalizeVinusTokenInData(data);
     const timestamp =
       typeof raw.timestamp === 'number'
@@ -1849,7 +1886,7 @@ export class VinusService {
     }
 
     if (!userRow) {
-      return fail(99);
+      return fail(99, new Prisma.Decimal(0));
     }
 
     let platformId: string | null = userRow.platformId;
@@ -1870,7 +1907,10 @@ export class VinusService {
       }
     }
     if (!platformId) {
-      return fail(99);
+      const wPf = await this.prisma.wallet.findUnique({
+        where: { userId: userRow.id },
+      });
+      return fail(99, wPf?.balance ?? walletBal ?? new Prisma.Decimal(0));
     }
 
     switch (command) {
@@ -2410,8 +2450,15 @@ export class VinusService {
         });
       }
 
-      default:
-        return { result: 99, status: 'ERROR', data: {} };
+      default: {
+        const wUnk = await this.prisma.wallet.findUnique({
+          where: { userId: userRow.id },
+        });
+        return fail(
+          99,
+          wUnk?.balance ?? walletBal ?? new Prisma.Decimal(0),
+        );
+      }
     }
   }
 }
