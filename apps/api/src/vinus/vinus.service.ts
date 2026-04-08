@@ -93,6 +93,7 @@ const VINUS_PAYLOAD_FIELDS_IN_DATA = [
   'user_id',
   'transaction_id',
   'amount',
+  'balance',
   'game_id',
   'round_id',
   'game_type',
@@ -218,6 +219,7 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
     bet_details_result: 'bet_details_result',
     betdetailsresult: 'bet_details_result',
     r: 'vendor',
+    balance: 'balance',
   };
   const keys = Object.keys(data);
   for (const k of keys) {
@@ -823,14 +825,9 @@ export class VinusService {
     fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
     ok: (balance: Prisma.Decimal) => Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const rid =
-      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
-    const reqId =
-      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
-    const tid =
-      typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '';
+    const rid = vinusStrId(data.reserve_id);
+    const reqId = vinusStrId(data.req_id);
+    const tid = vinusStrId(data.transaction_id);
     const amount = toDec(data.amount);
     if (!rid || !reqId || !tid || !amount || amount.lte(0)) {
       return fail(99);
@@ -1063,7 +1060,10 @@ export class VinusService {
 
     if (actual) {
       if (actual.userId !== userRow.id) {
-        return fail(21);
+        const w21 = await this.prisma.wallet.findUnique({
+          where: { userId: userRow.id },
+        });
+        return fail(21, w21?.balance ?? new Prisma.Decimal(0));
       }
       const res = await this.prisma.sportsBetReservation.findUnique({
         where: { id: actual.reservationId },
@@ -1460,17 +1460,17 @@ export class VinusService {
       refundedAt: Date | null;
     } | null = null;
 
-    const fail = (code: number, balance?: Prisma.Decimal) => {
-      const out: Record<string, unknown> = {
-        result: code,
-        status: 'ERROR',
-        data:
+    /** BT1 등: ERROR 응답에도 data.balance 필수 — 없으면 "balance 항목이 빠졌습니다" */
+    const fail = (code: number, balance?: Prisma.Decimal) => ({
+      result: code,
+      status: 'ERROR',
+      data: {
+        balance:
           balance !== undefined
-            ? { balance: Number(balance.toFixed(2)) }
-            : {},
-      };
-      return out;
-    };
+            ? Number(balance.toFixed(2))
+            : 0,
+      },
+    });
 
     /** 벤더 테스트 툴: 성공 시 status OK 포함 */
     const ok = (balance: Prisma.Decimal) => ({
@@ -1494,7 +1494,7 @@ export class VinusService {
       switch (check) {
         case 11: {
           const token = typeof data.token === 'string' ? data.token : '';
-          if (!token) return fail(11);
+          if (!token) return fail(11, new Prisma.Decimal(0));
           const sess = await this.prisma.vinusSessionToken.findUnique({
             where: { token },
             include: {
@@ -1510,7 +1510,7 @@ export class VinusService {
               },
             },
           });
-          if (!sess) return fail(11);
+          if (!sess) return fail(11, new Prisma.Decimal(0));
           userRow = sess.user;
           const w = await this.prisma.wallet.findUnique({
             where: { userId: sess.userId },
@@ -1519,8 +1519,8 @@ export class VinusService {
           break;
         }
         case 21: {
-          const uid = typeof data.user_id === 'string' ? data.user_id : '';
-          if (!uid) return fail(21);
+          const uid = vinusStrId(data.user_id);
+          if (!uid) return fail(21, new Prisma.Decimal(0));
           if (!userRow || userRow.id !== uid) {
             const found: VinusUserRow | null = await this.prisma.user.findUnique({
               where: { id: uid },
@@ -1533,7 +1533,7 @@ export class VinusService {
                 role: true,
               },
             });
-            if (!found) return fail(21);
+            if (!found) return fail(21, new Prisma.Decimal(0));
             userRow = found;
             const w = await this.prisma.wallet.findUnique({
               where: { userId: uid },
@@ -1543,25 +1543,33 @@ export class VinusService {
           break;
         }
         case 22: {
-          if (!userRow) return fail(22);
+          if (!userRow) {
+            return fail(22, walletBal ?? new Prisma.Decimal(0));
+          }
           if (userRow.registrationStatus !== RegistrationStatus.APPROVED) {
-            return fail(22, walletBal ?? undefined);
+            return fail(22, walletBal ?? new Prisma.Decimal(0));
           }
           break;
         }
         case 31: {
-          if (!userRow) return fail(31);
+          if (!userRow) {
+            return fail(31, walletBal ?? new Prisma.Decimal(0));
+          }
           const amount = toDec(data.amount);
-          if (!amount || amount.lte(0)) return fail(31, walletBal ?? undefined);
+          if (!amount || amount.lte(0)) {
+            return fail(31, walletBal ?? new Prisma.Decimal(0));
+          }
           const bal = walletBal ?? new Prisma.Decimal(0);
           if (bal.lt(amount)) return fail(31, bal);
           break;
         }
         case 41: {
-          if (!userRow) return fail(41);
+          if (!userRow) {
+            return fail(41, walletBal ?? new Prisma.Decimal(0));
+          }
           const tid =
             typeof data.transaction_id === 'string' ? data.transaction_id : '';
-          if (!tid) return fail(41);
+          if (!tid) return fail(41, walletBal ?? new Prisma.Decimal(0));
           const ex = await this.prisma.casinoVinusTx.findUnique({
             where: { externalId: tid },
           });
@@ -1575,10 +1583,14 @@ export class VinusService {
           break;
         }
         case 42: {
-          if (!userRow) return fail(42);
+          if (!userRow) {
+            return fail(42, walletBal ?? new Prisma.Decimal(0));
+          }
           const tid =
             typeof data.transaction_id === 'string' ? data.transaction_id : '';
-          if (!tid) return fail(42);
+          if (!tid) {
+            return fail(42, walletBal ?? new Prisma.Decimal(0));
+          }
           const ex = await this.prisma.casinoVinusTx.findUnique({
             where: { externalId: tid },
           });
@@ -1591,43 +1603,49 @@ export class VinusService {
           existingTx = ex;
           break;
         }
-        /** sports-win: 원베팅(reserve_id = 베팅 transaction_id) 존재 (벤더 check 51) */
+        /** check 51: sports-bet는 reserve_id=예약 키(첫 베팅 시 tx 없음), sports-win은 원베팅 tid */
         case 51: {
-          if (!userRow) return fail(51);
-          const reserveBet =
-            typeof data.reserve_id === 'string'
-              ? data.reserve_id.replace(/\s/g, '')
-              : '';
+          if (!userRow) {
+            return fail(51, new Prisma.Decimal(0));
+          }
+          const reserveBet = vinusStrId(data.reserve_id);
           if (!reserveBet) {
-            return fail(51, walletBal ?? undefined);
+            return fail(51, walletBal ?? new Prisma.Decimal(0));
           }
           const betRow = await this.prisma.casinoVinusTx.findUnique({
             where: { externalId: reserveBet },
           });
           if (
-            !betRow ||
-            betRow.userId !== userRow.id ||
-            (betRow.kind !== 'SPORTS_BET' && betRow.kind !== 'BET')
+            betRow &&
+            betRow.userId === userRow.id &&
+            (betRow.kind === 'SPORTS_BET' || betRow.kind === 'BET')
           ) {
-            const w = await this.prisma.wallet.findUnique({
-              where: { userId: userRow.id },
-            });
-            return fail(51, w?.balance ?? new Prisma.Decimal(0));
+            existingTx = betRow;
+            break;
           }
-          existingTx = betRow;
-          break;
+          const reservation = await this.prisma.sportsBetReservation.findFirst({
+            where: { userId: userRow.id, reserveId: reserveBet },
+          });
+          if (reservation) {
+            break;
+          }
+          const w = await this.prisma.wallet.findUnique({
+            where: { userId: userRow.id },
+          });
+          return fail(51, w?.balance ?? new Prisma.Decimal(0));
         }
         /** 스포츠 베팅 변경 등: req_id·금액 유효성 (벤더 check 52) */
         case 52: {
-          if (!userRow) return fail(52);
-          const reqId =
-            typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+          if (!userRow) {
+            return fail(52, new Prisma.Decimal(0));
+          }
+          const reqId = vinusStrId(data.req_id);
           if (!reqId) {
-            return fail(52, walletBal ?? undefined);
+            return fail(52, walletBal ?? new Prisma.Decimal(0));
           }
           const amt52 = toDec(data.amount);
           if (!amt52 || amt52.lte(0)) {
-            return fail(52, walletBal ?? undefined);
+            return fail(52, walletBal ?? new Prisma.Decimal(0));
           }
           break;
         }
@@ -1665,7 +1683,7 @@ export class VinusService {
       }
     }
     if (!userRow) {
-      const uid = typeof data.user_id === 'string' ? data.user_id : '';
+      const uid = vinusStrId(data.user_id);
       if (uid) {
         const found: VinusUserRow | null = await this.prisma.user.findUnique({
           where: { id: uid },
