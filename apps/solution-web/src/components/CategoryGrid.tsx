@@ -152,7 +152,7 @@ export function CategoryGrid() {
         게임 입장
       </h2>
       <p className={`mb-4 text-sm ${isLight ? "text-zinc-600" : "text-zinc-500"}`}>
-        카지노(PC)는 새 창 · 모바일은 새 탭 · 슬롯은 벤더별 목록(무한 스크롤)
+        카지노(PC)는 새 창 · 모바일 카지노는 새 탭 · 슬롯은 iframe 전체화면(×로 닫기)
       </p>
       {launchErr ? (
         <p className="mb-3 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">

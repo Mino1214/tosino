@@ -16,13 +16,13 @@ import {
 const SLOT_VENDORS: {
   id: VinusMatrixVerifiedVendor;
   label: string;
-  /** 데스크톱에서 이 벤더 슬롯 실행 방식 */
-  surface: LaunchSurface;
 }[] = [
-  { id: "pragmatic_slot", label: "프라그마틱", surface: "new-tab" },
-  { id: "habanero", label: "하바네로", surface: "slot-iframe" },
-  { id: "MICRO_Slot", label: "마이크로", surface: "slot-iframe" },
+  { id: "pragmatic_slot", label: "프라그마틱" },
+  { id: "habanero", label: "하바네로" },
+  { id: "MICRO_Slot", label: "마이크로" },
 ];
+
+const SLOT_LAUNCH_MODE: LaunchSurface = "slot-iframe";
 
 const PAGE_SIZE = 24;
 
@@ -63,7 +63,7 @@ export function SlotVendorCatalog() {
   }, [games.length, vendor.id]);
 
   const runLaunch = useCallback(
-    async (entry: VinusVerifiedCatalogEntry, surface: LaunchSurface) => {
+    async (entry: VinusVerifiedCatalogEntry) => {
       setErr(null);
       if (!getAccessToken()) {
         router.push("/login");
@@ -77,18 +77,6 @@ export function SlotVendorCatalog() {
         typeof window.matchMedia === "function" &&
         window.matchMedia("(max-width: 767px)").matches;
 
-      /** 모바일 전부 + PC에서 새 탭 모드(프라그마틱): 비동기 이후 window.open 차단 방지 */
-      const usePreTab = mobile || surface === "new-tab";
-      let pre: Window | null = null;
-      if (usePreTab) {
-        pre = window.open("about:blank", "_blank", "noopener,noreferrer");
-      }
-      if (usePreTab && !pre) {
-        setErr("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용해 주세요.");
-        setLaunchingKey(null);
-        return;
-      }
-
       try {
         const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
           method: "POST",
@@ -101,18 +89,15 @@ export function SlotVendorCatalog() {
           }),
         });
         if (!out?.url) {
-          if (pre && !pre.closed) pre.close();
           setErr("게임 URL을 받지 못했습니다.");
           return;
         }
         launch({
           url: out.url,
           title: entry.titleKo || entry.titleEn,
-          mode: surface,
-          preOpenedWindow: pre,
+          mode: SLOT_LAUNCH_MODE,
         });
       } catch (e) {
-        if (pre && !pre.closed) pre.close();
         setErr(e instanceof Error ? e.message : "입장 요청 실패");
       } finally {
         setLaunchingKey(null);
@@ -185,7 +170,7 @@ export function SlotVendorCatalog() {
               key={lk}
               type="button"
               disabled={launchingKey !== null}
-              onClick={() => void runLaunch(g, vendor.surface)}
+              onClick={() => void runLaunch(g)}
               className={`group flex flex-col overflow-hidden border border-white/10 bg-zinc-900/40 text-left shadow-md transition active:scale-[0.98] disabled:opacity-60 ${radius}`}
             >
               <div className="relative aspect-square w-full overflow-hidden bg-zinc-950">

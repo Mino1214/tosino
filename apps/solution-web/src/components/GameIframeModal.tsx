@@ -101,6 +101,20 @@ export function GameIframeModalProvider({
       typeof window.matchMedia === "function" &&
       window.matchMedia("(max-width: 767px)").matches;
 
+    /** 슬롯: 모바일·PC 모두 앱 내 iframe 모달(새 탭 금지 — 모바일에서 미동작 방지) */
+    if (opts.mode === "slot-iframe") {
+      const pre = opts.preOpenedWindow;
+      if (pre && !pre.closed) {
+        try {
+          pre.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      setSlot({ url: opts.url, title: opts.title });
+      return;
+    }
+
     const pre = opts.preOpenedWindow;
     if (pre && !pre.closed) {
       try {
@@ -111,13 +125,12 @@ export function GameIframeModalProvider({
       return;
     }
 
-    /** 모바일: 프리탭 없을 때만(비권장) — 보통 호출부에서 `preOpenedWindow`로 처리 */
+    /** 모바일·프리탭 없음: 카지노/새탭만 (슬롯은 위에서 처리) */
     if (mobile) {
       window.open(opts.url, "_blank", "noopener,noreferrer");
       return;
     }
 
-    /** PC: 카지노 = 별도 창+iframe, 슬롯(new-tab) = 새 탭, 슬롯(slot-iframe) = 앱 내 모달 */
     if (opts.mode === "casino-window") {
       openCasinoGameWindow(opts.url, opts.title?.trim() || "게임");
       return;
@@ -154,13 +167,13 @@ export function GameIframeModalProvider({
       {children}
       {slot ? (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-3 sm:p-5"
+          className="fixed inset-0 z-[110] flex flex-col bg-black md:items-center md:justify-center md:bg-black/85 md:p-5"
           role="dialog"
           aria-modal="true"
           aria-label={label}
         >
-          <div className="flex max-h-[92vh] w-full max-w-[min(96vw,1680px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl">
-            <header className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-zinc-950/95 px-3 py-2 sm:px-4">
+          <div className="flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden bg-zinc-950 md:h-auto md:max-h-[92vh] md:max-w-[min(96vw,1680px)] md:rounded-2xl md:border md:border-white/10 md:shadow-2xl">
+            <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 bg-zinc-950/98 px-3 sm:h-14 sm:px-4">
               <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-100 sm:text-base">
                 {label}
               </h2>
@@ -168,27 +181,22 @@ export function GameIframeModalProvider({
                 href={slot.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-medium text-zinc-400 ring-1 ring-white/15 hover:bg-white/5 hover:text-zinc-200 sm:px-3 sm:text-sm"
+                className="hidden shrink-0 rounded-lg px-2 py-1.5 text-xs font-medium text-zinc-400 ring-1 ring-white/15 hover:bg-white/5 hover:text-zinc-200 sm:inline-flex sm:px-3 sm:text-sm"
               >
                 새 탭
               </a>
               <button
                 type="button"
                 onClick={closeSlotModal}
-                className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-black"
-                style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+                aria-label="닫기"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-2xl leading-none text-zinc-200 hover:bg-white/10 sm:text-3xl"
               >
-                닫기
+                ×
               </button>
             </header>
-            <div className="flex min-h-0 flex-1 items-center justify-center bg-black p-2 sm:p-4">
+            <div className="flex min-h-0 flex-1 bg-black md:items-center md:justify-center md:p-4">
               <div
-                className="relative w-full overflow-hidden rounded-xl border border-white/10 bg-black shadow-lg"
-                style={{
-                  aspectRatio: "16 / 9",
-                  maxHeight: "min(78vh, calc(96vw * 9 / 16))",
-                  maxWidth: "min(96vw, calc(78vh * 16 / 9))",
-                }}
+                className="relative h-full w-full md:aspect-video md:max-h-[min(78vh,calc(96vw*9/16))] md:max-w-[min(96vw,calc(78vh*16/9))] md:overflow-hidden md:rounded-xl md:border md:border-white/10 md:shadow-lg"
               >
                 <iframe
                   title={label}

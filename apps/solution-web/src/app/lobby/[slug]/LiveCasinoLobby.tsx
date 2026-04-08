@@ -55,7 +55,10 @@ export function LiveCasinoLobby({
         typeof window !== "undefined" &&
         typeof window.matchMedia === "function" &&
         window.matchMedia("(max-width: 767px)").matches;
-      const needsPreTab = mobile || launchSurface === "new-tab";
+      /** 슬롯 iframe 모달은 프리탭 불필요 · 그 외 모바일/PC 새탭 모드는 비동기 전 프리탭 */
+      const needsPreTab =
+        launchSurface !== "slot-iframe" &&
+        (mobile || launchSurface === "new-tab");
       const pre =
         needsPreTab && typeof window !== "undefined"
           ? window.open("about:blank", "_blank", "noopener,noreferrer")
@@ -121,11 +124,9 @@ export function LiveCasinoLobby({
         모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 게임을
         PC에서는 <strong className="text-zinc-200">카지노·라이브</strong>는
         <strong className="text-zinc-200"> 새 창</strong>(내부 iframe)입니다.
-        이 페이지가 <strong className="text-zinc-200">새 탭</strong> 모드이면
-        클릭 시 빈 탭을 먼저 연 뒤 주소를 넣습니다.{" "}
-        <strong className="text-zinc-200">모바일</strong>은 API에{" "}
-        <code className="text-zinc-500">platform=MOBILE</code> 후 게임을{" "}
-        <strong className="text-zinc-200">새 탭</strong>으로 엽니다.
+        <strong className="text-zinc-200"> 슬롯(iframe 모드)</strong>은
+        모바일에서도 화면을 채우는 레이어+iframe으로 열리며 상단에서 닫을 수
+        있습니다. 카지노만 모바일에서 새 탭(프리탭)으로 열 수 있습니다.
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>
