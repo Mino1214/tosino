@@ -53,7 +53,7 @@ export default async function LobbyPage({
         title="슬롯 (프라그마틱)"
         vendor="pragmatic_slot"
         transferOnly
-        launchSurface="slot-iframe"
+        launchSurface="new-tab"
       />
     );
   }

@@ -102,10 +102,13 @@ export function LiveCasinoLobby({
       <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">
         <strong className="text-zinc-200">심리스</strong> 입장 시 베팅/당첨은
         모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 게임을
-        <strong className="text-zinc-200">카지노·라이브</strong>는 별도 창(내부
-        iframe), <strong className="text-zinc-200">슬롯</strong> 로비는 이 사이트
-        위 16:9 모달로 띄웁니다. 막히면 각 화면의{" "}
-        <strong className="text-zinc-200">새 탭</strong>을 쓰세요.
+        PC에서는 <strong className="text-zinc-200">카지노·라이브</strong>는
+        팝업(내부 iframe), <strong className="text-zinc-200">슬롯</strong>은
+        16:9 모달입니다. <strong className="text-zinc-200">모바일</strong>
+        (좁은 화면)에서는 API에{" "}
+        <code className="text-zinc-500">platform=MOBILE</code>으로 요청한 뒤
+        게임을 <strong className="text-zinc-200">항상 새 탭</strong>으로
+        엽니다. 막히면 새 탭/브라우저에서 직접 열기를 쓰세요.
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>

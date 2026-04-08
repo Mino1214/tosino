@@ -94,8 +94,20 @@ export function GameIframeModalProvider({
   const [slot, setSlot] = useState<SlotModalState | null>(null);
 
   const launch = useCallback((opts: GameLaunchOpts) => {
-    if (opts.mode === "casino-window") {
+    const mobile =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 767px)").matches;
+
+    /** 모바일: 팝업/모달 대신 전부 새 탭(뷰포트 기준은 API platform=MOBILE 과 동일) */
+    const mode: LaunchSurface = mobile ? "new-tab" : opts.mode;
+
+    if (mode === "casino-window") {
       openCasinoGameWindow(opts.url, opts.title?.trim() || "게임");
+      return;
+    }
+    if (mode === "new-tab") {
+      window.open(opts.url, "_blank", "noopener,noreferrer");
       return;
     }
     setSlot({ url: opts.url, title: opts.title });

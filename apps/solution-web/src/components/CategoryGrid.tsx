@@ -22,13 +22,6 @@ type StaticCategory = {
 
 const STATIC_CATEGORIES: StaticCategory[] = [
   {
-    slug: "live-casino",
-    title: "라이브 카지노",
-    subtitle: "프라그마틱 라이브 로비",
-    icon: "🎰",
-    gradient: "from-rose-900/40 to-zinc-950",
-  },
-  {
     slug: "sports-kr",
     title: "국내 스포츠",
     subtitle: "K리그 · KBO",
@@ -58,10 +51,13 @@ const STATIC_CATEGORIES: StaticCategory[] = [
   },
 ];
 
+type GameTab = "casino" | "slot";
+
 export function CategoryGrid() {
   const b = useBootstrap();
   const { launch } = useGameLaunch();
   const router = useRouter();
+  const [gameTab, setGameTab] = useState<GameTab>("casino");
   const [launchingSlug, setLaunchingSlug] = useState<string | null>(null);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
 
@@ -82,6 +78,10 @@ export function CategoryGrid() {
   const arrowClass = isLight
     ? "absolute right-3 top-3 text-zinc-400 transition group-hover:text-[var(--theme-primary,#c9a227)]"
     : "absolute right-3 top-3 text-zinc-600 transition group-hover:text-[var(--theme-primary,#c9a227)]";
+
+  const vinusFiltered = VINUS_VERIFIED_HOME_CARDS.filter(
+    (c) => c.category === gameTab,
+  );
 
   async function runVinusLaunch(c: VinusHomeCard) {
     setLaunchErr(null);
@@ -123,6 +123,14 @@ export function CategoryGrid() {
 
   const cardBase = `group relative flex ${minh} flex-col justify-between overflow-hidden border border-white/10 bg-gradient-to-br p-4 shadow-lg transition active:scale-[0.98] ${radius}`;
 
+  const tabBtnBase =
+    "flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:text-base";
+  const tabActive =
+    "text-black shadow-md";
+  const tabInactive = isLight
+    ? "text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100"
+    : "text-zinc-300 ring-1 ring-white/15 hover:bg-white/5";
+
   return (
     <section className="mt-10">
       <h2
@@ -131,29 +139,51 @@ export function CategoryGrid() {
         게임 입장
       </h2>
       <p className={`mb-4 text-sm ${isLight ? "text-zinc-600" : "text-zinc-500"}`}>
-        Vinus 매트릭스에서 확인된 연동만 표시 · 카지노는 팝업, 슬롯은 16:9 모달
+        같은 화면에서 카지노·슬롯 구분 · 모바일은 전부 새 탭 · PC 일부는 새 탭 권장
       </p>
       {launchErr ? (
         <p className="mb-3 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
           {launchErr}
         </p>
       ) : null}
+
+      <div
+        className={`mb-4 flex gap-2 rounded-2xl p-1 ring-1 ${isLight ? "bg-zinc-100 ring-zinc-200" : "bg-black/40 ring-white/10"}`}
+        role="tablist"
+        aria-label="게임 구분"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={gameTab === "casino"}
+          className={`${tabBtnBase} ${gameTab === "casino" ? tabActive : tabInactive}`}
+          style={
+            gameTab === "casino"
+              ? { backgroundColor: "var(--theme-primary, #c9a227)" }
+              : undefined
+          }
+          onClick={() => setGameTab("casino")}
+        >
+          카지노
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={gameTab === "slot"}
+          className={`${tabBtnBase} ${gameTab === "slot" ? tabActive : tabInactive}`}
+          style={
+            gameTab === "slot"
+              ? { backgroundColor: "var(--theme-primary, #c9a227)" }
+              : undefined
+          }
+          onClick={() => setGameTab("slot")}
+        >
+          슬롯
+        </button>
+      </div>
+
       <div className={`grid grid-cols-2 md:grid-cols-3 ${gap}`}>
-        {STATIC_CATEGORIES.map((c) => (
-          <Link
-            key={c.slug}
-            href={`/lobby/${c.slug}`}
-            className={`${cardBase} ${c.gradient}`}
-          >
-            <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
-            <div>
-              <h3 className={titleClass}>{c.title}</h3>
-              <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
-            </div>
-            <span className={arrowClass}>→</span>
-          </Link>
-        ))}
-        {VINUS_VERIFIED_HOME_CARDS.map((c) => (
+        {vinusFiltered.map((c) => (
           <button
             key={c.slug}
             type="button"
@@ -170,6 +200,28 @@ export function CategoryGrid() {
               {launchingSlug === c.slug ? "…" : "→"}
             </span>
           </button>
+        ))}
+      </div>
+
+      <h3
+        className={`mb-2 mt-10 text-base font-semibold md:text-lg ${isLight ? "text-zinc-800" : "text-zinc-200"}`}
+      >
+        기타 메뉴
+      </h3>
+      <div className={`grid grid-cols-2 md:grid-cols-3 ${gap}`}>
+        {STATIC_CATEGORIES.map((c) => (
+          <Link
+            key={c.slug}
+            href={`/lobby/${c.slug}`}
+            className={`${cardBase} ${c.gradient}`}
+          >
+            <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
+            <div>
+              <h3 className={titleClass}>{c.title}</h3>
+              <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
+            </div>
+            <span className={arrowClass}>→</span>
+          </Link>
         ))}
       </div>
     </section>
