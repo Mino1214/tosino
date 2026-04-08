@@ -353,19 +353,7 @@ export class VinusService {
   private stubWinAddIdem = new Map<string, number>();
   private stubCancelMeta = new Map<string, VinusStubCancelRow>();
 
-  /** 스텁: 스포츠 예약·실제 소비 (reserve_id 키) */
-  private stubSportsReserve = new Map<
-    string,
-    {
-      amount: number;
-      consumed: number;
-      orderTid?: string;
-      status: string;
-    }
-  >();
-  /** 스텁: reserve_id:req_id → 처리한 transaction_id */
-  private stubSportsReqToTid = new Map<string, string>();
-  /** 스텁: 베팅 req_id → transaction_id (bet-change가 원베팅을 req_id만으로 지정할 때) */
+  /** 스텁: 베팅 req_id → transaction_id (카지노 bet 스텁용) */
   private stubReqIdToBetTid = new Map<string, string>();
 
   constructor(
@@ -419,11 +407,7 @@ export class VinusService {
     if (userNickname.length < 2) {
       userNickname = 'UU';
     }
-    /**
-     * authenticate마다 resetStubWalletSimulation을 호출하면 벤더가 단계마다
-     * authenticate를 재호출할 때 스텁 베팅·req_id 매핑이 사라져 sports-bet-change
-     * 등이 99가 된다. 잔액만 초기화가 필요하면 VINUS_STUB_BALANCE로 맞춘다.
-     */
+    /** authenticate마다 전체 reset 시 카지노 bet 스텁 멱등이 깨지므로 호출하지 않음 */
     if (this.stubWorkingBal === null) {
       this.stubWorkingBal = this.stubBalanceNumber();
     }
@@ -446,8 +430,6 @@ export class VinusService {
     this.stubWinProcessed.clear();
     this.stubWinAddIdem.clear();
     this.stubCancelMeta.clear();
-    this.stubSportsReserve.clear();
-    this.stubSportsReqToTid.clear();
     this.stubReqIdToBetTid.clear();
   }
 
@@ -641,259 +623,6 @@ export class VinusService {
     row.cancelled = true;
     this.stubWorkingBal = newBal;
     return okCancelBody(newBal);
-  }
-
-  private stubSportsReserveOk(
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const rid =
-      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
-    const amt = toDec(data.amount);
-    const orderTid =
-      typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '';
-    if (!rid || !amt || amt.lte(0)) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const cur = this.stubSportsReserve.get(rid);
-    const bal = this.stubGetWorking();
-    if (cur) {
-      if (Math.abs(cur.amount - Number(amt.toFixed(2))) > 0.001) {
-        return { result: 99, status: 'ERROR', data: {} };
-      }
-      if (orderTid) {
-        if (cur.orderTid === orderTid) {
-          return { result: 0, status: 'OK', data: { balance: bal } };
-        }
-        if (cur.orderTid) {
-          return { result: 99, status: 'ERROR', data: {} };
-        }
-        cur.orderTid = orderTid;
-        cur.status = 'ORDERED';
-      }
-      return { result: 0, status: 'OK', data: { balance: bal } };
-    }
-    this.stubSportsReserve.set(rid, {
-      amount: Number(amt.toFixed(2)),
-      consumed: 0,
-      orderTid: orderTid || undefined,
-      status: orderTid ? 'ORDERED' : 'PENDING',
-    });
-    return { result: 0, status: 'OK', data: { balance: bal } };
-  }
-
-  private stubSportsOrderOk(
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const rid =
-      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
-    const orderTid =
-      typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '';
-    if (!rid || !orderTid) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const cur = this.stubSportsReserve.get(rid);
-    const bal = this.stubGetWorking();
-    if (!cur) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    if (cur.orderTid === orderTid) {
-      return { result: 0, status: 'OK', data: { balance: bal } };
-    }
-    if (cur.orderTid) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    cur.orderTid = orderTid;
-    cur.status = 'ORDERED';
-    return { result: 0, status: 'OK', data: { balance: bal } };
-  }
-
-  private stubSportsConfirmOk(
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const rid =
-      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
-    if (!rid) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const cur = this.stubSportsReserve.get(rid);
-    const bal = this.stubGetWorking();
-    if (!cur) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    cur.status = 'CONFIRMED';
-    return { result: 0, status: 'OK', data: { balance: bal } };
-  }
-
-  /** 스텁: 예약 연동 sports-bet (reserve_id + req_id) */
-  private stubSportsBetReservedOk(
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const rid = vinusStrId(data.reserve_id);
-    const reqId = vinusStrId(data.req_id);
-    const tid = vinusStrId(data.transaction_id);
-    const amt = toDec(data.amount);
-    if (!rid || !reqId || !tid || !amt || amt.lte(0)) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const res = this.stubSportsReserve.get(rid);
-    if (!res || res.status === 'CONFIRMED') {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const rem = res.amount - res.consumed;
-    if (Number(amt.toFixed(2)) > rem + 0.001) {
-      return {
-        result: 31,
-        status: 'ERROR',
-        data: { balance: this.stubGetWorking() },
-      };
-    }
-    const rk = `${rid}:${reqId}`;
-    const prevTid = this.stubSportsReqToTid.get(rk);
-    if (prevTid !== undefined) {
-      if (prevTid === tid) {
-        const cached = this.stubTxEndingBalance.get(tid);
-        if (cached !== undefined) {
-          return { result: 0, status: 'OK', data: { balance: cached } };
-        }
-      }
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const curBal = this.stubGetWorking();
-    if (curBal < Number(amt.toFixed(2))) {
-      return {
-        result: 31,
-        status: 'ERROR',
-        data: { balance: curBal },
-      };
-    }
-    const newBal = Number(
-      new Prisma.Decimal(curBal).minus(amt).toFixed(2),
-    );
-    this.stubTxEndingBalance.set(tid, newBal);
-    this.stubWorkingBal = newBal;
-    res.consumed += Number(amt.toFixed(2));
-    this.stubSportsReqToTid.set(rk, tid);
-    this.stubReqIdToBetTid.set(reqId, tid);
-    this.stubCancelMeta.set(tid, {
-      kind: 'bet',
-      stake: Number(amt.toFixed(2)),
-      cancelled: false,
-    });
-    return { result: 0, status: 'OK', data: { balance: newBal } };
-  }
-
-  /** 스텁: sports-bet-change (원베팅 transaction_id → 금액 변경) */
-  private stubSportsBetChangeOk(
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const changeTid = vinusStrId(data.transaction_id);
-    const origFromField = vinusStrId(data.original_transaction_id);
-    const ridRaw = vinusStrId(data.reserve_id);
-    const reqRaw = vinusStrId(data.req_id);
-    let origTid =
-      origFromField ||
-      ridRaw ||
-      (reqRaw ? this.stubReqIdToBetTid.get(reqRaw) ?? '' : '');
-    if (!origTid && reqRaw) {
-      const byReq = this.stubCancelMeta.get(reqRaw);
-      if (byReq?.kind === 'bet') {
-        origTid = reqRaw;
-      }
-    }
-    const newAmt = toDec(data.amount);
-    if (!changeTid || !origTid || !newAmt || newAmt.lte(0)) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    if (this.stubTxEndingBalance.has(changeTid)) {
-      return {
-        result: 0,
-        status: 'OK',
-        data: { balance: this.stubGetWorking() },
-      };
-    }
-    const row = this.stubCancelMeta.get(origTid);
-    if (!row || row.kind !== 'bet') {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const oldStake = row.stake;
-    const delta = Number(newAmt.toFixed(2)) - oldStake;
-    const cur = this.stubGetWorking();
-    if (delta > 0 && cur < delta) {
-      return {
-        result: 31,
-        status: 'ERROR',
-        data: { balance: cur },
-      };
-    }
-    const newBal = Number(new Prisma.Decimal(cur).minus(delta).toFixed(2));
-    this.stubWorkingBal = newBal;
-    this.stubTxEndingBalance.set(changeTid, newBal);
-    this.stubCancelMeta.set(origTid, {
-      kind: 'bet',
-      stake: Number(newAmt.toFixed(2)),
-      cancelled: false,
-    });
-    if (ridRaw) {
-      const res = this.stubSportsReserve.get(ridRaw);
-      if (res) {
-        res.consumed += delta;
-      }
-    }
-    return { result: 0, status: 'OK', data: { balance: newBal } };
-  }
-
-  /** 스텁: sports-win (reserve_id=원베팅 tid, req_id=결과 멱등) */
-  private stubSportsWinOk(
-    data: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const reserveId =
-      typeof data.reserve_id === 'string'
-        ? data.reserve_id.replace(/\s/g, '')
-        : '';
-    const resultTid =
-      (typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '') ||
-      (typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '');
-    const amount = toDec(data.amount);
-    if (!reserveId || !resultTid) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const cached = this.stubWinProcessed.get(resultTid);
-    if (cached !== undefined) {
-      return { result: 0, status: 'OK', data: { balance: cached } };
-    }
-    const betRow = this.stubCancelMeta.get(reserveId);
-    if (!betRow || betRow.kind !== 'bet') {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    const stake = betRow.stake;
-    const outcome = parseSportsWinStatus(data.bet_details_result);
-    if (!outcome) {
-      return { result: 99, status: 'ERROR', data: {} };
-    }
-    let payout = 0;
-    if (outcome === 'won') {
-      payout = amount ? Number(amount.toFixed(2)) : 0;
-    } else if (outcome === 'lost') {
-      payout = 0;
-    } else {
-      payout = stake;
-    }
-    const cur = this.stubGetWorking();
-    const newBal = Number(new Prisma.Decimal(cur).plus(payout).toFixed(2));
-    this.stubWorkingBal = newBal;
-    this.stubWinProcessed.set(resultTid, newBal);
-    this.stubCancelMeta.set(resultTid, {
-      kind: 'win',
-      payout,
-      cancelled: false,
-    });
-    return { result: 0, status: 'OK', data: { balance: newBal } };
   }
 
   private get baseUrl(): string {
@@ -1698,48 +1427,7 @@ export class VinusService {
         );
         return this.stubBetOk(data);
       }
-      if (command === 'sports-bet') {
-        this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: sports-bet 스텁 (reserve_id 있으면 예약 연동). 운영 전 끌 것.',
-        );
-        if (
-          typeof data.reserve_id === 'string' &&
-          data.reserve_id.replace(/\s/g, '') !== ''
-        ) {
-          return this.stubSportsBetReservedOk(data);
-        }
-        return this.stubBetOk(data);
-      }
-      if (command === 'sports-reserve') {
-        this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: sports-reserve 스텁 (예약·주문 멱등). 운영 전 끌 것.',
-        );
-        return this.stubSportsReserveOk(data);
-      }
-      if (command === 'sports-order') {
-        this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: sports-order 스텁 (주문 transaction_id 멱등). 운영 전 끌 것.',
-        );
-        return this.stubSportsOrderOk(data);
-      }
-      if (command === 'sports-confirm') {
-        this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: sports-confirm 스텁. 운영 전 끌 것.',
-        );
-        return this.stubSportsConfirmOk(data);
-      }
-      if (command === 'sports-bet-change') {
-        this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: sports-bet-change 스텁. 운영 전 끌 것.',
-        );
-        return this.stubSportsBetChangeOk(data);
-      }
-      if (command === 'sports-win') {
-        this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: sports-win 스텁 (reserve_id+req_id). 운영 전 끌 것.',
-        );
-        return this.stubSportsWinOk(data);
-      }
+      /** sports-* 는 스텁 제외: CasinoVinusTx·원장·예약과 동일하게 DB에 저장 (실연동과 코드 경로 통일) */
       if (command === 'win') {
         this.logger.warn(
           'VINUS_STUB_AUTHENTICATE: win 스텁 (동일 transaction_id 멱등). 운영 전 끌 것.',
