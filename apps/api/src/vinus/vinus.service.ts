@@ -54,6 +54,8 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     balance: 'balance',
     bet: 'bet',
     sportsbet: 'sports-bet',
+    'sports-bet-change': 'sports-bet-change',
+    sportsbetchange: 'sports-bet-change',
     betwin: 'bet-win',
     win: 'win',
     winadd: 'win-add',
@@ -90,6 +92,9 @@ const VINUS_PAYLOAD_FIELDS_IN_DATA = [
   'req_id',
   'bet_count',
   'reserve_id',
+  'original_transaction_id',
+  /** 객체(JSON) — merge 시 별도 처리 */
+  'bet_details',
 ] as const;
 
 function asVinusCallbackRoot(input: unknown): Record<string, unknown> {
@@ -148,6 +153,8 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
     betcount: 'bet_count',
     reserve_id: 'reserve_id',
     reserveid: 'reserve_id',
+    original_transaction_id: 'original_transaction_id',
+    originaltransactionid: 'original_transaction_id',
     r: 'vendor',
   };
   const keys = Object.keys(data);
@@ -165,6 +172,8 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
     'round_id',
     'token',
     'reserve_id',
+    'original_transaction_id',
+    'req_id',
   ]) {
     if (typeof data[k] === 'string') {
       data[k] = (data[k] as string).replace(/\s/g, '');
@@ -185,6 +194,18 @@ function mergeVinusDataPayload(raw: Record<string, unknown>): Record<string, unk
   for (const k of VINUS_PAYLOAD_FIELDS_IN_DATA) {
     if (nested[k] === undefined && raw[k] !== undefined) {
       nested[k] = raw[k];
+    }
+  }
+  /** data 안의 bet_details 가 루트에만 있을 때 등 보조 */
+  if (
+    nested.bet_details === undefined &&
+    raw.data &&
+    typeof raw.data === 'object' &&
+    !Array.isArray(raw.data)
+  ) {
+    const d = raw.data as Record<string, unknown>;
+    if (d.bet_details !== undefined) {
+      nested.bet_details = d.bet_details;
     }
   }
   return nested;
@@ -653,6 +674,62 @@ export class VinusService {
     return { result: 0, status: 'OK', data: { balance: newBal } };
   }
 
+  /** 스텁: sports-bet-change (원베팅 transaction_id → 금액 변경) */
+  private stubSportsBetChangeOk(
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const changeTid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const origTid =
+      typeof data.original_transaction_id === 'string'
+        ? data.original_transaction_id.replace(/\s/g, '')
+        : '';
+    const newAmt = toDec(data.amount);
+    if (!changeTid || !origTid || !newAmt || newAmt.lte(0)) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    if (this.stubTxEndingBalance.has(changeTid)) {
+      return {
+        result: 0,
+        status: 'OK',
+        data: { balance: this.stubGetWorking() },
+      };
+    }
+    const row = this.stubCancelMeta.get(origTid);
+    if (!row || row.kind !== 'bet') {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const oldStake = row.stake;
+    const delta = Number(newAmt.toFixed(2)) - oldStake;
+    const cur = this.stubGetWorking();
+    if (delta > 0 && cur < delta) {
+      return {
+        result: 31,
+        status: 'ERROR',
+        data: { balance: cur },
+      };
+    }
+    const newBal = Number(new Prisma.Decimal(cur).minus(delta).toFixed(2));
+    this.stubWorkingBal = newBal;
+    this.stubTxEndingBalance.set(changeTid, newBal);
+    this.stubCancelMeta.set(origTid, {
+      kind: 'bet',
+      stake: Number(newAmt.toFixed(2)),
+      cancelled: false,
+    });
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    if (rid) {
+      const res = this.stubSportsReserve.get(rid);
+      if (res) {
+        res.consumed += delta;
+      }
+    }
+    return { result: 0, status: 'OK', data: { balance: newBal } };
+  }
+
   private get baseUrl(): string {
     return (
       this.config.get<string>('VINUS_GAME_BASE_URL')?.trim() ||
@@ -988,6 +1065,264 @@ export class VinusService {
     });
   }
 
+  /**
+   * 스포츠 베팅 변경. `transaction_id` = 본 요청 멱등 키.
+   * 원베팅: `original_transaction_id` 또는 `req_id`+`round_id`(또는 예약의 reserve_id+req_id)로 조회.
+   */
+  private async sportsBetChangeProd(
+    platformId: string,
+    userRow: VinusUserRow,
+    data: Record<string, unknown>,
+    timestamp: number | undefined,
+    fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
+    ok: (balance: Prisma.Decimal) => Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const changeTid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const newAmt = toDec(data.amount);
+    const origTid =
+      typeof data.original_transaction_id === 'string'
+        ? data.original_transaction_id.replace(/\s/g, '')
+        : '';
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    const reqId =
+      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+    const roundId =
+      typeof data.round_id === 'string' ? data.round_id.replace(/\s/g, '') : '';
+
+    if (!changeTid || !newAmt || newAmt.lte(0)) {
+      return fail(99);
+    }
+
+    const dupChange = await this.prisma.casinoVinusTx.findUnique({
+      where: { externalId: changeTid },
+    });
+    if (dupChange && !dupChange.cancelledAt) {
+      const w = await this.prisma.wallet.findUnique({
+        where: { userId: userRow.id },
+      });
+      if (!w) return fail(99);
+      return ok(w.balance);
+    }
+
+    const betDetailsJson: Prisma.InputJsonValue | undefined =
+      data.bet_details !== undefined &&
+      data.bet_details !== null &&
+      typeof data.bet_details === 'object' &&
+      !Array.isArray(data.bet_details)
+        ? (data.bet_details as Prisma.InputJsonValue)
+        : undefined;
+
+    let actual:
+      | Awaited<ReturnType<typeof this.prisma.sportsBetActual.findUnique>>
+      | null = null;
+
+    if (origTid) {
+      actual = await this.prisma.sportsBetActual.findUnique({
+        where: { externalId: origTid },
+      });
+    }
+    if (!actual && rid && reqId) {
+      const res = await this.prisma.sportsBetReservation.findUnique({
+        where: { platformId_reserveId: { platformId, reserveId: rid } },
+      });
+      if (res) {
+        actual = await this.prisma.sportsBetActual.findUnique({
+          where: {
+            reservationId_reqId: { reservationId: res.id, reqId },
+          },
+        });
+      }
+    }
+    if (!actual && reqId && roundId) {
+      const candidates = await this.prisma.sportsBetActual.findMany({
+        where: { userId: userRow.id, reqId, platformId },
+      });
+      for (const c of candidates) {
+        const tx = await this.prisma.casinoVinusTx.findUnique({
+          where: { externalId: c.externalId },
+        });
+        if (tx?.roundId === roundId) {
+          actual = c;
+          break;
+        }
+      }
+    }
+    if (!actual && reqId) {
+      actual = await this.prisma.sportsBetActual.findFirst({
+        where: { userId: userRow.id, reqId, platformId },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    if (actual) {
+      if (actual.userId !== userRow.id) {
+        return fail(21);
+      }
+      const res = await this.prisma.sportsBetReservation.findUnique({
+        where: { id: actual.reservationId },
+      });
+      if (!res || res.userId !== userRow.id) {
+        return fail(99);
+      }
+      if (res.status === 'CONFIRMED') {
+        return fail(99);
+      }
+      const oldAmt = actual.amount;
+      const delta = newAmt.minus(oldAmt);
+      const newConsumed = res.consumedAmount.plus(delta);
+      if (newConsumed.gt(res.reservedAmount)) {
+        const w = await this.prisma.wallet.findUnique({
+          where: { userId: userRow.id },
+        });
+        return fail(31, w?.balance ?? new Prisma.Decimal(0));
+      }
+
+      return this.prisma.$transaction(async (tx) => {
+        const w0 = await tx.wallet.findUnique({
+          where: { userId: userRow.id },
+        });
+        if (!w0) return fail(99);
+        if (delta.gt(0) && w0.balance.lt(delta)) {
+          return fail(31, w0.balance);
+        }
+        const newBal = w0.balance.minus(delta);
+        await tx.wallet.update({
+          where: { id: w0.id },
+          data: { balance: newBal },
+        });
+        await tx.sportsBetActual.update({
+          where: { id: actual!.id },
+          data: { amount: newAmt },
+        });
+        await tx.sportsBetReservation.update({
+          where: { id: res!.id },
+          data: { consumedAmount: newConsumed },
+        });
+        await tx.casinoVinusTx.update({
+          where: { externalId: actual!.externalId },
+          data: { stake: newAmt },
+        });
+        await tx.casinoVinusTx.create({
+          data: {
+            platformId,
+            userId: userRow.id,
+            externalId: changeTid,
+            kind: 'SPORTS_BET_CHANGE',
+            gameId:
+              typeof data.game_id === 'string' ? data.game_id : undefined,
+            roundId:
+              typeof data.round_id === 'string' ? data.round_id : undefined,
+            stake: delta.abs(),
+          },
+        });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: userRow.id,
+            platformId,
+            type: LedgerEntryType.ADJUSTMENT,
+            amount: delta.negated(),
+            balanceAfter: newBal,
+            reference: changeTid,
+            metaJson: {
+              command: 'sports-bet-change',
+              original_transaction_id: actual!.externalId,
+              req_id: reqId,
+              bet_details: betDetailsJson ?? undefined,
+              timestamp,
+            },
+          },
+        });
+        return ok(newBal);
+      });
+    }
+
+    let origTx =
+      origTid
+        ? await this.prisma.casinoVinusTx.findUnique({
+            where: { externalId: origTid },
+          })
+        : null;
+    if (!origTx && reqId && roundId) {
+      const txs = await this.prisma.casinoVinusTx.findMany({
+        where: {
+          userId: userRow.id,
+          roundId,
+          kind: { in: ['SPORTS_BET', 'BET'] },
+        },
+      });
+      for (const t of txs) {
+        const le = await this.prisma.ledgerEntry.findFirst({
+          where: { userId: userRow.id, reference: t.externalId },
+        });
+        const meta = le?.metaJson as Record<string, unknown> | null | undefined;
+        if (meta && String(meta.req_id ?? '') === reqId) {
+          origTx = t;
+          break;
+        }
+      }
+    }
+    if (!origTx || origTx.userId !== userRow.id) {
+      return fail(99);
+    }
+    if (origTx.kind !== 'SPORTS_BET' && origTx.kind !== 'BET') {
+      return fail(99);
+    }
+    const oldStake = origTx.stake ?? new Prisma.Decimal(0);
+    const legDelta = newAmt.minus(oldStake);
+
+    return this.prisma.$transaction(async (tx) => {
+      const w0 = await tx.wallet.findUnique({
+        where: { userId: userRow.id },
+      });
+      if (!w0) return fail(99);
+      if (legDelta.gt(0) && w0.balance.lt(legDelta)) {
+        return fail(31, w0.balance);
+      }
+      const newBal = w0.balance.minus(legDelta);
+      await tx.wallet.update({
+        where: { id: w0.id },
+        data: { balance: newBal },
+      });
+      await tx.casinoVinusTx.update({
+        where: { externalId: origTx!.externalId },
+        data: { stake: newAmt },
+      });
+      await tx.casinoVinusTx.create({
+        data: {
+          platformId,
+          userId: userRow.id,
+          externalId: changeTid,
+          kind: 'SPORTS_BET_CHANGE',
+          gameId: origTx!.gameId,
+          roundId: origTx!.roundId,
+          stake: legDelta.abs(),
+        },
+      });
+      await tx.ledgerEntry.create({
+        data: {
+          userId: userRow.id,
+          platformId,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: legDelta.negated(),
+          balanceAfter: newBal,
+          reference: changeTid,
+          metaJson: {
+            command: 'sports-bet-change',
+            original_transaction_id: origTx!.externalId,
+            req_id: reqId,
+            bet_details: betDetailsJson ?? undefined,
+            timestamp,
+          },
+        },
+      });
+      return ok(newBal);
+    });
+  }
+
   async handleCallback(body: unknown) {
     this.assertConfigured();
     const raw = normalizeVinusRootKeys(asVinusCallbackRoot(body));
@@ -1063,6 +1398,12 @@ export class VinusService {
           'VINUS_STUB_AUTHENTICATE: sports-confirm 스텁. 운영 전 끌 것.',
         );
         return this.stubSportsConfirmOk(data);
+      }
+      if (command === 'sports-bet-change') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: sports-bet-change 스텁. 운영 전 끌 것.',
+        );
+        return this.stubSportsBetChangeOk(data);
       }
       if (command === 'win') {
         this.logger.warn(
@@ -1227,6 +1568,20 @@ export class VinusService {
           existingTx = ex;
           break;
         }
+        /** 스포츠 베팅 변경 등: req_id·금액 유효성 (벤더 check 52) */
+        case 52: {
+          if (!userRow) return fail(52);
+          const reqId =
+            typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+          if (!reqId) {
+            return fail(52, walletBal ?? undefined);
+          }
+          const amt52 = toDec(data.amount);
+          if (!amt52 || amt52.lte(0)) {
+            return fail(52, walletBal ?? undefined);
+          }
+          break;
+        }
         default:
           break;
       }
@@ -1284,6 +1639,17 @@ export class VinusService {
 
       case 'sports-confirm': {
         return this.sportsConfirmProd(platformId, userRow.id, data, fail, ok);
+      }
+
+      case 'sports-bet-change': {
+        return this.sportsBetChangeProd(
+          platformId,
+          userRow,
+          data,
+          timestamp,
+          fail,
+          ok,
+        );
       }
 
       case 'bet':
