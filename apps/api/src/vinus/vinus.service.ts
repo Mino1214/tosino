@@ -1818,11 +1818,11 @@ export class VinusService {
               break;
             }
             /**
-             * sports-win: reserve_id 없이 transaction_id(원 BET TX) + req_id(WIN TX) 로 오는 경우.
-             * req_id 가 있으면 transaction_id 는 원 BET 를 가리키므로 폴백 허용.
+             * sports-win: reserve_id 없이 req_id(WIN TX) 만 있는 BT1 패턴.
+             * 실제 BET 조회·검증은 sportsWinProd 에서 수행하므로 check 51 은 스킵.
              */
             if (command === 'sports-win' && vinusStrId(data.req_id)) {
-              reserveBet = vinusStrId(data.transaction_id);
+              break;
             }
             if (!reserveBet) {
               return fail(51, walletBal ?? new Prisma.Decimal(0));
