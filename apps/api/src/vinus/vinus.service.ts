@@ -79,6 +79,39 @@ function coerceVinusUserIdFromPayload(
   }
 }
 
+/** reserve_id 키 누락·ReserveId·reservation_id 등 */
+function coerceVinusReserveIdFromPayload(
+  data: Record<string, unknown>,
+  raw: Record<string, unknown>,
+): void {
+  const cur = vinusStrId(data.reserve_id);
+  if (cur) {
+    data.reserve_id = cur;
+    return;
+  }
+  const pools: Record<string, unknown>[] = [data];
+  if (raw.data && typeof raw.data === 'object' && !Array.isArray(raw.data)) {
+    pools.push(raw.data as Record<string, unknown>);
+  }
+  pools.push(raw);
+  for (const obj of pools) {
+    for (const k of Object.keys(obj)) {
+      const compact = k.replace(/[\s_-]/g, '').toLowerCase();
+      if (
+        compact === 'reserveid' ||
+        compact === 'reservationid' ||
+        compact === 'bookingid'
+      ) {
+        const s = vinusStrId(obj[k]);
+        if (s) {
+          data.reserve_id = s;
+          return;
+        }
+      }
+    }
+  }
+}
+
 function nickForVinus(displayName: string | null, loginId: string): string {
   const raw = (displayName?.trim() || loginId).slice(0, 25);
   return raw.length >= 2 ? raw : `${loginId}`.slice(0, 25).padEnd(2, '0');
@@ -1479,6 +1512,7 @@ export class VinusService {
     const data = mergeVinusDataPayload(raw);
     normalizeVinusDataKeys(data);
     coerceVinusUserIdFromPayload(data, raw);
+    coerceVinusReserveIdFromPayload(data, raw);
     normalizeVinusTokenInData(data);
     const timestamp =
       typeof raw.timestamp === 'number'
@@ -1683,13 +1717,16 @@ export class VinusService {
           existingTx = ex;
           break;
         }
-        /** check 51: sports-bet는 reserve_id=예약 키(첫 베팅 시 tx 없음), sports-win은 원베팅 tid */
+        /** check 51: 예약 키·또는 기존 BET tid(sports-win). 예약 없는 단건 sports-bet은 스킵 */
         case 51: {
           if (!userRow) {
             return fail(51, new Prisma.Decimal(0));
           }
           const reserveBet = vinusStrId(data.reserve_id);
           if (!reserveBet) {
+            if (command === 'sports-bet') {
+              break;
+            }
             return fail(51, walletBal ?? new Prisma.Decimal(0));
           }
           const betRow = await this.prisma.casinoVinusTx.findUnique({
@@ -1703,9 +1740,30 @@ export class VinusService {
             existingTx = betRow;
             break;
           }
-          const reservation = await this.prisma.sportsBetReservation.findFirst({
-            where: { userId: userRow.id, reserveId: reserveBet },
-          });
+          let platformForRes = userRow.platformId;
+          if (!platformForRes) {
+            const wPl = await this.prisma.wallet.findUnique({
+              where: { userId: userRow.id },
+              select: { platformId: true },
+            });
+            platformForRes = wPl?.platformId ?? null;
+          }
+          let reservation =
+            platformForRes !== null
+              ? await this.prisma.sportsBetReservation.findUnique({
+                  where: {
+                    platformId_reserveId: {
+                      platformId: platformForRes,
+                      reserveId: reserveBet,
+                    },
+                  },
+                })
+              : null;
+          if (!reservation) {
+            reservation = await this.prisma.sportsBetReservation.findFirst({
+              where: { userId: userRow.id, reserveId: reserveBet },
+            });
+          }
           if (reservation) {
             break;
           }
@@ -1873,11 +1931,7 @@ export class VinusService {
 
       case 'bet':
       case 'sports-bet': {
-        if (
-          command === 'sports-bet' &&
-          typeof data.reserve_id === 'string' &&
-          data.reserve_id.replace(/\s/g, '') !== ''
-        ) {
+        if (command === 'sports-bet' && vinusStrId(data.reserve_id) !== '') {
           return this.sportsBetWithReserveProd(
             platformId,
             userRow,
