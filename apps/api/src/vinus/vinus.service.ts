@@ -126,6 +126,51 @@ function normalizeVinusRootKeys(raw: Record<string, unknown>): Record<string, un
   return out;
 }
 
+/** 루트 command/check 벤더 오타·중첩 보정 (미인식 시 default→99 방지) */
+function coerceVinusCallbackAliases(raw: Record<string, unknown>): void {
+  const cmd = raw.command;
+  if (
+    cmd === undefined ||
+    cmd === null ||
+    (typeof cmd === 'string' && cmd.trim() === '')
+  ) {
+    for (const k of ['cormand', 'comand', 'commmand']) {
+      const v = raw[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') {
+        raw.command = v;
+        break;
+      }
+    }
+  }
+  if (
+    raw.command === undefined ||
+    raw.command === null ||
+    (typeof raw.command === 'string' && raw.command.trim() === '')
+  ) {
+    const data = raw.data;
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const d = data as Record<string, unknown>;
+      for (const k of ['command', 'cormand', 'comand', 'commmand']) {
+        const v = d[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') {
+          raw.command = v;
+          break;
+        }
+      }
+    }
+  }
+  const ck = raw.check;
+  if (ck === undefined || ck === null || ck === '') {
+    const data = raw.data;
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const d = data as Record<string, unknown>;
+      if (d.check !== undefined && d.check !== null && d.check !== '') {
+        raw.check = d.check;
+      }
+    }
+  }
+}
+
 /**
  * data 키에 끼는 공백·오타 보정 (JSON 키가 "game _id", "amoun t" 등일 때)
  * 공백 제거한 키명으로 표준 필드에 매핑
@@ -1567,13 +1612,20 @@ export class VinusService {
   async handleCallback(body: unknown) {
     this.assertConfigured();
     const raw = normalizeVinusRootKeys(asVinusCallbackRoot(body));
+    coerceVinusCallbackAliases(raw);
     const command = normalizeVinusCommand(raw.command);
-    const checkStr = String(raw.check ?? '').replace(/\s/g, '');
-    const checks = checkStr
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => Number(s));
+    const rawCheck = raw.check;
+    const checks: number[] = Array.isArray(rawCheck)
+      ? rawCheck
+          .map((x) => Number(x))
+          .filter((n) => !Number.isNaN(n))
+      : String(rawCheck ?? '')
+          .replace(/\s/g, '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => Number(s))
+          .filter((n) => !Number.isNaN(n));
 
     const data = mergeVinusDataPayload(raw);
     normalizeVinusDataKeys(data);
@@ -1860,11 +1912,82 @@ export class VinusService {
       }
     }
 
-    if (!userRow?.platformId) {
+    /** check에 11·21이 없어도 token·user_id로 사용자 복구 */
+    if (!userRow) {
+      const token = typeof data.token === 'string' ? data.token : '';
+      if (token) {
+        const sess = await this.prisma.vinusSessionToken.findUnique({
+          where: { token },
+          include: {
+            user: {
+              select: {
+                id: true,
+                loginId: true,
+                displayName: true,
+                platformId: true,
+                registrationStatus: true,
+                role: true,
+              },
+            },
+          },
+        });
+        if (sess) {
+          userRow = sess.user;
+          const w = await this.prisma.wallet.findUnique({
+            where: { userId: sess.userId },
+          });
+          walletBal = w?.balance ?? new Prisma.Decimal(0);
+        }
+      }
+    }
+    if (!userRow) {
+      const uid = typeof data.user_id === 'string' ? data.user_id : '';
+      if (uid) {
+        const found: VinusUserRow | null = await this.prisma.user.findUnique({
+          where: { id: uid },
+          select: {
+            id: true,
+            loginId: true,
+            displayName: true,
+            platformId: true,
+            registrationStatus: true,
+            role: true,
+          },
+        });
+        if (found) {
+          userRow = found;
+          const w = await this.prisma.wallet.findUnique({
+            where: { userId: uid },
+          });
+          walletBal = w?.balance ?? new Prisma.Decimal(0);
+        }
+      }
+    }
+
+    if (!userRow) {
       return fail(99);
     }
 
-    const platformId = userRow.platformId;
+    let platformId: string | null = userRow.platformId;
+    if (!platformId) {
+      const wPlat = await this.prisma.wallet.findUnique({
+        where: { userId: userRow.id },
+      });
+      platformId = wPlat?.platformId ?? null;
+    }
+    if (!platformId) {
+      const token = typeof data.token === 'string' ? data.token : '';
+      if (token) {
+        const sess = await this.prisma.vinusSessionToken.findUnique({
+          where: { token },
+          select: { platformId: true },
+        });
+        platformId = sess?.platformId ?? null;
+      }
+    }
+    if (!platformId) {
+      return fail(99);
+    }
 
     switch (command) {
       case 'authenticate': {
