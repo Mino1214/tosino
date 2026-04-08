@@ -86,6 +86,7 @@ export function CategoryGrid() {
 
   async function runVinusLaunch(c: VinusHomeCard) {
     setLaunchErr(null);
+    if (c.paused) return;
     if (!getAccessToken()) {
       router.push("/login");
       return;
@@ -95,15 +96,6 @@ export function CategoryGrid() {
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
       window.matchMedia("(max-width: 767px)").matches;
-    const pre =
-      mobile && typeof window !== "undefined"
-        ? window.open("about:blank", "_blank", "noopener,noreferrer")
-        : null;
-    if (mobile && !pre) {
-      setLaunchErr("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용해 주세요.");
-      setLaunchingSlug(null);
-      return;
-    }
     try {
       const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
         method: "POST",
@@ -120,14 +112,11 @@ export function CategoryGrid() {
           url: out.url,
           title: c.title,
           mode: c.surface,
-          preOpenedWindow: pre,
         });
         return;
       }
-      if (pre && !pre.closed) pre.close();
       setLaunchErr("게임 URL을 받지 못했습니다.");
     } catch (e) {
-      if (pre && !pre.closed) pre.close();
       setLaunchErr(e instanceof Error ? e.message : "입장 요청 실패");
     } finally {
       setLaunchingSlug(null);
@@ -152,7 +141,7 @@ export function CategoryGrid() {
         게임 입장
       </h2>
       <p className={`mb-4 text-sm ${isLight ? "text-zinc-600" : "text-zinc-500"}`}>
-        카지노(PC)는 새 창 · 모바일 카지노는 새 탭 · 슬롯은 iframe 전체화면(×로 닫기)
+        카지노·슬롯 모두 사이트 안 iframe(팝업 불필요) · × 또는 새 탭으로 닫기
       </p>
       {launchErr ? (
         <p className="mb-3 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
@@ -199,24 +188,44 @@ export function CategoryGrid() {
         <SlotVendorCatalog />
       ) : (
         <div className={`grid grid-cols-2 md:grid-cols-3 ${gap}`}>
-          {vinusFiltered.map((c) => (
-            <button
-              key={c.slug}
-              type="button"
-              disabled={launchingSlug !== null}
-              onClick={() => void runVinusLaunch(c)}
-              className={`${cardBase} ${c.gradient} cursor-pointer text-left disabled:opacity-60`}
-            >
-              <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
-              <div>
-                <h3 className={titleClass}>{c.title}</h3>
-                <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
-              </div>
-              <span className={arrowClass}>
-                {launchingSlug === c.slug ? "…" : "→"}
-              </span>
-            </button>
-          ))}
+          {vinusFiltered.map((c) => {
+            const paused = c.paused === true;
+            return (
+              <button
+                key={c.slug}
+                type="button"
+                disabled={paused || launchingSlug !== null}
+                onClick={() => void runVinusLaunch(c)}
+                className={`${cardBase} ${c.gradient} text-left ${
+                  paused
+                    ? "cursor-not-allowed opacity-80"
+                    : "cursor-pointer disabled:opacity-60"
+                }`}
+              >
+                {paused ? (
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-black/55"
+                    aria-hidden
+                  >
+                    <span className="text-3xl font-extralight leading-none text-white/90 sm:text-4xl">
+                      ／
+                    </span>
+                    <span className="rounded bg-black/65 px-2 py-0.5 text-[11px] font-bold tracking-wide text-amber-200 ring-1 ring-white/25">
+                      일시중지
+                    </span>
+                  </div>
+                ) : null}
+                <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
+                <div>
+                  <h3 className={titleClass}>{c.title}</h3>
+                  <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
+                </div>
+                <span className={arrowClass}>
+                  {paused ? "—" : launchingSlug === c.slug ? "…" : "→"}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 

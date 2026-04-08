@@ -3,11 +3,10 @@
  * 갱신: `pnpm run vinus:vendor-matrix` (apps/api)
  *
  * surface
- * - casino-window: 팝업 창 + 내부 iframe (카지노·라이브 공통)
- * - slot-iframe: 메인 앱 16:9 모달 (하바네로·마이크로 슬롯)
- * - new-tab: 브라우저 새 탭 직접 열기
- * - 모바일: 카지노만 새 탭(프리탭). 슬롯은 `slot-iframe` = 전체화면 레이어+iframe(×).
- * - PC: 카지노는 새 창+iframe, 슬롯은 16:9 모달 또는 전체에 가깝게.
+ * - casino-window: **앱 내부** 전체화면에 가까운 iframe(팝업 없음 · 허용 불필요)
+ * - slot-iframe: 앱 내 모달 · PC는 16:9
+ * - new-tab: 새 탭
+ * - `paused`: 홈 카드만 표시용 — 입장 비활성(일시중지)
  *
  * ---
  * 개별 슬롯(게임 ID) 목록을 "가져오기":
@@ -33,6 +32,8 @@ export type VinusHomeCard = {
   surface: LaunchSurface;
   category: "casino" | "slot";
   embedNote?: string;
+  /** true면 카드만 보이고 입장 불가(미개통 등) */
+  paused?: boolean;
 };
 
 /**
@@ -44,13 +45,14 @@ export const VINUS_VERIFIED_HOME_CARDS: VinusHomeCard[] = [
     slug: "evolution",
     category: "casino",
     title: "에볼루션",
-    subtitle: "라이브 카지노 · 로비",
+    subtitle: "일시중지",
     icon: "🎰",
     gradient: "from-emerald-900/45 to-zinc-950",
     vendor: "evolution",
     game: "lobby",
     method: "transfer",
     surface: "casino-window",
+    paused: true,
   },
   {
     slug: "agin",
@@ -104,19 +106,20 @@ export const VINUS_VERIFIED_HOME_CARDS: VinusHomeCard[] = [
     slug: "wm",
     category: "casino",
     title: "WM게이밍",
-    subtitle: "라이브 · 로비",
+    subtitle: "일시중지",
     icon: "♠️",
     gradient: "from-zinc-700/50 to-zinc-950",
     vendor: "wm",
     game: "lobby",
     method: "transfer",
     surface: "casino-window",
+    paused: true,
   },
   {
     slug: "betgame-tv",
     category: "casino",
     title: "벳게임TV",
-    subtitle: "라이브 · 로비",
+    subtitle: "일시중지",
     icon: "📺",
     gradient: "from-rose-900/35 to-zinc-950",
     vendor: "betgames",
@@ -124,18 +127,20 @@ export const VINUS_VERIFIED_HOME_CARDS: VinusHomeCard[] = [
     method: "transfer",
     surface: "casino-window",
     embedNote: "Vinus vendor가 betgames가 아니면 계약서 vendor명으로 교체",
+    paused: true,
   },
   {
     slug: "skywind",
     category: "casino",
     title: "스카이윈드",
-    subtitle: "라이브 · 로비",
+    subtitle: "일시중지",
     icon: "🌪️",
     gradient: "from-cyan-900/40 to-zinc-950",
     vendor: "skywind",
     game: "lobby",
     method: "transfer",
     surface: "casino-window",
+    paused: true,
   },
 ];
 
