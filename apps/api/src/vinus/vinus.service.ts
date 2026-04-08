@@ -134,7 +134,7 @@ function coerceVinusCallbackAliases(raw: Record<string, unknown>): void {
     cmd === null ||
     (typeof cmd === 'string' && cmd.trim() === '')
   ) {
-    for (const k of ['cormand', 'comand', 'commmand']) {
+    for (const k of ['cormand', 'comand', 'commmand', 'conmand']) {
       const v = raw[k];
       if (v !== undefined && v !== null && String(v).trim() !== '') {
         raw.command = v;
@@ -150,7 +150,7 @@ function coerceVinusCallbackAliases(raw: Record<string, unknown>): void {
     const data = raw.data;
     if (data && typeof data === 'object' && !Array.isArray(data)) {
       const d = data as Record<string, unknown>;
-      for (const k of ['command', 'cormand', 'comand', 'commmand']) {
+      for (const k of ['command', 'cormand', 'comand', 'commmand', 'conmand']) {
         const v = d[k];
         if (v !== undefined && v !== null && String(v).trim() !== '') {
           raw.command = v;
@@ -349,6 +349,8 @@ export class VinusService {
   >();
   /** 스텁: reserve_id:req_id → 처리한 transaction_id */
   private stubSportsReqToTid = new Map<string, string>();
+  /** 스텁: 베팅 req_id → transaction_id (bet-change가 원베팅을 req_id만으로 지정할 때) */
+  private stubReqIdToBetTid = new Map<string, string>();
 
   constructor(
     private prisma: PrismaService,
@@ -424,6 +426,7 @@ export class VinusService {
     this.stubCancelMeta.clear();
     this.stubSportsReserve.clear();
     this.stubSportsReqToTid.clear();
+    this.stubReqIdToBetTid.clear();
   }
 
   private stubGetWorking(): number {
@@ -514,6 +517,11 @@ export class VinusService {
       stake: Number(amount.toFixed(2)),
       cancelled: false,
     });
+    const reqOnly =
+      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+    if (reqOnly) {
+      this.stubReqIdToBetTid.set(reqOnly, tid);
+    }
     return { result: 0, status: 'OK', data: { balance: newBal } };
   }
 
@@ -756,6 +764,7 @@ export class VinusService {
     this.stubWorkingBal = newBal;
     res.consumed += Number(amt.toFixed(2));
     this.stubSportsReqToTid.set(rk, tid);
+    this.stubReqIdToBetTid.set(reqId, tid);
     this.stubCancelMeta.set(tid, {
       kind: 'bet',
       stake: Number(amt.toFixed(2)),
@@ -776,11 +785,22 @@ export class VinusService {
       typeof data.original_transaction_id === 'string'
         ? data.original_transaction_id.replace(/\s/g, '')
         : '';
-    const origTid =
-      origFromField ||
-      (typeof data.reserve_id === 'string'
+    const ridRaw =
+      typeof data.reserve_id === 'string'
         ? data.reserve_id.replace(/\s/g, '')
-        : '');
+        : '';
+    const reqRaw =
+      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+    let origTid =
+      origFromField ||
+      ridRaw ||
+      (reqRaw ? this.stubReqIdToBetTid.get(reqRaw) ?? '' : '');
+    if (!origTid && reqRaw) {
+      const byReq = this.stubCancelMeta.get(reqRaw);
+      if (byReq?.kind === 'bet') {
+        origTid = reqRaw;
+      }
+    }
     const newAmt = toDec(data.amount);
     if (!changeTid || !origTid || !newAmt || newAmt.lte(0)) {
       return { result: 99, status: 'ERROR', data: {} };
@@ -814,10 +834,8 @@ export class VinusService {
       stake: Number(newAmt.toFixed(2)),
       cancelled: false,
     });
-    const rid =
-      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
-    if (rid) {
-      const res = this.stubSportsReserve.get(rid);
+    if (ridRaw) {
+      const res = this.stubSportsReserve.get(ridRaw);
       if (res) {
         res.consumed += delta;
       }
@@ -1401,13 +1419,28 @@ export class VinusService {
         where: { externalId: rid },
       });
     }
-    if (!origTx && reqId && roundId) {
+    if (!origTx && reqId) {
+      const tByReqExt = await this.prisma.casinoVinusTx.findUnique({
+        where: { externalId: reqId },
+      });
+      if (
+        tByReqExt &&
+        tByReqExt.userId === userRow.id &&
+        (tByReqExt.kind === 'SPORTS_BET' || tByReqExt.kind === 'BET')
+      ) {
+        origTx = tByReqExt;
+      }
+    }
+    if (!origTx && reqId) {
       const txs = await this.prisma.casinoVinusTx.findMany({
         where: {
           userId: userRow.id,
-          roundId,
+          platformId,
           kind: { in: ['SPORTS_BET', 'BET'] },
+          ...(roundId ? { roundId } : {}),
         },
+        orderBy: { createdAt: 'desc' },
+        take: 120,
       });
       for (const t of txs) {
         const le = await this.prisma.ledgerEntry.findFirst({
@@ -2130,6 +2163,14 @@ export class VinusService {
               reference: tid,
               metaJson: {
                 command,
+                reserve_id:
+                  typeof data.reserve_id === 'string'
+                    ? data.reserve_id.replace(/\s/g, '')
+                    : undefined,
+                req_id:
+                  typeof data.req_id === 'string'
+                    ? data.req_id.replace(/\s/g, '')
+                    : undefined,
                 vendor:
                   typeof data.vendor === 'string' ? data.vendor : undefined,
                 game_sort:
