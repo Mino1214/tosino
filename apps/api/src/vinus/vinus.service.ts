@@ -172,6 +172,9 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     sportsbetconmit: 'sports-bet-commit',
     'sports-win': 'sports-win',
     sportswin: 'sports-win',
+    /** 스포츠 베팅 취소 (BT1 sports-cancel) */
+    'sports-cancel': 'sports-cancel',
+    sportscancel: 'sports-cancel',
   };
   return m[raw] ?? m[compact] ?? raw;
 }
@@ -1876,12 +1879,14 @@ export class VinusService {
           if (!userRow) {
             return fail(52, new Prisma.Decimal(0));
           }
-          /** 확정·주문·예약: 금액·req_id가 없거나 0인 페이로드가 정상 (52는 변경 요청용) */
+          /** 확정·주문·예약·취소: 금액·req_id가 없거나 0인 페이로드가 정상 (52는 변경 요청용) */
           if (
             command === 'sports-bet-commit' ||
             command === 'sports-confirm' ||
             command === 'sports-order' ||
-            command === 'sports-reserve'
+            command === 'sports-reserve' ||
+            command === 'sports-cancel' ||
+            command === 'cancel'
           ) {
             break;
           }
@@ -2305,6 +2310,7 @@ export class VinusService {
         });
       }
 
+      case 'sports-cancel':
       case 'cancel': {
         const tid =
           typeof data.transaction_id === 'string' ? data.transaction_id : '';
@@ -2317,7 +2323,20 @@ export class VinusService {
           });
           if (ex) row = ex;
         }
-        if (!row) return fail(99);
+        if (!row) {
+          /** sports-cancel: BET TX 없으면 멱등 성공으로 처리 (재요청 허용) */
+          if (command === 'sports-cancel') {
+            const wMiss = await this.prisma.wallet.findUnique({
+              where: { userId: userRow.id },
+            });
+            return okCancel(
+              wMiss?.balance ?? new Prisma.Decimal(0),
+              uid,
+              tid,
+            );
+          }
+          return fail(99);
+        }
         if (row.cancelledAt) {
           const w = await this.prisma.wallet.findUnique({
             where: { userId: userRow.id },
@@ -2337,6 +2356,17 @@ export class VinusService {
               where: { userId: userRow!.id },
             });
             return okCancel(w!.balance, uid, tid);
+          }
+          /** sports-cancel 은 BET/SPORTS_BET 만 취소 허용 */
+          if (
+            command === 'sports-cancel' &&
+            cur.kind !== 'BET' &&
+            cur.kind !== 'SPORTS_BET'
+          ) {
+            const w = await tx.wallet.findUnique({
+              where: { userId: userRow!.id },
+            });
+            return fail(99, w?.balance ?? new Prisma.Decimal(0));
           }
           const w0 = await tx.wallet.findUnique({
             where: { userId: userRow!.id },
@@ -2370,7 +2400,7 @@ export class VinusService {
               amount: delta,
               balanceAfter: newBal,
               reference: `cancel:${tid}`,
-              metaJson: { command: 'cancel', timestamp },
+              metaJson: { command, timestamp },
             },
           });
           return okCancel(newBal, uid, tid);
