@@ -64,6 +64,9 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     promowin: 'promoWin',
     bonus: 'bonus',
     confirm: 'confirm',
+    sportsreserve: 'sports-reserve',
+    sportsorder: 'sports-order',
+    sportsconfirm: 'sports-confirm',
   };
   return m[raw] ?? m[compact] ?? raw;
 }
@@ -86,6 +89,7 @@ const VINUS_PAYLOAD_FIELDS_IN_DATA = [
   'bet_type',
   'req_id',
   'bet_count',
+  'reserve_id',
 ] as const;
 
 function asVinusCallbackRoot(input: unknown): Record<string, unknown> {
@@ -142,6 +146,8 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
     reqid: 'req_id',
     bet_count: 'bet_count',
     betcount: 'bet_count',
+    reserve_id: 'reserve_id',
+    reserveid: 'reserve_id',
     r: 'vendor',
   };
   const keys = Object.keys(data);
@@ -152,7 +158,14 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
       data[canon] = data[k];
     }
   }
-  for (const k of ['user_id', 'transaction_id', 'game_id', 'round_id', 'token']) {
+  for (const k of [
+    'user_id',
+    'transaction_id',
+    'game_id',
+    'round_id',
+    'token',
+    'reserve_id',
+  ]) {
     if (typeof data[k] === 'string') {
       data[k] = (data[k] as string).replace(/\s/g, '');
     }
@@ -212,6 +225,19 @@ export class VinusService {
   /** win-add: "tid:금액" → 처리 후 잔액 (동일 추가지급 재요청 멱등) */
   private stubWinAddIdem = new Map<string, number>();
   private stubCancelMeta = new Map<string, VinusStubCancelRow>();
+
+  /** 스텁: 스포츠 예약·실제 소비 (reserve_id 키) */
+  private stubSportsReserve = new Map<
+    string,
+    {
+      amount: number;
+      consumed: number;
+      orderTid?: string;
+      status: string;
+    }
+  >();
+  /** 스텁: reserve_id:req_id → 처리한 transaction_id */
+  private stubSportsReqToTid = new Map<string, string>();
 
   constructor(
     private prisma: PrismaService,
@@ -285,6 +311,8 @@ export class VinusService {
     this.stubWinProcessed.clear();
     this.stubWinAddIdem.clear();
     this.stubCancelMeta.clear();
+    this.stubSportsReserve.clear();
+    this.stubSportsReqToTid.clear();
   }
 
   private stubGetWorking(): number {
@@ -478,6 +506,153 @@ export class VinusService {
     return okCancelBody(newBal);
   }
 
+  private stubSportsReserveOk(
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    const amt = toDec(data.amount);
+    const orderTid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    if (!rid || !amt || amt.lte(0)) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const cur = this.stubSportsReserve.get(rid);
+    const bal = this.stubGetWorking();
+    if (cur) {
+      if (Math.abs(cur.amount - Number(amt.toFixed(2))) > 0.001) {
+        return { result: 99, status: 'ERROR', data: {} };
+      }
+      if (orderTid) {
+        if (cur.orderTid === orderTid) {
+          return { result: 0, status: 'OK', data: { balance: bal } };
+        }
+        if (cur.orderTid) {
+          return { result: 99, status: 'ERROR', data: {} };
+        }
+        cur.orderTid = orderTid;
+        cur.status = 'ORDERED';
+      }
+      return { result: 0, status: 'OK', data: { balance: bal } };
+    }
+    this.stubSportsReserve.set(rid, {
+      amount: Number(amt.toFixed(2)),
+      consumed: 0,
+      orderTid: orderTid || undefined,
+      status: orderTid ? 'ORDERED' : 'PENDING',
+    });
+    return { result: 0, status: 'OK', data: { balance: bal } };
+  }
+
+  private stubSportsOrderOk(
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    const orderTid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    if (!rid || !orderTid) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const cur = this.stubSportsReserve.get(rid);
+    const bal = this.stubGetWorking();
+    if (!cur) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    if (cur.orderTid === orderTid) {
+      return { result: 0, status: 'OK', data: { balance: bal } };
+    }
+    if (cur.orderTid) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    cur.orderTid = orderTid;
+    cur.status = 'ORDERED';
+    return { result: 0, status: 'OK', data: { balance: bal } };
+  }
+
+  private stubSportsConfirmOk(
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    if (!rid) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const cur = this.stubSportsReserve.get(rid);
+    const bal = this.stubGetWorking();
+    if (!cur) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    cur.status = 'CONFIRMED';
+    return { result: 0, status: 'OK', data: { balance: bal } };
+  }
+
+  /** 스텁: 예약 연동 sports-bet (reserve_id + req_id) */
+  private stubSportsBetReservedOk(
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    const reqId =
+      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+    const tid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const amt = toDec(data.amount);
+    if (!rid || !reqId || !tid || !amt || amt.lte(0)) {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const res = this.stubSportsReserve.get(rid);
+    if (!res || res.status === 'CONFIRMED') {
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const rem = res.amount - res.consumed;
+    if (Number(amt.toFixed(2)) > rem + 0.001) {
+      return {
+        result: 31,
+        status: 'ERROR',
+        data: { balance: this.stubGetWorking() },
+      };
+    }
+    const rk = `${rid}:${reqId}`;
+    const prevTid = this.stubSportsReqToTid.get(rk);
+    if (prevTid !== undefined) {
+      if (prevTid === tid) {
+        const cached = this.stubTxEndingBalance.get(tid);
+        if (cached !== undefined) {
+          return { result: 0, status: 'OK', data: { balance: cached } };
+        }
+      }
+      return { result: 99, status: 'ERROR', data: {} };
+    }
+    const curBal = this.stubGetWorking();
+    if (curBal < Number(amt.toFixed(2))) {
+      return {
+        result: 31,
+        status: 'ERROR',
+        data: { balance: curBal },
+      };
+    }
+    const newBal = Number(
+      new Prisma.Decimal(curBal).minus(amt).toFixed(2),
+    );
+    this.stubTxEndingBalance.set(tid, newBal);
+    this.stubWorkingBal = newBal;
+    res.consumed += Number(amt.toFixed(2));
+    this.stubSportsReqToTid.set(rk, tid);
+    this.stubCancelMeta.set(tid, {
+      kind: 'bet',
+      stake: Number(amt.toFixed(2)),
+      cancelled: false,
+    });
+    return { result: 0, status: 'OK', data: { balance: newBal } };
+  }
+
   private get baseUrl(): string {
     return (
       this.config.get<string>('VINUS_GAME_BASE_URL')?.trim() ||
@@ -537,6 +712,282 @@ export class VinusService {
     throw new BadRequestException(msg);
   }
 
+  /** 예약 베팅: reserve_id·예약 금액·(선택) 주문 transaction_id 멱등 */
+  private async sportsReserveProd(
+    platformId: string,
+    userId: string,
+    data: Record<string, unknown>,
+    fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
+    ok: (balance: Prisma.Decimal) => Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    const amt = toDec(data.amount);
+    const orderTid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    if (!rid || !amt || amt.lte(0)) {
+      return fail(99);
+    }
+    const w = await this.prisma.wallet.findUnique({ where: { userId } });
+    if (!w) {
+      return fail(99);
+    }
+    const existing = await this.prisma.sportsBetReservation.findUnique({
+      where: { platformId_reserveId: { platformId, reserveId: rid } },
+    });
+    if (existing) {
+      if (existing.userId !== userId) {
+        return fail(99);
+      }
+      if (!existing.reservedAmount.eq(amt)) {
+        return fail(99);
+      }
+      if (orderTid) {
+        if (existing.orderIdempotencyKey === orderTid) {
+          return ok(w.balance);
+        }
+        if (existing.orderIdempotencyKey) {
+          return fail(99);
+        }
+        await this.prisma.sportsBetReservation.update({
+          where: { id: existing.id },
+          data: { orderIdempotencyKey: orderTid, status: 'ORDERED' },
+        });
+        const w2 = await this.prisma.wallet.findUnique({ where: { userId } });
+        return ok(w2!.balance);
+      }
+      return ok(w.balance);
+    }
+    await this.prisma.sportsBetReservation.create({
+      data: {
+        platformId,
+        userId,
+        reserveId: rid,
+        reservedAmount: amt,
+        consumedAmount: new Prisma.Decimal(0),
+        status: orderTid ? 'ORDERED' : 'PENDING',
+        orderIdempotencyKey: orderTid || null,
+      },
+    });
+    return ok(w.balance);
+  }
+
+  /** 예약 후 주문만 분리할 때: reserve_id + transaction_id(멱등) */
+  private async sportsOrderProd(
+    platformId: string,
+    userId: string,
+    data: Record<string, unknown>,
+    fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
+    ok: (balance: Prisma.Decimal) => Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    const orderTid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    if (!rid || !orderTid) {
+      return fail(99);
+    }
+    const existing = await this.prisma.sportsBetReservation.findUnique({
+      where: { platformId_reserveId: { platformId, reserveId: rid } },
+    });
+    const w = await this.prisma.wallet.findUnique({ where: { userId } });
+    if (!existing || existing.userId !== userId || !w) {
+      return fail(99);
+    }
+    if (existing.orderIdempotencyKey === orderTid) {
+      return ok(w.balance);
+    }
+    if (existing.orderIdempotencyKey) {
+      return fail(99);
+    }
+    await this.prisma.sportsBetReservation.update({
+      where: { id: existing.id },
+      data: { orderIdempotencyKey: orderTid, status: 'ORDERED' },
+    });
+    const w2 = await this.prisma.wallet.findUnique({ where: { userId } });
+    return ok(w2!.balance);
+  }
+
+  private async sportsConfirmProd(
+    platformId: string,
+    userId: string,
+    data: Record<string, unknown>,
+    fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
+    ok: (balance: Prisma.Decimal) => Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    if (!rid) {
+      return fail(99);
+    }
+    const existing = await this.prisma.sportsBetReservation.findUnique({
+      where: { platformId_reserveId: { platformId, reserveId: rid } },
+    });
+    const w = await this.prisma.wallet.findUnique({ where: { userId } });
+    if (!existing || existing.userId !== userId || !w) {
+      return fail(99);
+    }
+    if (existing.status === 'CONFIRMED') {
+      return ok(w.balance);
+    }
+    await this.prisma.sportsBetReservation.update({
+      where: { id: existing.id },
+      data: { status: 'CONFIRMED' },
+    });
+    const w2 = await this.prisma.wallet.findUnique({ where: { userId } });
+    return ok(w2!.balance);
+  }
+
+  /** 실제 베팅: reserve_id + req_id + amount, 합계 ≤ 예약 금액 */
+  private async sportsBetWithReserveProd(
+    platformId: string,
+    userRow: VinusUserRow,
+    data: Record<string, unknown>,
+    timestamp: number | undefined,
+    fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
+    ok: (balance: Prisma.Decimal) => Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const rid =
+      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
+    const reqId =
+      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+    const tid =
+      typeof data.transaction_id === 'string'
+        ? data.transaction_id.replace(/\s/g, '')
+        : '';
+    const amount = toDec(data.amount);
+    if (!rid || !reqId || !tid || !amount || amount.lte(0)) {
+      return fail(99);
+    }
+
+    const dupTx = await this.prisma.casinoVinusTx.findUnique({
+      where: { externalId: tid },
+    });
+    if (dupTx) {
+      const w = await this.prisma.wallet.findUnique({
+        where: { userId: userRow.id },
+      });
+      if (!w) {
+        return fail(99);
+      }
+      if (!dupTx.cancelledAt) {
+        return ok(w.balance);
+      }
+      return fail(41, w.balance);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const res = await tx.sportsBetReservation.findUnique({
+        where: {
+          platformId_reserveId: { platformId, reserveId: rid },
+        },
+      });
+      if (!res || res.userId !== userRow.id) {
+        return fail(99);
+      }
+      if (res.status === 'CONFIRMED') {
+        return fail(99);
+      }
+      const remaining = res.reservedAmount.minus(res.consumedAmount);
+      if (amount.gt(remaining)) {
+        const w = await tx.wallet.findUnique({
+          where: { userId: userRow.id },
+        });
+        return fail(31, w?.balance ?? new Prisma.Decimal(0));
+      }
+
+      const dupActual = await tx.sportsBetActual.findUnique({
+        where: {
+          reservationId_reqId: { reservationId: res.id, reqId },
+        },
+      });
+      if (dupActual) {
+        const w = await tx.wallet.findUnique({
+          where: { userId: userRow.id },
+        });
+        if (!w) {
+          return fail(99);
+        }
+        return ok(w.balance);
+      }
+
+      const w0 = await tx.wallet.findUnique({
+        where: { userId: userRow.id },
+      });
+      if (!w0) {
+        return fail(99);
+      }
+      if (w0.balance.lt(amount)) {
+        return fail(31, w0.balance);
+      }
+      const newBal = w0.balance.minus(amount);
+      await tx.wallet.update({
+        where: { id: w0.id },
+        data: { balance: newBal },
+      });
+      await tx.sportsBetReservation.update({
+        where: { id: res.id },
+        data: {
+          consumedAmount: res.consumedAmount.plus(amount),
+        },
+      });
+      await tx.sportsBetActual.create({
+        data: {
+          platformId,
+          userId: userRow.id,
+          reservationId: res.id,
+          reqId,
+          externalId: tid,
+          amount,
+        },
+      });
+      await tx.casinoVinusTx.create({
+        data: {
+          platformId,
+          userId: userRow.id,
+          externalId: tid,
+          kind: 'SPORTS_BET',
+          gameId:
+            typeof data.game_id === 'string' ? data.game_id : undefined,
+          roundId:
+            typeof data.round_id === 'string' ? data.round_id : undefined,
+          stake: amount,
+        },
+      });
+      await tx.ledgerEntry.create({
+        data: {
+          userId: userRow.id,
+          platformId,
+          type: LedgerEntryType.BET,
+          amount: amount.negated(),
+          balanceAfter: newBal,
+          reference: tid,
+          metaJson: {
+            command: 'sports-bet',
+            reserve_id: rid,
+            req_id: reqId,
+            vendor:
+              typeof data.vendor === 'string' ? data.vendor : undefined,
+            game_type:
+              typeof data.game_type === 'string' ? data.game_type : undefined,
+            game_sort:
+              typeof data.game_sort === 'string' ? data.game_sort : undefined,
+            bet_type:
+              typeof data.bet_type === 'string' ? data.bet_type : undefined,
+            bet_count:
+              typeof data.bet_count === 'number' ? data.bet_count : undefined,
+            timestamp,
+          },
+        },
+      });
+      return ok(newBal);
+    });
+  }
+
   async handleCallback(body: unknown) {
     this.assertConfigured();
     const raw = normalizeVinusRootKeys(asVinusCallbackRoot(body));
@@ -585,9 +1036,33 @@ export class VinusService {
       }
       if (command === 'sports-bet') {
         this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: sports-bet 스텁 (bet와 동일·transaction_id 멱등). 운영 전 끌 것.',
+          'VINUS_STUB_AUTHENTICATE: sports-bet 스텁 (reserve_id 있으면 예약 연동). 운영 전 끌 것.',
         );
+        if (
+          typeof data.reserve_id === 'string' &&
+          data.reserve_id.replace(/\s/g, '') !== ''
+        ) {
+          return this.stubSportsBetReservedOk(data);
+        }
         return this.stubBetOk(data);
+      }
+      if (command === 'sports-reserve') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: sports-reserve 스텁 (예약·주문 멱등). 운영 전 끌 것.',
+        );
+        return this.stubSportsReserveOk(data);
+      }
+      if (command === 'sports-order') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: sports-order 스텁 (주문 transaction_id 멱등). 운영 전 끌 것.',
+        );
+        return this.stubSportsOrderOk(data);
+      }
+      if (command === 'sports-confirm') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: sports-confirm 스텁. 운영 전 끌 것.',
+        );
+        return this.stubSportsConfirmOk(data);
       }
       if (command === 'win') {
         this.logger.warn(
@@ -793,8 +1268,40 @@ export class VinusService {
         };
       }
 
+      case 'sports-reserve': {
+        return this.sportsReserveProd(
+          platformId,
+          userRow.id,
+          data,
+          fail,
+          ok,
+        );
+      }
+
+      case 'sports-order': {
+        return this.sportsOrderProd(platformId, userRow.id, data, fail, ok);
+      }
+
+      case 'sports-confirm': {
+        return this.sportsConfirmProd(platformId, userRow.id, data, fail, ok);
+      }
+
       case 'bet':
       case 'sports-bet': {
+        if (
+          command === 'sports-bet' &&
+          typeof data.reserve_id === 'string' &&
+          data.reserve_id.replace(/\s/g, '') !== ''
+        ) {
+          return this.sportsBetWithReserveProd(
+            platformId,
+            userRow,
+            data,
+            timestamp,
+            fail,
+            ok,
+          );
+        }
         const tid =
           typeof data.transaction_id === 'string' ? data.transaction_id : '';
         const amount = toDec(data.amount);

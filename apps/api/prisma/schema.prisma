@@ -95,6 +95,7 @@ model Platform {
   agentInquiries       AgentInquiry[]
   vinusSessionTokens   VinusSessionToken[]
   casinoVinusTxs       CasinoVinusTx[]
+  sportsBetReservations SportsBetReservation[]
 }
 
 /// Vinus Gaming 게임 실행 시 회원 식별용(15~25자). 입장 시마다 재발급.
@@ -130,6 +131,46 @@ model CasinoVinusTx {
 
   @@index([platformId, userId])
   @@index([userId, gameId, roundId])
+}
+
+/// 스포츠 예약 베팅(reserve_id) · 실제 베팅(req_id) · 확정
+model SportsBetReservation {
+  id                  String   @id @default(cuid())
+  platformId          String
+  platform            Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** 벤더 예약 식별자 (플랫폼 내 유일) */
+  reserveId           String   @db.VarChar(64)
+  reservedAmount      Decimal  @db.Decimal(18, 2)
+  consumedAmount      Decimal  @default(0) @db.Decimal(18, 2)
+  /** PENDING → ORDERED(주문 멱등 설정) → CONFIRMED(확정) */
+  status              String   @default("PENDING") @db.VarChar(24)
+  /** 같은 주문 재요청 멱등 키 (베팅 주문 transaction_id) */
+  orderIdempotencyKey String?  @unique @db.VarChar(64)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  actuals SportsBetActual[]
+
+  @@unique([platformId, reserveId])
+  @@index([userId, reserveId])
+}
+
+model SportsBetActual {
+  id             String               @id @default(cuid())
+  platformId     String
+  userId         String
+  reservationId  String
+  reservation    SportsBetReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  /** 동일 reserve_id 내 개별 실제 베팅 구분 */
+  reqId          String               @db.VarChar(64)
+  externalId     String               @unique @db.VarChar(64)
+  amount         Decimal              @db.Decimal(18, 2)
+  createdAt      DateTime             @default(now())
+
+  @@unique([reservationId, reqId])
+  @@index([platformId, userId])
 }
 
 /// 모바일 공지 팝업용 이미지(최대 4). 권장 비율 약 367×451px.
@@ -239,6 +280,7 @@ model User {
   agentInquiriesReplied      AgentInquiry[]            @relation("AgentInquiryReplier")
   vinusSessionTokens         VinusSessionToken[]
   casinoVinusTxs             CasinoVinusTx[]
+  sportsBetReservations      SportsBetReservation[]
 
   @@index([platformId])
   @@index([parentUserId])
