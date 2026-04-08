@@ -302,6 +302,50 @@ async function main() {
     console.log('Created USER', uEmail);
   }
 
+  /** Vinus/BT1 콜백 시드: user_id·loginId·PK 모두 `stub-user-dev` (VINUS_STUB_USER_ID 기본값과 일치) */
+  const vinusStubId = 'stub-user-dev';
+  const maForVinus = await prisma.user.findFirst({
+    where: { loginId: maLid, platformId: platform.id },
+  });
+  if (maForVinus) {
+    const vinusStubBal = new Prisma.Decimal(
+      Number(process.env.VINUS_STUB_SEED_BALANCE ?? '100000') || 100000,
+    );
+    await prisma.user.upsert({
+      where: { id: vinusStubId },
+      create: {
+        id: vinusStubId,
+        loginId: vinusStubId,
+        email: 'vinus-stub@tosino.local',
+        passwordHash,
+        role: UserRole.USER,
+        platformId: platform.id,
+        parentUserId: maForVinus.id,
+        displayName: 'Vinus Stub (BT1)',
+        registrationStatus: RegistrationStatus.APPROVED,
+      },
+      update: {
+        platformId: platform.id,
+        registrationStatus: RegistrationStatus.APPROVED,
+      },
+    });
+    await prisma.wallet.upsert({
+      where: { userId: vinusStubId },
+      create: {
+        userId: vinusStubId,
+        platformId: platform.id,
+        balance: vinusStubBal,
+      },
+      update: {
+        platformId: platform.id,
+        balance: vinusStubBal,
+      },
+    });
+    console.log(
+      `Vinus stub user: id/loginId ${vinusStubId} · wallet ${vinusStubBal.toFixed(2)}`,
+    );
+  }
+
   await prisma.syncState.createMany({
     data: [
       SyncJobType.ODDS,
@@ -517,6 +561,7 @@ async function main() {
   console.log('회원         loginId: demo_player2              → 상위 총판 master');
   console.log('회원         loginId: demo_subplayer            → 상위 총판 subagent');
   console.log('회원         loginId: demo_user_m2              → 상위 총판 demo_master2');
+  console.log('회원/Vinus   id·loginId: stub-user-dev         → BT1 콜백·VINUS_STUB_USER_ID (시드 지갑 기본 100000)');
   console.log('회원(대기)   loginId: demo_pending              → 로그인 불가 · 관리자 승인 대기');
   console.log('================================================================');
   console.log('');

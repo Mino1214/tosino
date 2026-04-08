@@ -378,6 +378,29 @@ export class VinusService {
     return v === 'true' || v === '1' || v === 'yes';
   }
 
+  /** Vinus user_id: PK(cuid) 또는 loginId(플랫폼별 유일)로 조회 — BT1이 stub-user-dev 등 고정값 보낼 때 대응 */
+  private async findUserForVinus(uid: string): Promise<VinusUserRow | null> {
+    const sel = {
+      select: {
+        id: true,
+        loginId: true,
+        displayName: true,
+        platformId: true,
+        registrationStatus: true,
+        role: true,
+      },
+    };
+    const byId = await this.prisma.user.findUnique({
+      where: { id: uid },
+      ...sel,
+    });
+    if (byId) return byId;
+    return this.prisma.user.findFirst({
+      where: { loginId: uid },
+      ...sel,
+    });
+  }
+
   /** 스텁 모드 공통 잔액 (authenticate·balance 동일) */
   private stubBalanceNumber(): number {
     const balRaw = this.config.get<string>('VINUS_STUB_BALANCE')?.trim();
@@ -390,11 +413,11 @@ export class VinusService {
   }
 
   /**
-   * 벤더 연동 테스트용: DB·토큰 매칭 없이 authenticate 성공 응답.
-   * 운영 전에 VINUS_STUB_AUTHENTICATE 끄고 실제 유저·토큰 연동 사용.
+   * 벤더 연동 테스트용: 가능하면 DB 유저·지갑과 맞춰 user_id(cuid)·잔액 반환.
+   * 그렇지 않으면 VINUS_STUB_* 고정값(스포츠 bet는 DB 경로로 이어지므로 DB 매칭 권장).
    */
-  private stubAuthenticateOk(): Record<string, unknown> {
-    let userId = (
+  private async stubAuthenticateOk(): Promise<Record<string, unknown>> {
+    const configured = (
       this.config.get<string>('VINUS_STUB_USER_ID')?.trim() || 'stub-user-dev'
     ).slice(0, 25);
     let userUsername = (
@@ -403,17 +426,34 @@ export class VinusService {
     let userNickname = (
       this.config.get<string>('VINUS_STUB_NICKNAME')?.trim() || 'StubUser'
     ).slice(0, 25);
+    const dbUser = await this.findUserForVinus(configured);
+    let userId = (dbUser?.id ?? configured).slice(0, 25);
+    if (dbUser) {
+      userUsername = dbUser.loginId.slice(0, 25);
+      userNickname = nickForVinus(
+        dbUser.displayName,
+        dbUser.loginId,
+      ).slice(0, 25);
+    }
     if (userUsername.length < 2) {
       userUsername = userUsername.padEnd(2, '0').slice(0, 25);
     }
     if (userNickname.length < 2) {
       userNickname = 'UU';
     }
-    /** authenticate마다 전체 reset 시 카지노 bet 스텁 멱등이 깨지므로 호출하지 않음 */
     if (this.stubWorkingBal === null) {
       this.stubWorkingBal = this.stubBalanceNumber();
     }
-    const balance = this.stubGetWorking();
+    let balance = this.stubGetWorking();
+    if (dbUser) {
+      const w = await this.prisma.wallet.findUnique({
+        where: { userId: dbUser.id },
+      });
+      if (w) {
+        balance = Number(w.balance.toFixed(2));
+        this.stubWorkingBal = balance;
+      }
+    }
     return {
       result: 0,
       status: 'OK',
@@ -1405,9 +1445,9 @@ export class VinusService {
     if (this.envFlag('VINUS_STUB_AUTHENTICATE')) {
       if (command === 'authenticate') {
         this.logger.warn(
-          'VINUS_STUB_AUTHENTICATE: authenticate 고정 성공 (토큰·DB 무시). 운영 전 끌 것.',
+          'VINUS_STUB_AUTHENTICATE: authenticate 고정 성공 (DB 유저 있으면 id·잔액 반영). 운영 전 끌 것.',
         );
-        return this.stubAuthenticateOk();
+        return await this.stubAuthenticateOk();
       }
       if (command === 'balance') {
         this.logger.warn(
@@ -1522,21 +1562,11 @@ export class VinusService {
           const uid = vinusStrId(data.user_id);
           if (!uid) return fail(21, new Prisma.Decimal(0));
           if (!userRow || userRow.id !== uid) {
-            const found: VinusUserRow | null = await this.prisma.user.findUnique({
-              where: { id: uid },
-              select: {
-                id: true,
-                loginId: true,
-                displayName: true,
-                platformId: true,
-                registrationStatus: true,
-                role: true,
-              },
-            });
-            if (!found) return fail(21, new Prisma.Decimal(0));
-            userRow = found;
+            const resolved = await this.findUserForVinus(uid);
+            if (!resolved) return fail(21, new Prisma.Decimal(0));
+            userRow = resolved;
             const w = await this.prisma.wallet.findUnique({
-              where: { userId: uid },
+              where: { userId: userRow.id },
             });
             walletBal = w?.balance ?? new Prisma.Decimal(0);
           }
@@ -1685,21 +1715,11 @@ export class VinusService {
     if (!userRow) {
       const uid = vinusStrId(data.user_id);
       if (uid) {
-        const found: VinusUserRow | null = await this.prisma.user.findUnique({
-          where: { id: uid },
-          select: {
-            id: true,
-            loginId: true,
-            displayName: true,
-            platformId: true,
-            registrationStatus: true,
-            role: true,
-          },
-        });
+        const found = await this.findUserForVinus(uid);
         if (found) {
           userRow = found;
           const w = await this.prisma.wallet.findUnique({
-            where: { userId: uid },
+            where: { userId: found.id },
           });
           walletBal = w?.balance ?? new Prisma.Decimal(0);
         }
