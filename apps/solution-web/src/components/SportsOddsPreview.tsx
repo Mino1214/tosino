@@ -1,28 +1,44 @@
 "use client";
 
-/** 데모: 시간 · 팀(로고) vs 팀(로고) · 배당 — API 연동 전 목업 */
-const ROWS = [
+import { useBettingCart } from "./BettingCartContext";
+
+const ROWS: {
+  id: string;
+  time: string;
+  home: { name: string; logo: string };
+  away: { name: string; logo: string };
+  odds: [string, string, string];
+  labels: [string, string, string];
+}[] = [
   {
+    id: "m1",
     time: "04/09 04:00",
     home: { name: "바르셀로나", logo: "🔵" },
     away: { name: "레알 마드리드", logo: "⚪" },
     odds: ["1.72", "3.55", "3.80"],
+    labels: ["홈 승", "무", "원정 승"],
   },
   {
+    id: "m2",
     time: "04/09 22:30",
     home: { name: "맨체스터 시티", logo: "💠" },
     away: { name: "아스널", logo: "🔴" },
     odds: ["1.95", "3.40", "3.65"],
+    labels: ["홈 승", "무", "원정 승"],
   },
   {
+    id: "m3",
     time: "04/10 01:00",
     home: { name: "PSG", logo: "🗼" },
     away: { name: "바이에른", logo: "🔴" },
     odds: ["2.10", "3.25", "3.10"],
+    labels: ["홈 승", "무", "원정 승"],
   },
 ];
 
 export function SportsOddsPreview() {
+  const { addLine } = useBettingCart();
+
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/30">
       <table className="w-full min-w-[720px] text-left text-sm">
@@ -38,9 +54,9 @@ export function SportsOddsPreview() {
           </tr>
         </thead>
         <tbody>
-          {ROWS.map((r, i) => (
+          {ROWS.map((r) => (
             <tr
-              key={i}
+              key={r.id}
               className="border-b border-white/5 transition hover:bg-white/[0.04]"
             >
               <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-zinc-400">
@@ -63,7 +79,14 @@ export function SportsOddsPreview() {
                 <td key={j} className="px-2 py-3 text-center">
                   <button
                     type="button"
-                    className="min-w-[3.25rem] rounded-lg bg-white/5 px-2 py-1.5 font-mono text-xs text-[var(--theme-primary,#c9a227)] ring-1 ring-white/10 hover:bg-white/10"
+                    className="min-w-[3.25rem] rounded-lg bg-white/5 px-2 py-1.5 font-mono text-xs text-[var(--theme-primary,#c9a227)] ring-1 ring-white/10 hover:bg-[var(--theme-primary,#c9a227)]/15 active:scale-[0.98]"
+                    onClick={() =>
+                      addLine({
+                        matchLabel: `${r.home.name} vs ${r.away.name}`,
+                        pickLabel: r.labels[j] ?? `선택 ${j + 1}`,
+                        odd: o,
+                      })
+                    }
                   >
                     {o}
                   </button>
