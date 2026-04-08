@@ -51,11 +51,21 @@ export function LiveCasinoLobby({
         return;
       }
       setLoadingMode(walletMethod);
+      const mobile =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 767px)").matches;
+      const needsPreTab = mobile || launchSurface === "new-tab";
+      const pre =
+        needsPreTab && typeof window !== "undefined"
+          ? window.open("about:blank", "_blank", "noopener,noreferrer")
+          : null;
+      if (needsPreTab && !pre) {
+        setErr("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용해 주세요.");
+        setLoadingMode(null);
+        return;
+      }
       try {
-        const mobile =
-          typeof window !== "undefined" &&
-          typeof window.matchMedia === "function" &&
-          window.matchMedia("(max-width: 767px)").matches;
         const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
           method: "POST",
           body: JSON.stringify({
@@ -67,11 +77,18 @@ export function LiveCasinoLobby({
           }),
         });
         if (out?.url) {
-          openGame({ url: out.url, title, mode: launchSurface });
+          openGame({
+            url: out.url,
+            title,
+            mode: launchSurface,
+            preOpenedWindow: pre,
+          });
           return;
         }
+        if (pre && !pre.closed) pre.close();
         setErr("게임 URL을 받지 못했습니다.");
       } catch (e) {
+        if (pre && !pre.closed) pre.close();
         setErr(e instanceof Error ? e.message : "오류");
       } finally {
         setLoadingMode(null);
@@ -103,12 +120,12 @@ export function LiveCasinoLobby({
         <strong className="text-zinc-200">심리스</strong> 입장 시 베팅/당첨은
         모두 위 지갑 잔액을 기준으로 처리됩니다. 입장 시 세션 토큰 발급 후 게임을
         PC에서는 <strong className="text-zinc-200">카지노·라이브</strong>는
-        팝업(내부 iframe), <strong className="text-zinc-200">슬롯</strong>은
-        16:9 모달입니다. <strong className="text-zinc-200">모바일</strong>
-        (좁은 화면)에서는 API에{" "}
-        <code className="text-zinc-500">platform=MOBILE</code>으로 요청한 뒤
-        게임을 <strong className="text-zinc-200">항상 새 탭</strong>으로
-        엽니다. 막히면 새 탭/브라우저에서 직접 열기를 쓰세요.
+        <strong className="text-zinc-200"> 새 창</strong>(내부 iframe)입니다.
+        이 페이지가 <strong className="text-zinc-200">새 탭</strong> 모드이면
+        클릭 시 빈 탭을 먼저 연 뒤 주소를 넣습니다.{" "}
+        <strong className="text-zinc-200">모바일</strong>은 API에{" "}
+        <code className="text-zinc-500">platform=MOBILE</code> 후 게임을{" "}
+        <strong className="text-zinc-200">새 탭</strong>으로 엽니다.
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>

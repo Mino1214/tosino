@@ -11,6 +11,7 @@ import {
   type VinusHomeCard,
   VINUS_VERIFIED_HOME_CARDS,
 } from "@/lib/vinus-home-cards";
+import { SlotVendorCatalog } from "./SlotVendorCatalog";
 
 type StaticCategory = {
   slug: string;
@@ -90,11 +91,20 @@ export function CategoryGrid() {
       return;
     }
     setLaunchingSlug(c.slug);
+    const mobile =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 767px)").matches;
+    const pre =
+      mobile && typeof window !== "undefined"
+        ? window.open("about:blank", "_blank", "noopener,noreferrer")
+        : null;
+    if (mobile && !pre) {
+      setLaunchErr("팝업이 차단되었습니다. 브라우저에서 이 사이트의 팝업을 허용해 주세요.");
+      setLaunchingSlug(null);
+      return;
+    }
     try {
-      const mobile =
-        typeof window !== "undefined" &&
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(max-width: 767px)").matches;
       const out = await apiFetch<{ url: string }>("/me/casino/vinus/launch", {
         method: "POST",
         body: JSON.stringify({
@@ -110,11 +120,14 @@ export function CategoryGrid() {
           url: out.url,
           title: c.title,
           mode: c.surface,
+          preOpenedWindow: pre,
         });
         return;
       }
+      if (pre && !pre.closed) pre.close();
       setLaunchErr("게임 URL을 받지 못했습니다.");
     } catch (e) {
+      if (pre && !pre.closed) pre.close();
       setLaunchErr(e instanceof Error ? e.message : "입장 요청 실패");
     } finally {
       setLaunchingSlug(null);
@@ -139,7 +152,7 @@ export function CategoryGrid() {
         게임 입장
       </h2>
       <p className={`mb-4 text-sm ${isLight ? "text-zinc-600" : "text-zinc-500"}`}>
-        같은 화면에서 카지노·슬롯 구분 · 모바일은 전부 새 탭 · PC 일부는 새 탭 권장
+        카지노(PC)는 새 창 · 모바일은 새 탭 · 슬롯은 벤더별 목록(무한 스크롤)
       </p>
       {launchErr ? (
         <p className="mb-3 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
@@ -182,26 +195,30 @@ export function CategoryGrid() {
         </button>
       </div>
 
-      <div className={`grid grid-cols-2 md:grid-cols-3 ${gap}`}>
-        {vinusFiltered.map((c) => (
-          <button
-            key={c.slug}
-            type="button"
-            disabled={launchingSlug !== null}
-            onClick={() => void runVinusLaunch(c)}
-            className={`${cardBase} ${c.gradient} cursor-pointer text-left disabled:opacity-60`}
-          >
-            <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
-            <div>
-              <h3 className={titleClass}>{c.title}</h3>
-              <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
-            </div>
-            <span className={arrowClass}>
-              {launchingSlug === c.slug ? "…" : "→"}
-            </span>
-          </button>
-        ))}
-      </div>
+      {gameTab === "slot" ? (
+        <SlotVendorCatalog />
+      ) : (
+        <div className={`grid grid-cols-2 md:grid-cols-3 ${gap}`}>
+          {vinusFiltered.map((c) => (
+            <button
+              key={c.slug}
+              type="button"
+              disabled={launchingSlug !== null}
+              onClick={() => void runVinusLaunch(c)}
+              className={`${cardBase} ${c.gradient} cursor-pointer text-left disabled:opacity-60`}
+            >
+              <span className="text-3xl drop-shadow md:text-4xl">{c.icon}</span>
+              <div>
+                <h3 className={titleClass}>{c.title}</h3>
+                <p className={`mt-0.5 ${subClass}`}>{c.subtitle}</p>
+              </div>
+              <span className={arrowClass}>
+                {launchingSlug === c.slug ? "…" : "→"}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <h3
         className={`mb-2 mt-10 text-base font-semibold md:text-lg ${isLight ? "text-zinc-800" : "text-zinc-200"}`}

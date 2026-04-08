@@ -14,10 +14,12 @@ type SlotModalState = {
   title?: string;
 };
 
-type GameLaunchOpts = {
+export type GameLaunchOpts = {
   url: string;
   title?: string;
   mode: LaunchSurface;
+  /** 클릭 직후 동기로 연 `about:blank` 탭 — API 이후 `url`로 이동(모바일 팝업 차단 완화) */
+  preOpenedWindow?: Window | null;
 };
 
 type GameLaunchContextValue = {
@@ -99,14 +101,28 @@ export function GameIframeModalProvider({
       typeof window.matchMedia === "function" &&
       window.matchMedia("(max-width: 767px)").matches;
 
-    /** 모바일: 팝업/모달 대신 전부 새 탭(뷰포트 기준은 API platform=MOBILE 과 동일) */
-    const mode: LaunchSurface = mobile ? "new-tab" : opts.mode;
+    const pre = opts.preOpenedWindow;
+    if (pre && !pre.closed) {
+      try {
+        pre.location.href = opts.url;
+      } catch {
+        window.open(opts.url, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
 
-    if (mode === "casino-window") {
+    /** 모바일: 프리탭 없을 때만(비권장) — 보통 호출부에서 `preOpenedWindow`로 처리 */
+    if (mobile) {
+      window.open(opts.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    /** PC: 카지노 = 별도 창+iframe, 슬롯(new-tab) = 새 탭, 슬롯(slot-iframe) = 앱 내 모달 */
+    if (opts.mode === "casino-window") {
       openCasinoGameWindow(opts.url, opts.title?.trim() || "게임");
       return;
     }
-    if (mode === "new-tab") {
+    if (opts.mode === "new-tab") {
       window.open(opts.url, "_blank", "noopener,noreferrer");
       return;
     }
