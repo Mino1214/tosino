@@ -194,13 +194,15 @@ export function CasinoPortalCards() {
                 <div
                   className={`pointer-events-none absolute left-0 right-0 z-[1] overflow-visible ${
                     isSkywind
-                      ? "bottom-[4.5rem] top-10 sm:bottom-[4.75rem] md:top-11"
-                      : "bottom-[5.25rem] top-12 sm:bottom-[5.5rem] sm:top-14 md:top-16"
+                      ? "bottom-[3.25rem] top-8 sm:bottom-[3.5rem] md:top-9"
+                      : "bottom-[3.5rem] top-9 sm:bottom-[3.75rem] sm:top-10 md:top-12"
                   }`}
                 >
                   <div
                     className={`relative mx-auto flex h-full w-full items-end justify-center px-6 sm:px-8 md:px-10 ${
-                      isSkywind ? "translate-y-2 pb-0" : "translate-y-3 pb-1"
+                      isSkywind
+                        ? "translate-y-7 pb-0 sm:translate-y-9 md:translate-y-11"
+                        : "translate-y-9 pb-0 sm:translate-y-11 md:translate-y-[3.5rem]"
                     }`}
                   >
                     <div

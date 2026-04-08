@@ -53,6 +53,7 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     authenticate: 'authenticate',
     balance: 'balance',
     bet: 'bet',
+    sportsbet: 'sports-bet',
     betwin: 'bet-win',
     win: 'win',
     winadd: 'win-add',
@@ -82,6 +83,9 @@ const VINUS_PAYLOAD_FIELDS_IN_DATA = [
   'bet',
   'win',
   'transfer',
+  'bet_type',
+  'req_id',
+  'bet_count',
 ] as const;
 
 function asVinusCallbackRoot(input: unknown): Record<string, unknown> {
@@ -132,6 +136,12 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
     bet: 'bet',
     win: 'win',
     transfer: 'transfer',
+    bet_type: 'bet_type',
+    bettype: 'bet_type',
+    req_id: 'req_id',
+    reqid: 'req_id',
+    bet_count: 'bet_count',
+    betcount: 'bet_count',
     r: 'vendor',
   };
   const keys = Object.keys(data);
@@ -573,6 +583,12 @@ export class VinusService {
         );
         return this.stubBetOk(data);
       }
+      if (command === 'sports-bet') {
+        this.logger.warn(
+          'VINUS_STUB_AUTHENTICATE: sports-bet 스텁 (bet와 동일·transaction_id 멱등). 운영 전 끌 것.',
+        );
+        return this.stubBetOk(data);
+      }
       if (command === 'win') {
         this.logger.warn(
           'VINUS_STUB_AUTHENTICATE: win 스텁 (동일 transaction_id 멱등). 운영 전 끌 것.',
@@ -777,11 +793,13 @@ export class VinusService {
         };
       }
 
-      case 'bet': {
+      case 'bet':
+      case 'sports-bet': {
         const tid =
           typeof data.transaction_id === 'string' ? data.transaction_id : '';
         const amount = toDec(data.amount);
         if (!tid || !amount) return fail(99);
+        const txKind = command === 'sports-bet' ? 'SPORTS_BET' : 'BET';
         const dup = await this.prisma.casinoVinusTx.findUnique({
           where: { externalId: tid },
         });
@@ -814,7 +832,7 @@ export class VinusService {
               platformId,
               userId: userRow!.id,
               externalId: tid,
-              kind: 'BET',
+              kind: txKind,
               gameId:
                 typeof data.game_id === 'string' ? data.game_id : undefined,
               roundId:
@@ -831,12 +849,21 @@ export class VinusService {
               balanceAfter: newBal,
               reference: tid,
               metaJson: {
+                command,
                 vendor:
                   typeof data.vendor === 'string' ? data.vendor : undefined,
                 game_sort:
                   typeof data.game_sort === 'string'
                     ? data.game_sort
                     : undefined,
+                game_type:
+                  typeof data.game_type === 'string'
+                    ? data.game_type
+                    : undefined,
+                bet_type:
+                  typeof data.bet_type === 'string' ? data.bet_type : undefined,
+                bet_count:
+                  typeof data.bet_count === 'number' ? data.bet_count : undefined,
                 timestamp,
               },
             },
@@ -1046,7 +1073,10 @@ export class VinusService {
           });
           if (!w0) return fail(99);
           let delta = new Prisma.Decimal(0);
-          if (cur.kind === 'BET' && cur.stake) {
+          if (
+            (cur.kind === 'BET' || cur.kind === 'SPORTS_BET') &&
+            cur.stake
+          ) {
             delta = cur.stake;
           } else if (cur.kind === 'WIN' && cur.payout) {
             delta = cur.payout.negated();
@@ -1101,7 +1131,7 @@ export class VinusService {
             userId: userRow.id,
             gameId,
             roundId,
-            kind: { in: ['BET', 'BET_WIN'] },
+            kind: { in: ['BET', 'BET_WIN', 'SPORTS_BET'] },
             refundedAt: null,
             cancelledAt: null,
           },
