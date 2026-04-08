@@ -39,6 +39,18 @@ function toDec(v: unknown): Prisma.Decimal | null {
   }
 }
 
+/** transaction_id·req_id 등 벤더가 문자열/숫자 혼용 시 */
+function vinusStrId(v: unknown): string {
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    return String(v);
+  }
+  if (typeof v === 'string') {
+    return v.replace(/\s/g, '');
+  }
+  return String(v).replace(/\s/g, '');
+}
+
 function nickForVinus(displayName: string | null, loginId: string): string {
   const raw = (displayName?.trim() || loginId).slice(0, 25);
   return raw.length >= 2 ? raw : `${loginId}`.slice(0, 25).padEnd(2, '0');
@@ -225,8 +237,12 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
     'original_transaction_id',
     'req_id',
   ]) {
-    if (typeof data[k] === 'string') {
-      data[k] = (data[k] as string).replace(/\s/g, '');
+    const v = data[k];
+    if (typeof v === 'string') {
+      data[k] = v.replace(/\s/g, '');
+    } else if (typeof v === 'number' && Number.isFinite(v)) {
+      /** 벤더 JSON에서 id 필드를 숫자로 보내는 경우 */
+      data[k] = String(v);
     }
   }
   for (const k of ['game', 'vendor', 'game_type', 'game_sort']) {
@@ -403,9 +419,15 @@ export class VinusService {
     if (userNickname.length < 2) {
       userNickname = 'UU';
     }
-    this.resetStubWalletSimulation();
-    const balance = this.stubBalanceNumber();
-    this.stubWorkingBal = balance;
+    /**
+     * authenticate마다 resetStubWalletSimulation을 호출하면 벤더가 단계마다
+     * authenticate를 재호출할 때 스텁 베팅·req_id 매핑이 사라져 sports-bet-change
+     * 등이 99가 된다. 잔액만 초기화가 필요하면 VINUS_STUB_BALANCE로 맞춘다.
+     */
+    if (this.stubWorkingBal === null) {
+      this.stubWorkingBal = this.stubBalanceNumber();
+    }
+    const balance = this.stubGetWorking();
     return {
       result: 0,
       status: 'OK',
@@ -482,10 +504,7 @@ export class VinusService {
 
   /** 스텁: bet — 동일 transaction_id 재요청 멱등 */
   private stubBetOk(data: Record<string, unknown>): Record<string, unknown> {
-    const tid =
-      typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '';
+    const tid = vinusStrId(data.transaction_id);
     const amount = toDec(data.amount);
     if (!tid || !amount || amount.lte(0)) {
       return { result: 99, status: 'ERROR', data: {} };
@@ -517,8 +536,7 @@ export class VinusService {
       stake: Number(amount.toFixed(2)),
       cancelled: false,
     });
-    const reqOnly =
-      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+    const reqOnly = vinusStrId(data.req_id);
     if (reqOnly) {
       this.stubReqIdToBetTid.set(reqOnly, tid);
     }
@@ -714,14 +732,9 @@ export class VinusService {
   private stubSportsBetReservedOk(
     data: Record<string, unknown>,
   ): Record<string, unknown> {
-    const rid =
-      typeof data.reserve_id === 'string' ? data.reserve_id.replace(/\s/g, '') : '';
-    const reqId =
-      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
-    const tid =
-      typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '';
+    const rid = vinusStrId(data.reserve_id);
+    const reqId = vinusStrId(data.req_id);
+    const tid = vinusStrId(data.transaction_id);
     const amt = toDec(data.amount);
     if (!rid || !reqId || !tid || !amt || amt.lte(0)) {
       return { result: 99, status: 'ERROR', data: {} };
@@ -777,20 +790,10 @@ export class VinusService {
   private stubSportsBetChangeOk(
     data: Record<string, unknown>,
   ): Record<string, unknown> {
-    const changeTid =
-      typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '';
-    const origFromField =
-      typeof data.original_transaction_id === 'string'
-        ? data.original_transaction_id.replace(/\s/g, '')
-        : '';
-    const ridRaw =
-      typeof data.reserve_id === 'string'
-        ? data.reserve_id.replace(/\s/g, '')
-        : '';
-    const reqRaw =
-      typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '';
+    const changeTid = vinusStrId(data.transaction_id);
+    const origFromField = vinusStrId(data.original_transaction_id);
+    const ridRaw = vinusStrId(data.reserve_id);
+    const reqRaw = vinusStrId(data.req_id);
     let origTid =
       origFromField ||
       ridRaw ||
