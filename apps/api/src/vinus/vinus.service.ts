@@ -142,6 +142,9 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     sportsreserve: 'sports-reserve',
     sportsorder: 'sports-order',
     sportsconfirm: 'sports-confirm',
+    /** 예약 베팅 확정 (BT1 sports-bet-commit): sports-confirm 과 동일 단계 */
+    'sports-bet-commit': 'sports-bet-commit',
+    sportsbetcommit: 'sports-bet-commit',
     'sports-win': 'sports-win',
     sportswin: 'sports-win',
   };
@@ -271,6 +274,8 @@ function normalizeVinusDataKeys(data: Record<string, unknown>) {
     bettype: 'bet_type',
     req_id: 'req_id',
     reqid: 'req_id',
+    request_id: 'req_id',
+    requestid: 'req_id',
     bet_count: 'bet_count',
     betcount: 'bet_count',
     reserve_id: 'reserve_id',
@@ -1777,6 +1782,15 @@ export class VinusService {
           if (!userRow) {
             return fail(52, new Prisma.Decimal(0));
           }
+          /** 확정·주문·예약: 금액·req_id가 없거나 0인 페이로드가 정상 (52는 변경 요청용) */
+          if (
+            command === 'sports-bet-commit' ||
+            command === 'sports-confirm' ||
+            command === 'sports-order' ||
+            command === 'sports-reserve'
+          ) {
+            break;
+          }
           const reqId = vinusStrId(data.req_id);
           if (!reqId) {
             return fail(52, walletBal ?? new Prisma.Decimal(0));
@@ -1904,6 +1918,11 @@ export class VinusService {
       }
 
       case 'sports-confirm': {
+        return this.sportsConfirmProd(platformId, userRow.id, data, fail, ok);
+      }
+
+      /** BT1: 예약 한도 내 베팅 처리 후 슬립/확정 콜백 — DB 상 sports-confirm 과 동일 */
+      case 'sports-bet-commit': {
         return this.sportsConfirmProd(platformId, userRow.id, data, fail, ok);
       }
 
