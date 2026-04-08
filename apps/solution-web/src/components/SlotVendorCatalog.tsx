@@ -26,7 +26,7 @@ const SLOT_LAUNCH_MODE: LaunchSurface = "slot-iframe";
 
 const PAGE_SIZE = 24;
 
-export function SlotVendorCatalog() {
+export function SlotVendorCatalog({ className }: { className?: string }) {
   const b = useBootstrap();
   const router = useRouter();
   const { launch } = useGameLaunch();
@@ -124,7 +124,7 @@ export function SlotVendorCatalog() {
     : "text-zinc-300 ring-1 ring-white/15 hover:bg-white/5";
 
   return (
-    <div className="mt-1">
+    <div className={className ?? "mt-1"}>
       {err ? (
         <p className="mb-3 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
           {err}
