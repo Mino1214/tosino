@@ -1446,17 +1446,32 @@ export class VinusService {
     fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
     ok: (balance: Prisma.Decimal) => Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const reserveBetId =
-      typeof data.reserve_id === 'string'
-        ? data.reserve_id.replace(/\s/g, '')
-        : '';
-    const resultTid =
-      (typeof data.req_id === 'string' ? data.req_id.replace(/\s/g, '') : '') ||
-      (typeof data.transaction_id === 'string'
-        ? data.transaction_id.replace(/\s/g, '')
-        : '');
+    const reqId = vinusStrId(data.req_id);
+    const tid = vinusStrId(data.transaction_id);
+
+    /**
+     * BT1 sports-win 패턴:
+     *   reserve_id 있음: reserve_id = 원 BET TX, req_id 또는 transaction_id = WIN TX
+     *   reserve_id 없음: transaction_id = 원 BET TX, req_id = WIN TX (멱등)
+     */
+    let reserveBetId = vinusStrId(data.reserve_id);
+    let resultTid: string;
+
+    if (reserveBetId) {
+      // 일반 패턴: reserve_id 있음
+      resultTid = reqId || tid;
+    } else if (reqId && tid) {
+      // BT1 패턴: reserve_id 없이 transaction_id(원BET) + req_id(WIN TX)
+      reserveBetId = tid;
+      resultTid = reqId;
+    } else {
+      // 최후 폴백: req_id 또는 transaction_id 하나만 있는 경우
+      resultTid = reqId || tid;
+    }
+
+    const w0Fail = await this.prisma.wallet.findUnique({ where: { userId: userRow.id } });
     if (!reserveBetId || !resultTid) {
-      return fail(99);
+      return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
 
     const dup = await this.prisma.casinoVinusTx.findUnique({
@@ -1466,7 +1481,7 @@ export class VinusService {
       const w = await this.prisma.wallet.findUnique({
         where: { userId: userRow.id },
       });
-      if (!w) return fail(99);
+      if (!w) return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
       return ok(w.balance);
     }
 
@@ -1484,15 +1499,15 @@ export class VinusService {
       }
     }
     if (!betTx || betTx.userId !== userRow.id) {
-      return fail(99);
+      return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
     if (betTx.kind !== 'SPORTS_BET' && betTx.kind !== 'BET') {
-      return fail(99);
+      return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
 
     const outcome = parseSportsWinStatus(data.bet_details_result);
     if (!outcome) {
-      return fail(99);
+      return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
 
     const winAmount = toDec(data.amount);
@@ -1501,7 +1516,7 @@ export class VinusService {
     let payout = new Prisma.Decimal(0);
     if (outcome === 'won') {
       if (winAmount === null || winAmount.lte(0)) {
-        return fail(99);
+        return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
       }
       payout = winAmount;
     } else if (outcome === 'lost') {
@@ -1797,12 +1812,21 @@ export class VinusService {
           if (!userRow) {
             return fail(51, new Prisma.Decimal(0));
           }
-          const reserveBet = vinusStrId(data.reserve_id);
+          let reserveBet = vinusStrId(data.reserve_id);
           if (!reserveBet) {
             if (command === 'sports-bet') {
               break;
             }
-            return fail(51, walletBal ?? new Prisma.Decimal(0));
+            /**
+             * sports-win: reserve_id 없이 transaction_id(원 BET TX) + req_id(WIN TX) 로 오는 경우.
+             * req_id 가 있으면 transaction_id 는 원 BET 를 가리키므로 폴백 허용.
+             */
+            if (command === 'sports-win' && vinusStrId(data.req_id)) {
+              reserveBet = vinusStrId(data.transaction_id);
+            }
+            if (!reserveBet) {
+              return fail(51, walletBal ?? new Prisma.Decimal(0));
+            }
           }
           const betRow = await this.prisma.casinoVinusTx.findUnique({
             where: { externalId: reserveBet },
