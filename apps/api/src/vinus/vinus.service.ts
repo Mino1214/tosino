@@ -974,6 +974,39 @@ export class VinusService {
     return ok(w2!.balance);
   }
 
+  /**
+   * BT1 sports-bet-commit: 베팅이 스포츠북에 접수됐음을 알리는 확인 콜백.
+   * amount=0, req_id='' 이 정상 — 금액 변동 없음.
+   * reserve_id가 있으면 예약을 CONFIRMED로 두고, 없으면 현재 잔액을 그대로 OK.
+   */
+  private async sportsBetCommitProd(
+    platformId: string,
+    userId: string,
+    data: Record<string, unknown>,
+    ok: (balance: Prisma.Decimal) => Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const w = await this.prisma.wallet.findUnique({ where: { userId } });
+    const bal = w?.balance ?? new Prisma.Decimal(0);
+
+    const rid = vinusStrId(data.reserve_id);
+    if (rid) {
+      const res = await this.prisma.sportsBetReservation.findUnique({
+        where: { platformId_reserveId: { platformId, reserveId: rid } },
+      });
+      if (res && res.userId === userId && res.status !== 'CONFIRMED') {
+        await this.prisma.sportsBetReservation.update({
+          where: { id: res.id },
+          data: { status: 'CONFIRMED' },
+        });
+        const w2 = await this.prisma.wallet.findUnique({ where: { userId } });
+        return ok(w2?.balance ?? bal);
+      }
+    }
+
+    /** 예약 없어도(또는 이미 CONFIRMED) 현재 잔액으로 OK 반환 */
+    return ok(bal);
+  }
+
   /** 실제 베팅: reserve_id + req_id + amount, 합계 ≤ 예약 금액 */
   private async sportsBetWithReserveProd(
     platformId: string,
@@ -1961,9 +1994,9 @@ export class VinusService {
         return this.sportsConfirmProd(platformId, userRow.id, data, fail, ok);
       }
 
-      /** BT1: 예약 한도 내 베팅 처리 후 슬립/확정 콜백 — DB 상 sports-confirm 과 동일 */
+      /** BT1: 베팅 접수 확인 콜백 — amount=0, req_id='' 이 정상. 잔액 그대로 OK. */
       case 'sports-bet-commit': {
-        return this.sportsConfirmProd(platformId, userRow.id, data, fail, ok);
+        return this.sportsBetCommitProd(platformId, userRow.id, data, ok);
       }
 
       case 'sports-bet-change': {
