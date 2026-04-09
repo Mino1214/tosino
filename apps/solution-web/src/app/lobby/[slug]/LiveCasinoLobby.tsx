@@ -10,15 +10,21 @@ import type { LaunchSurface } from "@/lib/vinus-home-cards";
 type LiveCasinoLobbyProps = {
   /** 기본 pragmatic_casino (에이전트에서 에볼루션 미개통 시) */
   vendor?: string;
+  /** Vinus play-game game 파라미터 (기본 "lobby"). BT1 스포츠는 "bt1" */
+  game?: string;
   title?: string;
   /** 카지노·라이브: 앱 내 전체 iframe / 슬롯: 16:9 모달 */
   launchSurface?: LaunchSurface;
+  /** 로비 페이지 설명 문구 */
+  description?: string;
 };
 
 export function LiveCasinoLobby({
   vendor = "pragmatic_casino",
+  game = "lobby",
   title = "라이브 카지노",
   launchSurface = "casino-window",
+  description,
 }: LiveCasinoLobbyProps = {}) {
   const router = useRouter();
   const { launch: openGame } = useGameLaunch();
@@ -65,7 +71,7 @@ export function LiveCasinoLobby({
         method: "POST",
         body: JSON.stringify({
           vendor,
-          game: "lobby",
+          game,
           platform: mobile ? "MOBILE" : "WEB",
           method: "seamless",
           lang: "ko",
@@ -88,7 +94,7 @@ export function LiveCasinoLobby({
     } finally {
       setLoading(false);
     }
-  }, [router, vendor, title, openGame, launchSurface]);
+  }, [router, vendor, game, title, openGame, launchSurface]);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -110,12 +116,16 @@ export function LiveCasinoLobby({
         </div>
       ) : null}
       <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">
-        <strong className="text-zinc-200">심리스</strong>만 사용합니다. 베팅·당첨은
-        위 지갑 잔액과 동일하게 처리됩니다.{" "}
-        <strong className="text-zinc-200">카지노·라이브</strong>는 이 사이트 안
-        iframe으로 열립니다.{" "}
-        <strong className="text-zinc-200">슬롯(iframe 모드)</strong>은 PC에서
-        16:9, 모바일은 넓게 표시됩니다.
+        {description ?? (
+          <>
+            <strong className="text-zinc-200">심리스</strong>만 사용합니다. 베팅·당첨은
+            위 지갑 잔액과 동일하게 처리됩니다.{" "}
+            <strong className="text-zinc-200">카지노·라이브</strong>는 이 사이트 안
+            iframe으로 열립니다.{" "}
+            <strong className="text-zinc-200">슬롯(iframe 모드)</strong>은 PC에서
+            16:9, 모바일은 넓게 표시됩니다.
+          </>
+        )}
       </p>
       {err ? (
         <p className="mt-4 text-sm text-red-400 whitespace-pre-wrap">{err}</p>

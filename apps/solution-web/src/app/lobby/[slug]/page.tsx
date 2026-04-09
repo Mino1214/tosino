@@ -55,6 +55,18 @@ export default async function LobbyPage({
     );
   }
 
+  if (slug === "sports-kr" || slug === "sports-eu") {
+    return (
+      <LiveCasinoLobby
+        title={title}
+        vendor="bt1"
+        game="bt1"
+        launchSurface="casino-window"
+        description="BT1 스포츠 — 배당·베팅은 이 사이트 지갑과 심리스로 연동됩니다."
+      />
+    );
+  }
+
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
       <p className="text-sm text-zinc-500">준비 중</p>

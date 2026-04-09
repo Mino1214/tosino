@@ -172,6 +172,9 @@ function normalizeVinusCommand(rawCmd: unknown): string {
     sportsbetconmit: 'sports-bet-commit',
     'sports-win': 'sports-win',
     sportswin: 'sports-win',
+    /** 적중 후 금액 차감/조정 (BT1 sports-win-deduct) */
+    'sports-win-deduct': 'sports-win-deduct',
+    sportswindeduct: 'sports-win-deduct',
     /** 스포츠 베팅 취소 (BT1 sports-cancel) */
     'sports-cancel': 'sports-cancel',
     sportscancel: 'sports-cancel',
@@ -394,10 +397,10 @@ function mergeVinusDataPayload(raw: Record<string, unknown>): Record<string, unk
   return nested;
 }
 
-/** sports-win: bet_details_result.NewStatus → 적중/실패/적특/취소 */
+/** sports-win: bet_details_result.NewStatus → 적중/실패/적특/취소/조정 */
 function parseSportsWinStatus(
   raw: unknown,
-): 'won' | 'lost' | 'void' | 'cancel' | null {
+): 'won' | 'lost' | 'void' | 'cancel' | 'adjust' | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return null;
   }
@@ -420,7 +423,31 @@ function parseSportsWinStatus(
   if (s === 'cancel' || s === 'cancelled' || s === 'canceled') {
     return 'cancel';
   }
+  /** sports-win-deduct: 베팅 진행 중 금액 조정 (Opened / InPlay 등) */
+  if (
+    s === 'opened' ||
+    s === 'open' ||
+    s === 'inplay' ||
+    s === 'in_play' ||
+    s === 'pending' ||
+    s === 'running' ||
+    s === 'adjust' ||
+    s === 'deduct'
+  ) {
+    return 'adjust';
+  }
   return null;
+}
+
+/**
+ * BT1 FAQ: transaction_id 앞/뒤 W 는 "결과 처리" 마커.
+ * W12345(WIN TX) → "12345"(BET TX), 12345W(WIN TX) → "12345"(BET TX)
+ */
+function stripSportsWinTxMarker(tid: string): string {
+  if (!tid) return tid;
+  if (tid.length > 1 && (tid[0] === 'W' || tid[0] === 'w')) return tid.slice(1);
+  if (tid.length > 1 && (tid[tid.length - 1] === 'W' || tid[tid.length - 1] === 'w')) return tid.slice(0, -1);
+  return tid;
 }
 
 /** 벤더/전송 과정에서 토큰에 끼는 공백·줄바꿈 제거 */
@@ -1448,32 +1475,40 @@ export class VinusService {
     timestamp: number | undefined,
     fail: (code: number, balance?: Prisma.Decimal) => Record<string, unknown>,
     ok: (balance: Prisma.Decimal) => Record<string, unknown>,
+    command = 'sports-win',
   ): Promise<Record<string, unknown>> {
     const reqId = vinusStrId(data.req_id);
     const tid = vinusStrId(data.transaction_id);
 
     /**
-     * BT1 sports-win 패턴:
-     *   reserve_id 있음: reserve_id = 원 BET TX, req_id 또는 transaction_id = WIN TX
-     *   reserve_id 없음: transaction_id = 원 BET TX, req_id = WIN TX (멱등)
+     * BT1 sports-win / sports-win-deduct 패턴 (PHP 샘플 기준):
+     *   - reserve_id 있음   : reserveBetId = reserve_id,  resultTid = req_id || tid
+     *   - reserve_id 없음   : reserveBetId = req_id,       resultTid = tid
+     *     (req_id = 원 BET TX 참조,  transaction_id = 새 WIN 결과 TX)
+     *   - W-prefix 패턴     : transaction_id = "W12345" → resultTid = "W12345", reserveBetId = "12345"
      */
     let reserveBetId = vinusStrId(data.reserve_id);
     let resultTid: string;
 
     if (reserveBetId) {
-      // 일반 패턴: reserve_id 있음
       resultTid = reqId || tid;
     } else if (reqId && tid) {
-      // BT1 패턴: reserve_id 없이 transaction_id(원BET) + req_id(WIN TX)
-      reserveBetId = tid;
-      resultTid = reqId;
+      // BT1 정석 패턴
+      reserveBetId = reqId;
+      resultTid = tid;
+    } else if (tid) {
+      // W-prefix 패턴: WIN TX 에 W 마커가 있으면 제거해서 BET TX 조회
+      const stripped = stripSportsWinTxMarker(tid);
+      if (stripped !== tid) {
+        reserveBetId = stripped;
+      }
+      resultTid = tid;
     } else {
-      // 최후 폴백: req_id 또는 transaction_id 하나만 있는 경우
-      resultTid = reqId || tid;
+      resultTid = reqId;
     }
 
     const w0Fail = await this.prisma.wallet.findUnique({ where: { userId: userRow.id } });
-    if (!reserveBetId || !resultTid) {
+    if (!resultTid) {
       return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
 
@@ -1488,33 +1523,64 @@ export class VinusService {
       return ok(w.balance);
     }
 
-    let betTx = await this.prisma.casinoVinusTx.findUnique({
-      where: { externalId: reserveBetId },
-    });
-    if (!betTx) {
-      const actual = await this.prisma.sportsBetActual.findUnique({
+    /** BET TX 조회: reserveBetId 없으면 game_id + round_id 로 폴백 */
+    let betTx: {
+      id: string; externalId: string; kind: string;
+      stake: Prisma.Decimal | null; payout: Prisma.Decimal | null;
+      cancelledAt: Date | null; refundedAt: Date | null;
+      userId: string; gameId: string | null; roundId: string | null;
+    } | null = null;
+
+    if (reserveBetId) {
+      betTx = await this.prisma.casinoVinusTx.findUnique({
         where: { externalId: reserveBetId },
       });
-      if (actual) {
-        betTx = await this.prisma.casinoVinusTx.findUnique({
-          where: { externalId: actual.externalId },
+      if (!betTx) {
+        const actual = await this.prisma.sportsBetActual.findUnique({
+          where: { externalId: reserveBetId },
+        });
+        if (actual) {
+          betTx = await this.prisma.casinoVinusTx.findUnique({
+            where: { externalId: actual.externalId },
+          });
+        }
+      }
+    }
+
+    /** reserveBetId 로 못 찾으면 game_id + round_id 로 보조 조회 */
+    if (!betTx) {
+      const gid = vinusStrId(data.game_id) || undefined;
+      const rid = vinusStrId(data.round_id) || undefined;
+      if (gid || rid) {
+        betTx = await this.prisma.casinoVinusTx.findFirst({
+          where: {
+            userId: userRow.id,
+            kind: { in: ['SPORTS_BET', 'BET'] },
+            cancelledAt: null,
+            ...(gid ? { gameId: gid } : {}),
+            ...(rid ? { roundId: rid } : {}),
+          },
+          orderBy: { createdAt: 'desc' },
         });
       }
     }
-    if (!betTx || betTx.userId !== userRow.id) {
+
+    /** sports-win-deduct 는 BET 미조회 시에도 조정 처리 허용 */
+    if (command !== 'sports-win-deduct' && (!betTx || betTx.userId !== userRow.id)) {
       return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
-    if (betTx.kind !== 'SPORTS_BET' && betTx.kind !== 'BET') {
+    if (betTx && betTx.kind !== 'SPORTS_BET' && betTx.kind !== 'BET') {
       return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
 
     const outcome = parseSportsWinStatus(data.bet_details_result);
-    if (!outcome) {
+    /** sports-win-deduct 는 outcome null 허용 (amount 직접 적용) */
+    if (!outcome && command !== 'sports-win-deduct') {
       return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
     }
 
     const winAmount = toDec(data.amount);
-    const stake = betTx.stake ?? new Prisma.Decimal(0);
+    const stake = betTx?.stake ?? new Prisma.Decimal(0);
 
     let payout = new Prisma.Decimal(0);
     if (outcome === 'won') {
@@ -1524,7 +1590,14 @@ export class VinusService {
       payout = winAmount;
     } else if (outcome === 'lost') {
       payout = new Prisma.Decimal(0);
+    } else if (outcome === 'adjust' || command === 'sports-win-deduct') {
+      /** 금액 직접 적용 (음수 포함) — 차감이면 w0.balance + payout < w0.balance */
+      if (winAmount === null) {
+        return fail(99, w0Fail?.balance ?? new Prisma.Decimal(0));
+      }
+      payout = winAmount;
     } else {
+      /** void / cancel: 원 베팅액 환급 */
       payout = stake;
     }
 
@@ -1535,6 +1608,9 @@ export class VinusService {
       !Array.isArray(data.bet_details_result)
         ? (data.bet_details_result as Prisma.InputJsonValue)
         : undefined;
+
+    const txKind =
+      command === 'sports-win-deduct' ? 'SPORTS_WIN_DEDUCT' : 'SPORTS_WIN';
 
     return this.prisma.$transaction(async (tx) => {
       const w0 = await tx.wallet.findUnique({
@@ -1551,13 +1627,15 @@ export class VinusService {
           platformId,
           userId: userRow.id,
           externalId: resultTid,
-          kind: 'SPORTS_WIN',
-          gameId: betTx.gameId,
-          roundId: betTx.roundId,
+          kind: txKind,
+          gameId: betTx?.gameId ?? (vinusStrId(data.game_id) || undefined),
+          roundId: betTx?.roundId ?? (vinusStrId(data.round_id) || undefined),
+          /** payout: 음수 차감도 그대로 저장 */
           payout,
         },
       });
-      if (payout.gt(0)) {
+      /** 잔액 변동이 있을 때만 원장 기록 */
+      if (!payout.isZero()) {
         await tx.ledgerEntry.create({
           data: {
             userId: userRow.id,
@@ -1570,9 +1648,9 @@ export class VinusService {
             balanceAfter: newBal,
             reference: resultTid,
             metaJson: {
-              command: 'sports-win',
-              reserve_id: reserveBetId,
-              outcome,
+              command,
+              reserve_id: reserveBetId ?? undefined,
+              outcome: outcome ?? undefined,
               bet_details_result: resultJson ?? undefined,
               timestamp,
             },
@@ -1821,10 +1899,13 @@ export class VinusService {
               break;
             }
             /**
-             * sports-win: reserve_id 없이 req_id(WIN TX) 만 있는 BT1 패턴.
+             * sports-win / sports-win-deduct: reserve_id 없는 BT1 패턴.
              * 실제 BET 조회·검증은 sportsWinProd 에서 수행하므로 check 51 은 스킵.
              */
-            if (command === 'sports-win' && vinusStrId(data.req_id)) {
+            if (
+              (command === 'sports-win' || command === 'sports-win-deduct') &&
+              (vinusStrId(data.req_id) || vinusStrId(data.transaction_id))
+            ) {
               break;
             }
             if (!reserveBet) {
@@ -1879,14 +1960,15 @@ export class VinusService {
           if (!userRow) {
             return fail(52, new Prisma.Decimal(0));
           }
-          /** 확정·주문·예약·취소: 금액·req_id가 없거나 0인 페이로드가 정상 (52는 변경 요청용) */
+          /** 확정·주문·예약·취소·차감: 금액·req_id가 없거나 0인 페이로드가 정상 (52는 변경 요청용) */
           if (
             command === 'sports-bet-commit' ||
             command === 'sports-confirm' ||
             command === 'sports-order' ||
             command === 'sports-reserve' ||
             command === 'sports-cancel' ||
-            command === 'cancel'
+            command === 'cancel' ||
+            command === 'sports-win-deduct'
           ) {
             break;
           }
@@ -2047,6 +2129,20 @@ export class VinusService {
           timestamp,
           fail,
           ok,
+          'sports-win',
+        );
+      }
+
+      /** 적중 후 금액 차감/조정 (BT1 sports-win-deduct): 음수 amount 직접 적용 */
+      case 'sports-win-deduct': {
+        return this.sportsWinProd(
+          platformId,
+          userRow,
+          data,
+          timestamp,
+          fail,
+          ok,
+          'sports-win-deduct',
         );
       }
 
