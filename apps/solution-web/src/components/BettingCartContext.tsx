@@ -20,16 +20,20 @@ type BettingCartContextValue = {
   addLine: (line: Omit<BettingCartLine, "id">) => void;
   removeLine: (id: string) => void;
   clear: () => void;
-  /** 모바일 패널 열림 상태 */
+  /** 배팅카트 모바일 패널 */
   panelOpen: boolean;
   setPanelOpen: (v: boolean) => void;
+  /** 배팅내역 패널 */
+  historyOpen: boolean;
+  setHistoryOpen: (v: boolean) => void;
 };
 
 const BettingCartContext = createContext<BettingCartContextValue | null>(null);
 
 export function BettingCartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<BettingCartLine[]>([]);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen]     = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const addLine = useCallback((line: Omit<BettingCartLine, "id">) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -43,8 +47,8 @@ export function BettingCartProvider({ children }: { children: React.ReactNode })
   const clear = useCallback(() => setLines([]), []);
 
   const value = useMemo(
-    () => ({ lines, addLine, removeLine, clear, panelOpen, setPanelOpen }),
-    [lines, addLine, removeLine, clear, panelOpen],
+    () => ({ lines, addLine, removeLine, clear, panelOpen, setPanelOpen, historyOpen, setHistoryOpen }),
+    [lines, addLine, removeLine, clear, panelOpen, historyOpen],
   );
 
   return (
@@ -56,8 +60,6 @@ export function BettingCartProvider({ children }: { children: React.ReactNode })
 
 export function useBettingCart() {
   const v = useContext(BettingCartContext);
-  if (!v) {
-    throw new Error("useBettingCart는 BettingCartProvider 안에서만 사용하세요.");
-  }
+  if (!v) throw new Error("useBettingCart는 BettingCartProvider 안에서만 사용하세요.");
   return v;
 }

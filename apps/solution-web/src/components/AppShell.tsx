@@ -16,6 +16,7 @@ import { MobileDrawer } from "./MobileDrawer";
 import { BottomNav } from "./BottomNav";
 import { BettingCartProvider } from "./BettingCartContext";
 import { BettingCartDock } from "./BettingCartDock";
+import { BettingHistoryPanel } from "./BettingHistoryPanel";
 
 /* 배팅카트가 표시되는 스포츠 관련 경로들 */
 const SPORTS_PATHS = [
@@ -57,6 +58,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* 스포츠 전용 배팅카트 (데스크톱: 우측 고정 패널 / 모바일: 슬라이드업) */}
       {isSports && <BettingCartDock />}
+
+      {/* 배팅내역 슬라이드업 패널 (모바일 전용) */}
+      <BettingHistoryPanel />
 
       {/* 하단 탭바 */}
       <BottomNav />
