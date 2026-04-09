@@ -238,16 +238,22 @@ export function SportsLobbyLayout({
       )}
 
       {/* 종목 아이콘 Nav */}
-      <SportTypeNav active={sportType} onSelect={setSportType} />
+      <div className="md:px-6 lg:px-10">
+        <SportTypeNav active={sportType} onSelect={setSportType} />
+      </div>
 
       {/* 배팅 타입 + 검색 */}
-      <BetTypeNav tabs={betTabs} active={betTab} onSelect={setBetTab} />
+      <div className="md:px-6 lg:px-10">
+        <BetTypeNav tabs={betTabs} active={betTab} onSelect={setBetTab} />
+      </div>
 
       {/* 폴더 보너스 */}
-      <FolderBonus />
+      <div className="md:px-6 lg:px-10">
+        <FolderBonus />
+      </div>
 
       {/* 매치 리스트 */}
-      <div className="px-2 pt-2">
+      <div className="px-2 pt-2 md:px-6 lg:px-10">
         {leagues.length > 0 ? (
           <SportsDomesticList leagues={leagues} />
         ) : (

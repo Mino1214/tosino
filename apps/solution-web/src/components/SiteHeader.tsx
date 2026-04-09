@@ -27,7 +27,7 @@ import { apiFetch, getAccessToken, clearSession } from "@/lib/api";
 const NAV_ITEMS = [
   { label: "스포츠",   href: "/lobby/sports-kr"  },
   { label: "프리매치", href: "/lobby/prematch"    },
-  { label: "인플레이", href: "/lobby/inplay"      },
+  { label: "인플레이", href: "/lobby/live"         },
   { label: "스포츠북", href: "/lobby/sportsbook"  },
   { label: "e스포츠",  href: "/lobby/esports"    },
   { label: "카지노",   href: "/lobby/live-casino" },
@@ -37,7 +37,7 @@ const NAV_ITEMS = [
 ];
 
 /* 스크롤하면 Row1이 숨는 페이지 */
-const SPORT_PATHS = ["/lobby/sports", "/lobby/prematch", "/lobby/inplay", "/lobby/esports"];
+const SPORT_PATHS = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"];
 
 export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const b = useBootstrap();
@@ -223,39 +223,16 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
             <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
           </button>
 
-          <button
-            type="button"
-            onClick={() => setProfileOpen((o) => !o)}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-zinc-300"
-            aria-label="프로필"
+          {/* 프로필 버튼 — 클릭 시 마이페이지로 직접 이동 */}
+          <Link
+            href="/mypage"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+            aria-label="마이페이지"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
               <path strokeLinecap="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
             </svg>
-          </button>
-
-          {/* 프로필 드롭다운 */}
-          {profileOpen && (
-            <div className="absolute right-3 top-12 z-60 w-44 overflow-hidden rounded-xl border border-white/10 bg-[#111118] shadow-2xl">
-              {[
-                { label: "대시보드",  href: "/mypage"      },
-                { label: "출석체크",  href: "/mypage#attend"},
-                { label: "이벤트1",   href: "/mypage#event1"},
-                { label: "이벤트2",   href: "/mypage#event2"},
-                { label: "고객센터",  href: "https://t.me/" },
-                { label: "배팅내역",  href: "/mypage#bets"  },
-              ].map((item) => (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  onClick={() => setProfileOpen(false)}
-                  className="flex h-11 items-center px-4 text-sm text-zinc-300 hover:bg-white/5"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          )}
+          </Link>
         </div>
       </div>
     </header>

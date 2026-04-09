@@ -319,8 +319,8 @@ function EventSection() {
 export default function MyPage() {
   return (
     <div className="pb-6">
-      {/* 페이지 탭 (상단) */}
-      <div className="sticky top-12 z-30 flex h-10 border-b border-white/8 bg-[#0a0a0e] md:top-[5.5rem]">
+      {/* 모바일 탭 (상단 앵커 네비) — 모바일만 */}
+      <div className="sticky top-12 z-30 flex h-10 border-b border-white/8 bg-[#0a0a0e] md:hidden">
         {["내정보", "롤링현황", "출석체크", "공지사항", "이벤트"].map((label, i) => (
           <a
             key={label}
@@ -332,14 +332,35 @@ export default function MyPage() {
         ))}
       </div>
 
-      <div id="profile">
-        <ProfileSection />
+      {/* 모바일: 세로 스택 */}
+      <div className="md:hidden">
+        <div id="profile"><ProfileSection /></div>
+        <RollingSection />
+        <ConversionSection />
+        <AttendanceSection />
+        <NoticeSection />
+        <EventSection />
       </div>
-      <RollingSection />
-      <ConversionSection />
-      <AttendanceSection />
-      <NoticeSection />
-      <EventSection />
+
+      {/* 웹: 2컬럼 레이아웃
+          Left  : 내정보 + 롤링현황 + 전환카드
+          Right : 출석체크 + 공지사항 + 이벤트
+      */}
+      <div className="hidden md:grid md:grid-cols-[1fr_1fr] md:gap-0 lg:grid-cols-[480px_1fr] xl:grid-cols-[520px_1fr]">
+        {/* ── 왼쪽 컬럼 ── */}
+        <div className="border-r border-white/5">
+          <div id="profile"><ProfileSection /></div>
+          <RollingSection />
+          <ConversionSection />
+        </div>
+
+        {/* ── 오른쪽 컬럼 ── */}
+        <div>
+          <AttendanceSection />
+          <NoticeSection />
+          <EventSection />
+        </div>
+      </div>
     </div>
   );
 }

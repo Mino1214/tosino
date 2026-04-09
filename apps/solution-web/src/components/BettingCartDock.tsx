@@ -122,11 +122,23 @@ export function BettingCartDock() {
     if (e.key === "Escape") setOpen(false);
   }, []);
 
+  /* 열릴 때 body 스크롤 잠금 */
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
   }, [open, onEsc]);
+
+  const close = useCallback(() => setOpen(false), []);
 
   return (
     <>
@@ -140,25 +152,29 @@ export function BettingCartDock() {
 
       {/* ── 모바일 ── */}
       <div className="md:hidden">
-        {/* 오버레이 */}
+        {/* 전체화면 오버레이 (하단 탭바 포함) — z-[90] 으로 탭바보다 위 */}
         {open && (
           <div
-            className="fixed inset-0 z-[70] bg-black/50"
-            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-[2px]"
+            onClick={close}
           />
         )}
 
-        {/* 슬라이드업 패널: bottom-14 (탭바 높이 56px 위) */}
+        {/* 슬라이드업 패널: bottom-0 (전체 화면, 탭바 가림) */}
         <div
-          className={`fixed inset-x-0 bottom-14 z-[80] max-h-[80dvh] overflow-hidden rounded-t-2xl border-t border-x border-white/10 bg-[#0a0a0e] transition-transform duration-300 ${
-            open ? "translate-y-0" : "translate-y-full"
-          }`}
+          className={`fixed inset-x-0 bottom-0 z-[95] flex flex-col overflow-hidden rounded-t-2xl
+                      border-t border-x border-white/10 bg-[#0a0a0e]
+                      transition-transform duration-300 ease-in-out
+                      ${open ? "translate-y-0" : "translate-y-full"}`}
+          style={{ maxHeight: "92dvh" }}
         >
-          {/* 드래그 핸들 */}
-          <button type="button" onClick={() => setOpen(false)} className="flex w-full justify-center py-2">
-            <span className="h-1 w-8 rounded-full bg-white/20" />
-          </button>
-          <div className="h-[75dvh]">
+          {/* 드래그 핸들 + 닫기 */}
+          <div className="flex shrink-0 items-center justify-between px-4 py-3 border-b border-white/8">
+            <button type="button" onClick={close} className="text-zinc-400 text-sm">✕ 닫기</button>
+            <span className="h-1 w-10 rounded-full bg-white/20" />
+            <span className="w-12" />
+          </div>
+          <div className="flex-1 overflow-hidden">
             <CartPanel />
           </div>
         </div>
@@ -168,7 +184,7 @@ export function BettingCartDock() {
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-label="배팅카트"
-          className={`fixed bottom-[4.5rem] right-3 z-[65] flex h-12 w-12 items-center justify-center rounded-full border ${
+          className={`fixed bottom-[4.5rem] right-3 z-[65] flex h-12 w-12 items-center justify-center rounded-full border shadow-lg ${
             lines.length > 0
               ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)] text-black"
               : "border-white/15 bg-[#0a0a0e] text-zinc-400"

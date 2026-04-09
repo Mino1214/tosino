@@ -19,7 +19,7 @@ import { useBettingCart } from "./BettingCartContext";
 const PLAY_ITEMS = [
   { label: "스포츠",    href: "/lobby/sports-kr",  emoji: "⚽" },
   { label: "프리매치",  href: "/lobby/prematch",    emoji: "📅" },
-  { label: "인플레이",  href: "/lobby/inplay",      emoji: "🔴" },
+  { label: "인플레이",  href: "/lobby/live",         emoji: "🔴" },
   { label: "e스포츠",  href: "/lobby/esports",     emoji: "🎮" },
   { label: "카지노",    href: "/lobby/live-casino", emoji: "🎰" },
   { label: "슬롯",      href: "/lobby/slots",       emoji: "🎲" },
@@ -78,7 +78,7 @@ export function BottomNav() {
   const [walletOpen, setWalletOpen] = useState(false);
   const { lines } = useBettingCart();
 
-  const isSportPage = ["/lobby/sports", "/lobby/prematch", "/lobby/inplay", "/lobby/esports"]
+  const isSportPage = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"]
     .some((p) => pathname.startsWith(p));
 
   function closeAll() {

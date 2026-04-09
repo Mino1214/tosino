@@ -172,17 +172,25 @@ function MarketItemBtn({
       type="button"
       onClick={onClick}
       className={[
-        "flex flex-1 flex-col items-center justify-center gap-0.5 rounded py-2 text-center",
-        "transition-colors border",
+        "group flex flex-1 flex-col items-center justify-center gap-0.5 rounded-md py-2.5 text-center",
+        "cursor-pointer transition-all duration-150 border",
         selected
-          ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/20"
-          : "border-white/5 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.06]",
+          ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/25 shadow-[0_0_8px_rgba(201,162,39,0.25)]"
+          : "border-zinc-700 bg-zinc-800 hover:border-zinc-500 hover:bg-zinc-700 active:scale-95",
       ].join(" ")}
     >
-      <span className={`text-[10px] uppercase ${selected ? "text-[var(--theme-primary,#c9a227)]" : "text-zinc-500"}`}>
+      <span
+        className={`text-[10px] font-semibold uppercase tracking-wide ${
+          selected ? "text-[var(--theme-primary,#c9a227)]" : "text-zinc-400 group-hover:text-zinc-200"
+        }`}
+      >
         {label}
       </span>
-      <span className={`text-sm font-bold ${selected ? "text-[var(--theme-primary,#c9a227)]" : "text-white"}`}>
+      <span
+        className={`text-sm font-bold ${
+          selected ? "text-[var(--theme-primary,#c9a227)]" : "text-zinc-100 group-hover:text-white"
+        }`}
+      >
         {odds}
       </span>
     </button>
@@ -194,19 +202,23 @@ function MarketItemBtn({
 function SportsDomesticMatch({ match }: { match: MatchData; leagueName: string }) {
   const { lines, addLine, removeLine } = useBettingCart();
 
-  const isSelected = (eventId: string, marketName: string, label: string) =>
-    lines.some(
-      (l) => l.id === `${eventId}-${marketName}-${label}`,
-    );
+  /* pickLabel을 고유 키로 사용해 선택 여부 판단 */
+  const makePickLabel = (marketName: string, label: string) =>
+    `${match.eventId}::${marketName}::${label}`;
+
+  const isSelected = (marketName: string, label: string) =>
+    lines.some((l) => l.pickLabel === makePickLabel(marketName, label));
+
+  const findLineId = (marketName: string, label: string) =>
+    lines.find((l) => l.pickLabel === makePickLabel(marketName, label))?.id ?? "";
 
   const handleClick = (option: MarketOption, marketName: string) => {
-    const id = `${match.eventId}-${marketName}-${option.label}`;
-    if (isSelected(match.eventId, marketName, option.label)) {
-      removeLine(id);
+    if (isSelected(marketName, option.label)) {
+      removeLine(findLineId(marketName, option.label));
     } else {
       addLine({
         matchLabel: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-        pickLabel: `${marketName} · ${option.label}`,
+        pickLabel: makePickLabel(marketName, option.label),
         odd: option.odds,
       });
     }
@@ -269,19 +281,19 @@ function SportsDomesticMatch({ match }: { match: MatchData; leagueName: string }
                 <MarketItemBtn
                   label={mkt.home.label}
                   odds={mkt.home.odds}
-                  selected={isSelected(match.eventId, mkt.name, mkt.home.label)}
+                  selected={isSelected(mkt.name, mkt.home.label)}
                   onClick={() => handleClick(mkt.home, mkt.name)}
                 />
                 <MarketItemBtn
                   label={mkt.draw.label}
                   odds={mkt.draw.odds}
-                  selected={isSelected(match.eventId, mkt.name, mkt.draw.label)}
+                  selected={isSelected(mkt.name, mkt.draw.label)}
                   onClick={() => handleClick(mkt.draw!, mkt.name)}
                 />
                 <MarketItemBtn
                   label={mkt.away.label}
                   odds={mkt.away.odds}
-                  selected={isSelected(match.eventId, mkt.name, mkt.away.label)}
+                  selected={isSelected(mkt.name, mkt.away.label)}
                   onClick={() => handleClick(mkt.away, mkt.name)}
                 />
               </div>
@@ -291,17 +303,17 @@ function SportsDomesticMatch({ match }: { match: MatchData; leagueName: string }
                 <MarketItemBtn
                   label={mkt.home.label}
                   odds={mkt.home.odds}
-                  selected={isSelected(match.eventId, mkt.name, mkt.home.label)}
+                  selected={isSelected(mkt.name, mkt.home.label)}
                   onClick={() => handleClick(mkt.home, mkt.name)}
                 />
                 {/* 가운데 핸디캡/기준값 */}
-                <div className="flex w-14 shrink-0 items-center justify-center rounded border border-white/5 bg-white/[0.02] text-[10px] font-bold text-zinc-600">
+                <div className="flex w-14 shrink-0 items-center justify-center rounded-md border border-zinc-700 bg-zinc-800 text-[11px] font-bold text-zinc-300">
                   {mkt.center}
                 </div>
                 <MarketItemBtn
                   label={mkt.away.label}
                   odds={mkt.away.odds}
-                  selected={isSelected(match.eventId, mkt.name, mkt.away.label)}
+                  selected={isSelected(mkt.name, mkt.away.label)}
                   onClick={() => handleClick(mkt.away, mkt.name)}
                 />
               </div>

@@ -27,6 +27,14 @@ body {
   font-family: "NoonnuBasicGothic", var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* 데스크톱에서 base font-size를 올려 전체 텍스트 크기 상향 */
+@media (min-width: 768px) {
+  html { font-size: 112%; }
+}
+@media (min-width: 1280px) {
+  html { font-size: 118%; }
+}
+
 @keyframes marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
