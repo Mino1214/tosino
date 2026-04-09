@@ -1,5 +1,14 @@
 "use client";
 
+/*
+  ─── SiteHeader 규격 ──────────────────────────────
+  · position : fixed top-0 left-0 right-0
+  · height   : h-12 (48px)  — layout.tsx pt-12 과 맞춤
+  · z-index  : z-50
+  · layout   : logo | balance(center) | actions(right)
+  ─────────────────────────────────────────────────
+*/
+
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -15,9 +24,9 @@ export function SiteHeader() {
   const [balance, setBalance] = useState<string | null>(null);
 
   useEffect(() => {
-    const isLogged = !!getAccessToken();
-    setLogged(isLogged);
-    if (isLogged) {
+    const ok = !!getAccessToken();
+    setLogged(ok);
+    if (ok) {
       void apiFetch<{ balance: string }>("/me/wallet")
         .then((w) => setBalance(w.balance))
         .catch(() => setBalance(null));
@@ -36,77 +45,46 @@ export function SiteHeader() {
   if (!b) return null;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/8 bg-[#0a0a0e]/95 backdrop-blur-md">
-      <div className="flex h-12 items-center justify-between gap-2 px-3 sm:h-14 sm:px-4">
+    <header className="fixed inset-x-0 top-0 z-50 h-12 border-b border-white/8 bg-[#0a0a0e]/95 backdrop-blur-md">
+      <div className="flex h-full items-center justify-between gap-2 px-3">
+
         {/* 로고 */}
-        <Link href="/" className="flex shrink-0 items-center gap-2">
+        <Link href="/" className="shrink-0">
           {b.theme.logoUrl ? (
             <Image
               src={b.theme.logoUrl}
               alt={b.theme.siteName}
-              width={100}
-              height={28}
+              width={90}
+              height={24}
               unoptimized
-              className="h-7 max-w-[7rem] object-contain object-left"
+              className="h-6 w-auto object-contain"
             />
           ) : (
-            <span className="text-base font-bold tracking-tight text-white">
-              {b.theme.siteName}
-            </span>
+            <span className="text-sm font-bold text-white">{b.theme.siteName}</span>
           )}
         </Link>
 
-        {/* 중앙 — 로그인 상태 잔액 */}
+        {/* 잔액 (로그인 시) */}
         {logged && balance !== null && (
-          <div className="flex min-w-0 flex-1 justify-center">
-            <div className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 ring-1 ring-white/10">
-              <span className="text-[10px] text-zinc-500">잔액</span>
-              <span className="font-mono text-sm font-semibold text-[var(--theme-primary,#c9a227)]">
-                {Number(balance).toLocaleString("ko-KR")}
-              </span>
-              <span className="text-[10px] text-zinc-500">원</span>
-            </div>
+          <div className="flex-1 text-center">
+            <span className="font-mono text-sm font-semibold text-[var(--theme-primary,#c9a227)]">
+              {Number(balance).toLocaleString("ko-KR")}원
+            </span>
           </div>
         )}
 
-        {/* 오른쪽 액션 */}
+        {/* 액션 버튼 */}
         <nav className="flex shrink-0 items-center gap-1.5 text-xs">
           {logged ? (
             <>
-              <Link
-                href="/wallet"
-                className="rounded-lg bg-[var(--theme-primary,#c9a227)] px-2.5 py-1.5 text-[11px] font-bold text-black transition hover:opacity-90 sm:px-3 sm:text-xs"
-              >
-                충전
-              </Link>
-              <Link
-                href="/wallet"
-                className="rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] text-zinc-300 transition hover:bg-white/5 sm:px-3 sm:text-xs"
-              >
-                출금
-              </Link>
-              <button
-                type="button"
-                onClick={logout}
-                className="hidden rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-zinc-500 hover:bg-white/5 sm:block sm:text-xs"
-              >
-                로그아웃
-              </button>
+              <Link href="/wallet" className="rounded bg-[var(--theme-primary,#c9a227)] px-2.5 py-1 font-bold text-black">충전</Link>
+              <Link href="/wallet" className="rounded border border-white/15 px-2.5 py-1 text-zinc-300">출금</Link>
+              <button type="button" onClick={logout} className="hidden rounded border border-white/10 px-2.5 py-1 text-zinc-500 sm:block">로그아웃</button>
             </>
           ) : (
             <>
-              <Link
-                href="/login"
-                className="rounded-lg bg-[var(--theme-primary,#c9a227)] px-3 py-1.5 text-[11px] font-bold text-black transition hover:opacity-90 sm:text-xs"
-              >
-                로그인
-              </Link>
-              <Link
-                href="/signup"
-                className="hidden rounded-lg border border-white/15 px-3 py-1.5 text-[11px] text-zinc-300 hover:bg-white/5 sm:block sm:text-xs"
-              >
-                회원가입
-              </Link>
+              <Link href="/login" className="rounded bg-[var(--theme-primary,#c9a227)] px-3 py-1 font-bold text-black">로그인</Link>
+              <Link href="/signup" className="hidden rounded border border-white/15 px-3 py-1 text-zinc-300 sm:block">회원가입</Link>
             </>
           )}
         </nav>

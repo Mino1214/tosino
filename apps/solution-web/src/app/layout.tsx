@@ -30,22 +30,34 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const host = "localhost";
-
   return (
     <html lang="ko">
+      {/*
+        ─── 전체 레이아웃 규격 ────────────────────────────────────
+        · SiteHeader  : fixed top-0,  h-12 (48px)
+        · BottomNav   : fixed bottom-0, h-14 (56px), mobile only
+        · CartPanel   : fixed right-0, top-12, w-72, desktop only
+        · <main>      : pt-12  — 헤더 높이만큼 밀고
+                        pb-14 md:pb-0  — 모바일 하단 탭 여백
+                        md:mr-72       — 데스크톱 카트 패널 여백
+        ──────────────────────────────────────────────────────── */}
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased`}
       >
         <PreviewRibbon />
-        <BootstrapProvider host={host}>
+        <BootstrapProvider host="localhost">
           <GameIframeModalProvider>
             <AnnouncementModal />
+
+            {/* ① 고정 헤더 */}
             <SiteHeader />
-            {/* 모바일 하단 탭 여백 */}
-            <main className="pb-14 md:pb-0">
+
+            {/* ② 스크롤 콘텐츠 영역 */}
+            <main className="pt-12 pb-14 md:pb-0 md:mr-72">
               {children}
             </main>
+
+            {/* ③ 모바일 하단 탭바 */}
             <BottomNav />
           </GameIframeModalProvider>
         </BootstrapProvider>
