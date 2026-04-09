@@ -121,22 +121,25 @@ export default function HomePage() {
       </div>
 
       {/* ══════════════════════════════════════════════════════
-          MOBILE — 자동 가로 캐러셀
+          MOBILE — 수동 가로 캐러셀 (기기 화면에 딱 맞게 고정)
           ══════════════════════════════════════════════════════ */}
-      <div className="md:hidden">
+      <div
+        className="md:hidden"
+        style={{ height: "calc(100dvh - 3.5rem)", overflow: "hidden" }}
+      >
         <div
-          className="relative overflow-hidden"
+          className="relative h-full overflow-hidden"
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
           <div
-            className="flex transition-transform duration-500 ease-in-out"
+            className="flex h-full transition-transform duration-500 ease-in-out"
             style={{ transform: `translateX(-${slide * 100}%)` }}
           >
             {SECTIONS.map((s) => (
               <div
                 key={s.id}
-                className={`relative flex w-full shrink-0 min-h-[calc(100dvh-3.5rem)] items-center justify-center ${s.bg} py-16`}
+                className={`relative flex w-full h-full shrink-0 items-center justify-center ${s.bg}`}
               >
                 <div className="flex flex-col items-center gap-5 px-6 text-center">
                   <p className="text-[10px] uppercase tracking-widest text-[var(--theme-primary,#c9a227)]">

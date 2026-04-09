@@ -24,7 +24,7 @@ const DRAWER_NAV = [
   { label: "마이페이지",href: "/mypage",             icon: "👤" },
   { label: "이벤트",    href: "/mypage#event1",      icon: "🎁" },
   { label: "배팅내역",  href: "/mypage#bets",        icon: "📋" },
-  { label: "고객센터",  href: "https://t.me/",       icon: "💬" },
+  { label: "고객센터",  href: "https://t.me/nimo7788", icon: "💬" },
 ];
 
 type Props = {

@@ -47,8 +47,9 @@ function SpeedDial({ items, onClose }: SpeedDialProps) {
       <button
         type="button"
         aria-label="메뉴 닫기"
-        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/50 backdrop-blur-[2px]"
+        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/50"
         onClick={onClose}
+        onTouchEnd={onClose}
       />
       {/* 카드 스택 — 아래에서 위로 쌓임 */}
       <div className="fixed inset-x-0 bottom-14 z-[60] flex flex-col-reverse items-center gap-2 pb-3">
@@ -162,7 +163,7 @@ export function BottomNav() {
 
           {/* 고객센터 */}
           <a
-            href="https://t.me/"
+            href="https://t.me/nimo7788"
             target="_blank"
             rel="noopener noreferrer"
             className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-zinc-500"

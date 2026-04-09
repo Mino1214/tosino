@@ -118,6 +118,12 @@ function CartPanel() {
 export function BettingCartDock() {
   const { lines, panelOpen: open, setPanelOpen } = useBettingCart();
 
+  /* 마운트 시 패널 초기화 — 다른 페이지에서 이 컴포넌트가 새로 마운트될 때 열려있던 상태 리셋 */
+  useEffect(() => {
+    setPanelOpen(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onEsc = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape") setPanelOpen(false);
   }, [setPanelOpen]);
