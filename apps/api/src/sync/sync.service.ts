@@ -38,4 +38,33 @@ export class SyncService {
     );
     return { queued: true, platformId, jobType };
   }
+
+  /** 스포츠 실시간 경기 데이터를 SportsOddsSnapshot 에 upsert */
+  async upsertSportsLive(
+    platformId: string,
+    body: Record<string, unknown>,
+    actor: JwtPayload,
+  ) {
+    this.assertPlatform(actor, platformId);
+    const games = Array.isArray(body.game) ? body.game : [];
+    const now = new Date();
+    await this.prisma.sportsOddsSnapshot.upsert({
+      where: {
+        platformId_sourceFeedId: { platformId, sourceFeedId: 'sports-live' },
+      },
+      create: {
+        platformId,
+        sourceFeedId: 'sports-live',
+        sportLabel: 'sports',
+        market: null,
+        payloadJson: { games } as object,
+        fetchedAt: now,
+      },
+      update: {
+        payloadJson: { games } as object,
+        fetchedAt: now,
+      },
+    });
+    return { ok: true, total: games.length, fetchedAt: now.toISOString() };
+  }
 }

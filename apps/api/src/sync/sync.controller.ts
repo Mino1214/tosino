@@ -32,4 +32,19 @@ export class SyncController {
   ) {
     return this.sync.triggerStub(platformId, dto.jobType, user);
   }
+
+  /**
+   * 스포츠 실시간 경기 데이터 업로드.
+   * body: { success, total, game: SportsLiveGame[] }
+   * → SportsOddsSnapshot (sourceFeedId="sports-live") upsert
+   */
+  @Post('sports-live')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  uploadSportsLive(
+    @Param('platformId') platformId: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.sync.upsertSportsLive(platformId, body, user);
+  }
 }
