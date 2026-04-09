@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useBettingCart } from "./BettingCartContext";
+import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 
 /* ── 테스트 데이터 ──────────────────────────────────── */
 type HistoryItem = {
@@ -168,10 +169,11 @@ export function BettingHistoryPanel() {
   const { historyOpen, setHistoryOpen } = useBettingCart();
   const close = () => setHistoryOpen(false);
 
-  /* 스크롤 잠금 */
+  /* 스크롤 잠금 (iOS 호환) */
   useEffect(() => {
-    document.body.style.overflow = historyOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    if (historyOpen) lockScroll();
+    else unlockScroll();
+    return () => { unlockScroll(); };
   }, [historyOpen]);
 
   /* ESC 닫기 */

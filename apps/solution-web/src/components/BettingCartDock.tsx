@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useBettingCart } from "./BettingCartContext";
+import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 
 const QUICK_AMOUNTS = [10_000, 50_000, 100_000, 300_000, 500_000, 1_000_000];
 
@@ -77,7 +78,7 @@ function CartPanel() {
                 onClick={() => setAmount((p) => p + v)}
                 className="rounded border border-white/10 py-1.5 text-[11px] text-zinc-300"
               >
-                {v >= 1_000_000 ? `${v / 1_000_000}백만` : `${v / 1_000}천`}
+                {v >= 1_000_000 ? `${v / 1_000_000}백만` : v >= 10_000 ? `${v / 10_000}만` : `${v / 1_000}천`}
               </button>
             ))}
           </div>
@@ -121,10 +122,11 @@ export function BettingCartDock() {
     if (e.key === "Escape") setPanelOpen(false);
   }, [setPanelOpen]);
 
-  /* 열릴 때 body 스크롤 잠금 */
+  /* 열릴 때 body 스크롤 잠금 (iOS 호환) */
   useEffect(() => {
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    if (open) lockScroll();
+    else unlockScroll();
+    return () => { unlockScroll(); };
   }, [open]);
 
   useEffect(() => {

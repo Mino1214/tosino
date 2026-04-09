@@ -15,7 +15,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useBettingCart } from "./BettingCartContext";
-
+import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 
 const PLAY_ITEMS = [
   { label: "스포츠",    href: "/lobby/sports-kr",  emoji: "⚽" },
@@ -44,12 +44,11 @@ function SpeedDial({ items, onClose }: SpeedDialProps) {
   return (
     <>
       {/* 반투명 오버레이 — 탭바 위만 덮음, 탭 시 닫힘 */}
-      <div
-        role="button"
-        tabIndex={-1}
-        className="fixed inset-x-0 top-0 bottom-14 z-[55] cursor-pointer bg-black/50 backdrop-blur-[2px]"
+      <button
+        type="button"
+        aria-label="메뉴 닫기"
+        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/50 backdrop-blur-[2px]"
         onClick={onClose}
-        onTouchEnd={(e) => { e.preventDefault(); onClose(); }}
       />
       {/* 카드 스택 — 아래에서 위로 쌓임 */}
       <div className="fixed inset-x-0 bottom-14 z-[60] flex flex-col-reverse items-center gap-2 pb-3">
@@ -85,10 +84,11 @@ export function BottomNav() {
   const isSportPage = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"]
     .some((p) => pathname.startsWith(p));
 
-  /* 스피드 다이얼 열림 시 배경 스크롤 잠금 */
+  /* 스피드 다이얼 열림 시 배경 스크롤 잠금 (iOS 호환) */
   useEffect(() => {
-    document.body.style.overflow = (playOpen || walletOpen) ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    if (playOpen || walletOpen) lockScroll();
+    else unlockScroll();
+    return () => { unlockScroll(); };
   }, [playOpen, walletOpen]);
 
   function closeAll() {
