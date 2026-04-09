@@ -5,6 +5,7 @@ import { BootstrapProvider } from "@/components/BootstrapProvider";
 import { AnnouncementModal } from "@/components/AnnouncementModal";
 import { GameIframeModalProvider } from "@/components/GameIframeModal";
 import { SiteHeader } from "@/components/SiteHeader";
+import { BottomNav } from "@/components/BottomNav";
 import { PreviewRibbon } from "@/components/PreviewRibbon";
 
 const geistSans = Geist({
@@ -22,7 +23,6 @@ export const metadata: Metadata = {
   description: "화이트라벨 솔루션",
 };
 
-/** SSG: 호스트는 BootstrapProvider 가 클라이언트에서 effectiveBootstrapHost 로 확정 */
 export const dynamic = "force-static";
 
 export default function RootLayout({
@@ -42,7 +42,11 @@ export default function RootLayout({
           <GameIframeModalProvider>
             <AnnouncementModal />
             <SiteHeader />
-            {children}
+            {/* 모바일 하단 탭 여백 */}
+            <main className="pb-14 md:pb-0">
+              {children}
+            </main>
+            <BottomNav />
           </GameIframeModalProvider>
         </BootstrapProvider>
       </body>
