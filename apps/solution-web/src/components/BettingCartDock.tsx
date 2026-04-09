@@ -27,7 +27,7 @@ function CartPanel() {
   const expected  = Math.floor(amount * totalOdds);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
       {/* 헤더 */}
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/8 px-4">
         <span className="text-sm font-semibold">
@@ -43,8 +43,8 @@ function CartPanel() {
         )}
       </div>
 
-      {/* 목록 (스크롤) */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      {/* 목록 (스크롤) — overscroll-contain으로 배경 스크롤 전파 차단 */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-2" style={{ WebkitOverflowScrolling: "touch" }}>
         {lines.length === 0 ? (
           <p className="py-6 text-center text-xs text-zinc-600">배당을 눌러 담아보세요</p>
         ) : (
@@ -169,7 +169,8 @@ export function BettingCartDock() {
             <span className="h-1 w-10 rounded-full bg-white/20" />
             <span className="w-12" />
           </div>
-          <div className="flex-1 overflow-hidden">
+          {/* min-h-0 필수: flex 자식에서 내부 overflow-y-auto가 제대로 동작하려면 */}
+          <div className="min-h-0 flex-1 flex flex-col">
             <CartPanel />
           </div>
         </div>

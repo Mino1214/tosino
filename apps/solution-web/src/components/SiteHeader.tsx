@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useBootstrap } from "./BootstrapProvider";
 import { apiFetch, getAccessToken, clearSession } from "@/lib/api";
+import { useBettingCart } from "./BettingCartContext";
 
 const NAV_ITEMS = [
   { label: "스포츠",   href: "/lobby/sports-kr"  },
@@ -43,6 +44,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const b = useBootstrap();
   const router = useRouter();
   const pathname = usePathname();
+  const { setHistoryOpen } = useBettingCart();
   const [logged, setLogged] = useState(false);
   const [money, setMoney] = useState<number | null>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -155,11 +157,38 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
                 <Link href="/wallet" className="rounded bg-[var(--theme-primary,#c9a227)] px-2 py-0.5 font-bold text-black hover:opacity-90">입금하기</Link>
                 <Link href="/wallet" className="rounded border border-white/20 px-2 py-0.5 text-zinc-300 hover:text-white">출금하기</Link>
                 <button type="button" onClick={logout} className="hover:text-white">로그아웃</button>
+
+                <div className="h-3 w-px bg-white/15" />
+
+                {/* 마이페이지 · 배팅내역 — 시그니처 컬러 */}
+                <Link
+                  href="/mypage"
+                  className="font-semibold text-[var(--theme-primary,#c9a227)] hover:opacity-80 transition-opacity"
+                >
+                  마이페이지
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(true)}
+                  className="font-semibold text-[var(--theme-primary,#c9a227)] hover:opacity-80 transition-opacity"
+                >
+                  배팅내역
+                </button>
               </>
             ) : (
               <>
                 <Link href="/login"  className="rounded bg-[var(--theme-primary,#c9a227)] px-2.5 py-0.5 font-bold text-black">로그인</Link>
                 <Link href="/signup" className="rounded border border-white/20 px-2.5 py-0.5 text-zinc-300">회원가입</Link>
+
+                <div className="h-3 w-px bg-white/15" />
+
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(true)}
+                  className="font-semibold text-[var(--theme-primary,#c9a227)] hover:opacity-80 transition-opacity"
+                >
+                  배팅내역
+                </button>
               </>
             )}
           </div>
