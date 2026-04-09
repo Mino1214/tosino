@@ -2,8 +2,8 @@
   스포츠북 (해외 스포츠) 로비
   · 배팅카트 활성화 (AppShell이 /lobby/sportsbook prefix 감지)
 */
-import { SportsLobbyLayout }                    from "@/components/SportsLobbyLayout";
-import { SAMPLE_LEAGUES, type LeagueGroupData } from "@/components/SportsDomesticCard";
+import { SportsLobbyLayout }    from "@/components/SportsLobbyLayout";
+import type { LeagueGroupData } from "@/components/SportsDomesticCard";
 
 const BET_TABS = [
   { id: "sportsbook", label: "스포츠북", count: 120 },
@@ -59,7 +59,7 @@ export default function SportsbookPage() {
     <SportsLobbyLayout
       title="스포츠북"
       betTabs={BET_TABS}
-      leagues={[...SB_LEAGUES, ...SAMPLE_LEAGUES]}
+      leagues={SB_LEAGUES}
       bannerText="해외 스포츠 이벤트 — 다양한 리그에 배팅하세요!"
     />
   );

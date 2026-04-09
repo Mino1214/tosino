@@ -3,7 +3,7 @@
   · 기존 SlotVendorCatalog 재사용
 */
 import { AdBanner } from "@/components/SportsLobbyLayout";
-import SlotVendorCatalog from "@/components/SlotVendorCatalog";
+import { SlotVendorCatalog } from "@/components/SlotVendorCatalog";
 
 const PROVIDERS = [
   "CQ9", "Hacksaw", "PlayStar", "Octoplay", "Mobilots",

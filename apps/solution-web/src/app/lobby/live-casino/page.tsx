@@ -4,7 +4,7 @@
   · 기존 CasinoPortalCards 재사용
 */
 import { AdBanner } from "@/components/SportsLobbyLayout";
-import CasinoPortalCards from "@/components/CasinoPortalCards";
+import { CasinoPortalCards } from "@/components/CasinoPortalCards";
 
 const PROVIDERS = [
   "Vivo Gaming", "Taishan", "DB Casino", "Evolution",

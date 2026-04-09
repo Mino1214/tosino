@@ -191,13 +191,7 @@ function MarketItemBtn({
 
 /* ── 하나의 Match Row ────────────────────────────────────── */
 
-function SportsDomesticMatch({
-  match,
-  leagueName,
-}: {
-  match: MatchData;
-  leagueName: string;
-}) {
+function SportsDomesticMatch({ match }: { match: MatchData; leagueName: string }) {
   const { lines, addLine, removeLine } = useBettingCart();
 
   const isSelected = (eventId: string, marketName: string, label: string) =>
