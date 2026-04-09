@@ -76,7 +76,7 @@ export function BottomNav() {
   const pathname = usePathname();
   const [playOpen, setPlayOpen]     = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
-  const { lines } = useBettingCart();
+  const { lines, setPanelOpen } = useBettingCart();
 
   const isSportPage = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"]
     .some((p) => pathname.startsWith(p));
@@ -102,8 +102,9 @@ export function BottomNav() {
           {/* 배팅카트 */}
           <button
             type="button"
+            onClick={() => { closeAll(); setPanelOpen(true); }}
             className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${
-              isSportPage ? "text-zinc-400" : "text-zinc-600"
+              isSportPage ? "text-zinc-400 active:text-[var(--theme-primary,#c9a227)]" : "text-zinc-600"
             }`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">

@@ -16,7 +16,7 @@
 */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { PartnerMarquee } from "@/components/PartnerMarquee";
 
 const SECTIONS = [
@@ -52,11 +52,19 @@ const SECTIONS = [
 export default function HomePage() {
   const [slide, setSlide] = useState(0);
 
-  /* 모바일 자동 슬라이드 */
-  useEffect(() => {
-    const t = setInterval(() => setSlide((p) => (p + 1) % SECTIONS.length), 4000);
-    return () => clearInterval(t);
-  }, []);
+  /* 터치 스와이프 */
+  const touchStartX = useRef<number | null>(null);
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0]?.clientX ?? null;
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
+    if (Math.abs(dx) < 40) return;
+    if (dx < 0) setSlide((p) => Math.min(p + 1, SECTIONS.length - 1));
+    else        setSlide((p) => Math.max(p - 1, 0));
+    touchStartX.current = null;
+  }
 
   return (
     <>
@@ -116,7 +124,11 @@ export default function HomePage() {
           MOBILE — 자동 가로 캐러셀
           ══════════════════════════════════════════════════════ */}
       <div className="md:hidden">
-        <div className="relative overflow-hidden">
+        <div
+          className="relative overflow-hidden"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
           <div
             className="flex transition-transform duration-500 ease-in-out"
             style={{ transform: `translateX(-${slide * 100}%)` }}

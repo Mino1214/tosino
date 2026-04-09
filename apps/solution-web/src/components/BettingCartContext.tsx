@@ -20,12 +20,16 @@ type BettingCartContextValue = {
   addLine: (line: Omit<BettingCartLine, "id">) => void;
   removeLine: (id: string) => void;
   clear: () => void;
+  /** 모바일 패널 열림 상태 */
+  panelOpen: boolean;
+  setPanelOpen: (v: boolean) => void;
 };
 
 const BettingCartContext = createContext<BettingCartContextValue | null>(null);
 
 export function BettingCartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<BettingCartLine[]>([]);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const addLine = useCallback((line: Omit<BettingCartLine, "id">) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -39,8 +43,8 @@ export function BettingCartProvider({ children }: { children: React.ReactNode })
   const clear = useCallback(() => setLines([]), []);
 
   const value = useMemo(
-    () => ({ lines, addLine, removeLine, clear }),
-    [lines, addLine, removeLine, clear],
+    () => ({ lines, addLine, removeLine, clear, panelOpen, setPanelOpen }),
+    [lines, addLine, removeLine, clear, panelOpen],
   );
 
   return (

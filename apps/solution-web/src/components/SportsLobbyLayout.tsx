@@ -231,7 +231,7 @@ export function SportsLobbyLayout({
   const [page, setPage]             = useState(1);
 
   return (
-    <div className="min-h-screen bg-zinc-950 pb-4">
+    <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-4">
       {/* 공용 광고 배너 */}
       {!hideBanner && (
         <AdBanner title={bannerText ?? `${title} 이벤트 진행 중 — 실시간 채널 이벤트 혜택을 받아가세요!`} />

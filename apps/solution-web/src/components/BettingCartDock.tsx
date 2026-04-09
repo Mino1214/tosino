@@ -115,20 +115,15 @@ function CartPanel() {
 }
 
 export function BettingCartDock() {
-  const { lines } = useBettingCart();
-  const [open, setOpen] = useState(false);
+  const { lines, panelOpen: open, setPanelOpen } = useBettingCart();
 
   const onEsc = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") setOpen(false);
-  }, []);
+    if (e.key === "Escape") setPanelOpen(false);
+  }, [setPanelOpen]);
 
   /* 열릴 때 body 스크롤 잠금 */
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    document.body.style.overflow = open ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
@@ -138,7 +133,7 @@ export function BettingCartDock() {
     return () => window.removeEventListener("keydown", onEsc);
   }, [open, onEsc]);
 
-  const close = useCallback(() => setOpen(false), []);
+  const close = useCallback(() => setPanelOpen(false), [setPanelOpen]);
 
   return (
     <>
@@ -182,7 +177,7 @@ export function BettingCartDock() {
         {/* 플로팅 버튼 — 탭바(56px) 바로 위 */}
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setPanelOpen(!open)}
           aria-label="배팅카트"
           className={`fixed bottom-[4.5rem] right-3 z-[65] flex h-12 w-12 items-center justify-center rounded-full border shadow-lg ${
             lines.length > 0

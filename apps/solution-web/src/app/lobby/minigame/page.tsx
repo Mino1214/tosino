@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 /* ──────────────────────────────────────────── 게임 정의 */
 type Market = {
@@ -173,9 +173,38 @@ function BettingMarket({ market, selected, onSelect }: {
 }
 
 /* ──────────────────────────────────────────── 게임 플레이어 화면 */
+/* iframe 자연 해상도 */
+const IFRAME_W = 950;
+const IFRAME_H: Record<GameDef["type"], number> = { roulette: 794, bubble: 750, mario: 750 };
+
+/** 컨테이너 너비에 맞춰 iframe을 scale()로 축소/확대하는 훅 */
+function useIframeScale(type: GameDef["type"]) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  const update = useCallback(() => {
+    if (!containerRef.current) return;
+    const w = containerRef.current.offsetWidth;
+    setScale(w / IFRAME_W);
+  }, []);
+
+  useEffect(() => {
+    update();
+    const ro = new ResizeObserver(update);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [update]);
+
+  const naturalH = IFRAME_H[type];
+  const containerH = Math.round(naturalH * scale);
+
+  return { containerRef, scale, containerH };
+}
+
 function GamePlayer({ game, onBack }: { game: GameDef; onBack: () => void }) {
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [betAmount, setBetAmount] = useState("0");
+  const { containerRef, scale, containerH } = useIframeScale(game.type);
 
   const markets = MARKETS[game.type] ?? [];
 
@@ -222,15 +251,24 @@ function GamePlayer({ game, onBack }: { game: GameDef; onBack: () => void }) {
 
       {/* 메인 — iframe(좌) + 배팅패널(우) */}
       <div className="flex flex-1 flex-col md:flex-row">
-        {/* iframe 영역 */}
-        <div className="relative w-full bg-black md:flex-1">
-          <div className="relative w-full" style={{ paddingBottom: "75%" }}>
+        {/* iframe 영역 — 컨테이너 너비 기준으로 scale() 계산 */}
+        <div className="w-full bg-black md:flex-1" ref={containerRef}>
+          <div
+            className="relative overflow-hidden bg-black"
+            style={{ height: containerH || "auto" }}
+          >
             <iframe
               src={game.url}
               title={game.name}
-              className="absolute inset-0 h-full w-full border-0"
-              allowFullScreen
               scrolling="no"
+              style={{
+                width: IFRAME_W,
+                height: IFRAME_H[game.type],
+                border: "none",
+                display: "block",
+                transform: `scale(${scale})`,
+                transformOrigin: "top left",
+              }}
             />
           </div>
         </div>

@@ -23,8 +23,7 @@ const SPORTS_PATHS = [
   "/lobby/prematch",
   "/lobby/live",
   "/lobby/sportsbook",
-  "/sports",
-  "/esports",
+  "/lobby/esports",
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
