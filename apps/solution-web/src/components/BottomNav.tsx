@@ -43,10 +43,13 @@ type SpeedDialProps = {
 function SpeedDial({ items, onClose }: SpeedDialProps) {
   return (
     <>
-      {/* 반투명 오버레이 — 바깥 탭 시 닫힘 */}
+      {/* 반투명 오버레이 — 탭바 위만 덮음, 탭 시 닫힘 */}
       <div
-        className="fixed inset-0 z-[55] bg-black/50 backdrop-blur-[2px]"
+        role="button"
+        tabIndex={-1}
+        className="fixed inset-x-0 top-0 bottom-14 z-[55] cursor-pointer bg-black/50 backdrop-blur-[2px]"
         onClick={onClose}
+        onTouchEnd={(e) => { e.preventDefault(); onClose(); }}
       />
       {/* 카드 스택 — 아래에서 위로 쌓임 */}
       <div className="fixed inset-x-0 bottom-14 z-[60] flex flex-col-reverse items-center gap-2 pb-3">
