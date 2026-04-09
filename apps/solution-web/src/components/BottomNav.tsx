@@ -16,6 +16,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useBettingCart } from "./BettingCartContext";
 
+
 const PLAY_ITEMS = [
   { label: "스포츠",    href: "/lobby/sports-kr",  emoji: "⚽" },
   { label: "프리매치",  href: "/lobby/prematch",    emoji: "📅" },
@@ -80,6 +81,12 @@ export function BottomNav() {
 
   const isSportPage = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"]
     .some((p) => pathname.startsWith(p));
+
+  /* 스피드 다이얼 열림 시 배경 스크롤 잠금 */
+  useEffect(() => {
+    document.body.style.overflow = (playOpen || walletOpen) ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [playOpen, walletOpen]);
 
   function closeAll() {
     setPlayOpen(false);

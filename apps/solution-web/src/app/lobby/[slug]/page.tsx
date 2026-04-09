@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { LiveCasinoLobby } from "./LiveCasinoLobby";
 
+/* 전용 page.tsx가 없는 slug만 여기서 처리
+   (live-casino / slots / minigame / sports-kr / esports / prematch / live 는 각자 페이지 있음) */
 const TITLES: Record<string, string> = {
-  "live-casino": "라이브 카지노",
   "cq9-casino": "CQ9 카지노",
-  slots: "슬롯",
-  "sports-kr": "국내 스포츠",
-  "sports-eu": "유럽 스포츠",
-  minigame: "미니게임",
-  promo: "이벤트",
+  "sports-eu":  "유럽 스포츠",
+  promo:        "이벤트",
 };
 
 export const dynamic = "force-static";
@@ -25,16 +23,6 @@ export default async function LobbyPage({
   const { slug } = await params;
   const title = TITLES[slug] ?? "게임";
 
-  if (slug === "live-casino") {
-    return (
-      <LiveCasinoLobby
-        title="라이브 카지노"
-        vendor="pragmatic_casino"
-        launchSurface="casino-window"
-      />
-    );
-  }
-
   if (slug === "cq9-casino") {
     return (
       <LiveCasinoLobby
@@ -45,17 +33,7 @@ export default async function LobbyPage({
     );
   }
 
-  if (slug === "slots") {
-    return (
-      <LiveCasinoLobby
-        title="슬롯 (프라그마틱)"
-        vendor="pragmatic_slot"
-        launchSurface="slot-iframe"
-      />
-    );
-  }
-
-  if (slug === "sports-kr" || slug === "sports-eu") {
+  if (slug === "sports-eu") {
     return (
       <LiveCasinoLobby
         title={title}
