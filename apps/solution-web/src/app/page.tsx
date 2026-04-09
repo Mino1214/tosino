@@ -1,41 +1,58 @@
 "use client";
 
 /*
-  ─── HomePage 규격 ────────────────────────────────
-  · layout.tsx 가 이미 pt-12 / pb-14 / md:mr-72 처리
-  · 여기서는 배너(선택) + HomePortal 만 렌더
-  · BettingCartDock 은 데스크톱 fixed right-0 top-12
-  ─────────────────────────────────────────────────
+  ─── PageMain 규격 (ZXX.BET 참조) ──────────────────────────────────
+
+  ZXX.BET #PageMain 구조:
+    <div id="PageMain">
+      <div class="section" style="width:100vw; height:100vh"> 스포츠 </div>
+      <div class="section" style="width:100vw; height:100vh"> 카지노 </div>
+      <div class="section" style="width:100vw; height:100vh"> 슬롯   </div>
+      <div class="section" style="width:100vw; height:100vh"> 미니게임 </div>
+    </div>
+
+  우리 구현:
+    - 각 섹션은 min-h-screen (100dvh)
+    - 스크롤 위치로 앵커 이동 (id="sports" / "casino" / "slot" / "minigame")
+    - BettingCartDock은 md에서 right-0 fixed, 모바일 슬라이드업
+  ─────────────────────────────────────────────────────────────────
 */
 
-import Image from "next/image";
-import { useState } from "react";
-import { useBootstrap } from "@/components/BootstrapProvider";
 import { BettingCartProvider } from "@/components/BettingCartContext";
 import { BettingCartDock } from "@/components/BettingCartDock";
-import { HomePortal, type PortalView } from "@/components/HomePortal";
+import { SectionSports } from "@/components/sections/SectionSports";
+import { SectionCasino } from "@/components/sections/SectionCasino";
+import { SectionSlot } from "@/components/sections/SectionSlot";
+import { SectionMinigame } from "@/components/sections/SectionMinigame";
 
 export default function HomePage() {
-  const b = useBootstrap();
-  const [view, setView] = useState<PortalView>("sports");
-
-  if (!b) return null;
-
-  const firstBanner = b.theme.bannerUrls[0];
-
   return (
     <BettingCartProvider>
-      {/* 배너 */}
-      {firstBanner && (
-        <div className="relative aspect-[21/6] w-full overflow-hidden">
-          <Image src={firstBanner} alt="" fill className="object-cover" sizes="100vw" priority />
-        </div>
-      )}
+      <div id="PageMain" className="md:mr-72">
 
-      {/* 카테고리 탭 + 콘텐츠 */}
-      <HomePortal view={view} onViewChange={setView} />
+        {/* ① 스포츠 ─────────────────────────────────────────── */}
+        <section id="sports" className="min-h-dvh">
+          <SectionSports />
+        </section>
 
-      {/* 배팅카트 (데스크톱 fixed right, 모바일 슬라이드업) */}
+        {/* ② 카지노 ─────────────────────────────────────────── */}
+        <section id="casino" className="min-h-dvh border-t border-white/8">
+          <SectionCasino />
+        </section>
+
+        {/* ③ 슬롯 ───────────────────────────────────────────── */}
+        <section id="slot" className="min-h-dvh border-t border-white/8">
+          <SectionSlot />
+        </section>
+
+        {/* ④ 미니게임 ────────────────────────────────────────── */}
+        <section id="minigame" className="min-h-dvh border-t border-white/8">
+          <SectionMinigame />
+        </section>
+
+      </div>
+
+      {/* 배팅카트 */}
       <BettingCartDock />
     </BettingCartProvider>
   );

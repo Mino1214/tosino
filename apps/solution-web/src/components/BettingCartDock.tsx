@@ -132,7 +132,7 @@ export function BettingCartDock() {
     <>
       {/* ── 데스크톱: fixed right-0 top-12 bottom-0 w-72 ── */}
       <aside
-        className="fixed right-0 top-12 bottom-0 z-40 hidden w-72 border-l border-white/8 bg-[#0a0a0e] md:flex"
+        className="fixed right-0 top-14 bottom-0 z-40 hidden w-72 border-l border-white/8 bg-[#0a0a0e] md:flex"
         aria-label="배팅카트"
       >
         <CartPanel />
