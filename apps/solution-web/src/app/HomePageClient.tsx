@@ -194,7 +194,7 @@ function DesktopHeroSlide({ s, index }: { s: HeroSlide; index: number }) {
     <section
       ref={sectionRef}
       id={s.id}
-      className="relative flex h-dvh snap-start items-stretch justify-stretch bg-black"
+      className="relative flex h-[100svh] snap-start items-stretch justify-stretch bg-black"
     >
       <div className="absolute inset-0">
         <HeroVideos
@@ -262,7 +262,7 @@ export function HomePageClient({ partnerLogoPaths }: { partnerLogoPaths: string[
   return (
     <>
       <div
-        className="hidden h-dvh snap-y snap-mandatory overflow-y-scroll md:block
+        className="hidden h-[100svh] snap-y snap-mandatory overflow-y-scroll md:block
                    [-ms-overflow-style:none] [scrollbar-width:none]
                    [&::-webkit-scrollbar]:hidden"
       >

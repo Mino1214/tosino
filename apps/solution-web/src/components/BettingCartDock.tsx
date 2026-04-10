@@ -9,7 +9,7 @@
 
   Mobile:
     · 플로팅 버튼: fixed bottom-[4.5rem] right-3  (탭바 위)
-    · 슬라이드업 패널: fixed inset-x-0 bottom-14, max-h-[80dvh]
+    · 슬라이드업 패널: max-height 92svh (dvh 대신 svh로 브라우저 간 통일)
     · 오버레이: fixed inset-0 z-[70]
   ──────────────────────────────────────────────────
 */
@@ -169,7 +169,7 @@ export function BettingCartDock() {
                       border-t border-x border-white/10 bg-[#0a0a0e]
                       transition-transform duration-300 ease-in-out
                       ${open ? "translate-y-0" : "translate-y-full"}`}
-          style={{ maxHeight: "92dvh" }}
+          style={{ maxHeight: "92svh" }}
         >
           {/* 드래그 핸들 + 닫기 */}
           <div className="flex shrink-0 items-center justify-between px-4 py-3 border-b border-white/8">

@@ -104,22 +104,23 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
       {/* ════════════════════════════════════════════════════
           DESKTOP — 단일 행 (로고 | 네비 | 유저)
           ════════════════════════════════════════════════════ */}
-      <div className="relative hidden h-20 items-center border-b border-[rgba(218,174,87,0.12)] px-4 lg:px-6 md:flex">
-        <Link href="/" className="relative z-20 shrink-0 py-1">
+      <div className="relative hidden h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-[rgba(218,174,87,0.12)] px-4 lg:gap-5 lg:px-6 md:grid">
+        {/* 좌: 로고 전용 열 — 가운데 absolute 네비와 겹치지 않게 전체가 보이게 */}
+        <Link href="/" className="min-w-0 shrink-0 py-1">
           <Image
             src="/main/logo.png"
             alt={b.theme.siteName}
             width={880}
             height={256}
-            className="h-11 w-auto max-w-[min(32vw,220px)] object-contain lg:h-12 lg:max-w-[min(36vw,280px)]"
+            className="h-11 w-auto max-w-[min(46vw,380px)] object-contain object-left lg:h-12 lg:max-w-[min(50vw,440px)]"
             priority
           />
         </Link>
 
-        {/* 중앙 네비 */}
+        {/* 중앙 네비 — 중간 열 안에서만 가로 스크롤, 로고 위에 덮지 않음 */}
         <nav
           aria-label="메인 메뉴"
-          className="absolute left-1/2 top-1/2 z-20 flex max-w-[min(52vw,28rem)] -translate-x-1/2 -translate-y-1/2 gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:max-w-none sm:gap-1 [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 justify-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden"
         >
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href) && item.href !== "/";
@@ -155,10 +156,10 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
         </nav>
 
         <div
-          className={`relative z-20 ml-auto flex min-w-0 justify-end transition-all duration-300 ${
+          className={`flex min-w-0 justify-end justify-self-end transition-all duration-300 ${
             row1Hidden
               ? "pointer-events-none max-w-0 overflow-hidden opacity-0"
-              : "max-w-[min(48vw,520px)] opacity-100 lg:max-w-none"
+              : "max-w-[min(52vw,560px)] opacity-100 xl:max-w-none"
           }`}
         >
           <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs text-zinc-500 lg:gap-x-3">
@@ -244,33 +245,35 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
       {/* ════════════════════════════════════════════════════
           MOBILE HEADER (단일 행)
           ════════════════════════════════════════════════════ */}
-      <div className="relative flex h-20 items-center justify-between px-3 md:hidden">
-        {/* 좌: 드로어 햄버거 */}
-        <button
-          type="button"
-          onClick={onDrawerOpen}
-          className="flex h-9 w-9 items-center justify-center text-main-gold-solid"
-          aria-label="메뉴"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
-            <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+      <div className="flex h-20 items-center gap-2 px-3 md:hidden">
+        {/* 좌: 드로어 — 고정 폭으로 로고 슬롯과 겹치지 않음 */}
+        <div className="flex w-11 shrink-0 justify-center">
+          <button
+            type="button"
+            onClick={onDrawerOpen}
+            className="flex h-9 w-9 items-center justify-center text-main-gold-solid"
+            aria-label="메뉴"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
+              <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
 
-        {/* 중앙: 로고 */}
-        <Link href="/" className="absolute left-1/2 -translate-x-1/2">
+        {/* 중앙: 남는 폭만 쓰는 로고 — 좌우 버튼에 가리지 않음 */}
+        <Link href="/" className="flex min-w-0 flex-1 justify-center py-1">
           <Image
             src="/main/logo.png"
             alt={b.theme.siteName}
             width={300}
             height={90}
-            className="h-[4.375rem] w-auto max-w-[min(88vw,350px)] object-contain"
+            className="h-[4.375rem] w-auto max-w-full object-contain"
             priority
           />
         </Link>
 
-        {/* 우: 알림 + 프로필 */}
-        <div className="flex items-center gap-2" ref={profileRef}>
+        {/* 우: 알림 + 프로필 — 고정 폭 */}
+        <div className="flex w-[5.25rem] shrink-0 items-center justify-end gap-2" ref={profileRef}>
           <button type="button" className="relative flex h-9 w-9 items-center justify-center text-zinc-400">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
               <path strokeLinecap="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

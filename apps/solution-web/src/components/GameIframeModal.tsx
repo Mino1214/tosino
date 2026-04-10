@@ -151,8 +151,8 @@ export function GameIframeModalProvider({
           <div
             className={
               isCasino
-                ? "flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden bg-zinc-950 md:h-[min(92dvh,900px)] md:max-h-[92dvh] md:max-w-[min(98vw,1440px)] md:rounded-2xl md:border md:border-white/10 md:shadow-2xl"
-                : "flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden bg-zinc-950 md:h-auto md:max-h-[92vh] md:max-w-[min(96vw,1680px)] md:rounded-2xl md:border md:border-white/10 md:shadow-2xl"
+                ? "flex h-[100svh] max-h-[100svh] w-full flex-col overflow-hidden bg-zinc-950 md:h-[min(92svh,900px)] md:max-h-[92svh] md:max-w-[min(98vw,1440px)] md:rounded-2xl md:border md:border-white/10 md:shadow-2xl"
+                : "flex h-[100svh] max-h-[100svh] w-full flex-col overflow-hidden bg-zinc-950 md:h-auto md:max-h-[92svh] md:max-w-[min(96vw,1680px)] md:rounded-2xl md:border md:border-white/10 md:shadow-2xl"
             }
           >
             <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 bg-zinc-950/98 px-3 sm:h-14 sm:px-4">

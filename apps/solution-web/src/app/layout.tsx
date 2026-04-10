@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         BottomNav: h-14 (56px), mobile only → pb-14
         ─────────────────────────────────────────────────────
       */}
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} min-h-[100svh] antialiased`}>
         <PreviewRibbon />
         <BootstrapProvider host="localhost">
           <GameIframeModalProvider>

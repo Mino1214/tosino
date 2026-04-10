@@ -84,7 +84,7 @@
 
 /*
   모바일: 문서 전체 스크롤 대신 헤더·하단 탭 사이 <main>만 스크롤.
-  100svh 로 iOS 주소창(dvh)에 덜 흔들리게 고정.
+  풀스크린 높이는 100svh 로 통일 (dvh·vh 혼용 시 크롬/사파리·iOS에서 높이가 달라 보일 수 있음).
 */
 @media (max-width: 767px) {
   .app-main-mobile-scroll {

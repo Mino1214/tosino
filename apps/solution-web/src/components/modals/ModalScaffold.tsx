@@ -37,7 +37,7 @@ export function ModalScaffold({
         onClick={onClose}
       />
       <div
-        className={`relative z-10 flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-white/10 bg-[#0a0a0e] shadow-2xl sm:max-h-[90dvh] sm:rounded-2xl ${
+        className={`relative z-10 flex max-h-[92svh] w-full flex-col rounded-t-2xl border border-white/10 bg-[#0a0a0e] shadow-2xl sm:max-h-[90svh] sm:rounded-2xl ${
           wide ? "sm:max-w-lg" : "sm:max-w-md"
         }`}
       >
