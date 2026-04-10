@@ -8,6 +8,7 @@ type ModalScaffoldProps = {
   onClose: () => void;
   title: string;
   wide?: boolean;
+  xwide?: boolean;
   children: React.ReactNode;
 };
 
@@ -16,6 +17,7 @@ export function ModalScaffold({
   onClose,
   title,
   wide,
+  xwide,
   children,
 }: ModalScaffoldProps) {
   useEffect(() => {
@@ -38,7 +40,7 @@ export function ModalScaffold({
       />
       <div
         className={`relative z-10 flex max-h-[92svh] w-full flex-col rounded-t-2xl border border-white/10 bg-[#0a0a0e] shadow-2xl sm:max-h-[90svh] sm:rounded-2xl ${
-          wide ? "sm:max-w-lg" : "sm:max-w-md"
+          xwide ? "sm:max-w-5xl" : wide ? "sm:max-w-lg" : "sm:max-w-md"
         }`}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">

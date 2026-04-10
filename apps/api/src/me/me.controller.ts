@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -10,6 +18,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { UpdateUserMemoDto } from '../users/dto/update-user-memo.dto';
 import { VinusService } from '../vinus/vinus.service';
 import { VinusLaunchDto } from '../vinus/dto/vinus-launch.dto';
+import { UpdatePayoutAccountDto } from './dto/update-payout-account.dto';
 
 @Controller('me')
 @UseGuards(AuthGuard('jwt'))
@@ -40,9 +49,41 @@ export class MeController {
         referralCode: true,
         userMemo: true,
         agentMemo: true,
+        bankCode: true,
+        bankAccountNumber: true,
+        bankAccountHolder: true,
       },
     });
     return row;
+  }
+
+  @Patch('payout-account')
+  async updateMyPayoutAccount(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdatePayoutAccountDto,
+  ) {
+    this.assertEndUser(user);
+
+    const bankCode = dto.bankCode.trim();
+    const bankAccountNumber = dto.bankAccountNumber.trim();
+    const bankAccountHolder = dto.bankAccountHolder.trim();
+
+    if (!bankCode || !bankAccountNumber || !bankAccountHolder) {
+      throw new BadRequestException(
+        '은행명, 계좌번호, 예금주를 모두 입력하세요',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.sub },
+      data: {
+        bankCode,
+        bankAccountNumber,
+        bankAccountHolder,
+      },
+    });
+
+    return { ok: true };
   }
 
   @Patch('user-memo')

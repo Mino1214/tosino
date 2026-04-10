@@ -13,11 +13,40 @@
     [Pagination]
 */
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { SportsDomesticList, type LeagueGroupData } from "./SportsDomesticCard";
 
 /* ── 광고 배너 (공용) ─────────────────────────────────── */
-export function AdBanner({ title = "이벤트 배너" }: { title?: string }) {
+export function AdBanner({
+  title = "이벤트 배너",
+  variant = "default",
+}: {
+  title?: string;
+  variant?: "default" | "billboard";
+}) {
+  if (variant === "billboard") {
+    const segments = Array.from({ length: 6 }, (_, idx) => idx);
+
+    return (
+      <div className="billboard-banner">
+        <p className="sr-only">{title}</p>
+        <div className="billboard-marquee" aria-hidden>
+          {[0, 1].map((copy) => (
+            <Fragment key={copy}>
+              {segments.map((segment) => (
+                <div key={`${copy}-${segment}`} className="billboard-segment">
+                  <span className="billboard-arrow billboard-font">&lt;&lt;</span>
+                  <span className="billboard-text billboard-font">{title}</span>
+                  <span className="billboard-separator billboard-font">◆</span>
+                </div>
+              ))}
+            </Fragment>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-12 w-full items-center justify-center bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 px-4 text-center text-xs text-zinc-400 border-b border-white/5">
       <span className="text-main-gold font-semibold mr-2">★</span>

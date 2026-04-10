@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-const MIN_USDT = 50;
 const DEFAULT_RATE = 1488;
+const STORAGE_PREFIX = "wallet-usdt-address:v1";
 
 function UsdtIcon({ className }: { className?: string }) {
   return (
@@ -19,183 +19,276 @@ function UsdtIcon({ className }: { className?: string }) {
   );
 }
 
-const GUIDES = [
-  "50 USDT 이상 입금 가능합니다",
-  "50 USDT 보다 적은 금액을 입금한 경우, 추가 입금을 하여 50 USDT가 넘는 금액이 입금되면 자동 충전처리 됩니다",
-  "국내 및 해외 거래소 계좌로 충전해주시기 바랍니다",
-  "충전은 자동으로 처리되며 블록체인 합의가 완료된 거래에 대해 승인처리가 됩니다",
-  "승인까지 송금 후 약 1분 소요될 수 있습니다",
-];
-
 type UsdtDepositPanelProps = {
-  /** 원화 지갑 잔액 표시용 (문자열) */
+  userId: string;
   krwBalanceDisplay?: string | null;
-  onScrollToHistory?: () => void;
 };
 
-export function UsdtDepositPanel({
-  krwBalanceDisplay,
-  onScrollToHistory,
-}: UsdtDepositPanelProps) {
-  const address =
-    (typeof process !== "undefined" &&
-      process.env.NEXT_PUBLIC_USDT_TRC20_ADDRESS?.trim()) ||
-    "";
+function formatUsdtAmount(value: number) {
+  if (!Number.isFinite(value)) return "0.00";
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+}
 
+function getStorageKey(userId: string) {
+  return `${STORAGE_PREFIX}:${userId}`;
+}
+
+export function UsdtDepositPanel({
+  userId,
+  krwBalanceDisplay,
+}: UsdtDepositPanelProps) {
   const rate = useMemo(() => {
     const n = Number(process.env.NEXT_PUBLIC_USDT_KRW_RATE);
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_RATE;
   }, []);
 
+  const [savedAddress, setSavedAddress] = useState("");
+  const [draftAddress, setDraftAddress] = useState("");
+  const [isEditing, setIsEditing] = useState(true);
   const [copied, setCopied] = useState(false);
   const [qrTick, setQrTick] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const qrSrc = address
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(address)}&t=${qrTick}`
-    : "";
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem(getStorageKey(userId)) ?? "";
+    setSavedAddress(saved);
+    setDraftAddress(saved);
+    setIsEditing(!saved);
+  }, [userId]);
 
-  const copy = useCallback(async () => {
-    if (!address) return;
+  const withdrawableUsdt = useMemo(() => {
+    const krw = Number(krwBalanceDisplay ?? 0);
+    if (!Number.isFinite(krw) || krw <= 0) return 0;
+    return krw / rate;
+  }, [krwBalanceDisplay, rate]);
+
+  const qrSource =
+    isEditing && draftAddress.trim()
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(draftAddress.trim())}&t=${qrTick}`
+      : "";
+
+  const copyAddress = useCallback(async () => {
+    if (!savedAddress) return;
     try {
-      await navigator.clipboard.writeText(address);
+      await navigator.clipboard.writeText(savedAddress);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      window.setTimeout(() => setCopied(false), 2000);
     } catch {
       /* ignore */
     }
-  }, [address]);
+  }, [savedAddress]);
+
+  function saveWallet() {
+    const trimmed = draftAddress.trim();
+    if (trimmed.length < 20) {
+      setNotice(null);
+      setError("TRC20 지갑 주소를 다시 확인해주세요.");
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    localStorage.setItem(getStorageKey(userId), trimmed);
+    setSavedAddress(trimmed);
+    setDraftAddress(trimmed);
+    setIsEditing(false);
+    setError(null);
+    setNotice("테더 지갑 주소가 이 브라우저에 저장되었습니다.");
+  }
+
+  function startEditing() {
+    setNotice(null);
+    setError(null);
+    setIsEditing(true);
+    setDraftAddress(savedAddress);
+  }
+
+  function cancelEditing() {
+    setNotice(null);
+    setError(null);
+    setDraftAddress(savedAddress);
+    setIsEditing(!savedAddress);
+  }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0c0c12] text-zinc-200">
-      {/* 헤더 */}
-      <div className="relative border-b border-white/8 px-5 pb-4 pt-5">
-        <div className="flex items-center gap-3">
-          <UsdtIcon />
-          <h2 className="text-lg font-bold text-white">USDT 충전</h2>
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0c0c12] text-zinc-200 shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+      <div className="border-b border-white/8 px-5 pb-4 pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <UsdtIcon />
+            <div>
+              <h2 className="text-lg font-bold text-white">테더 지갑</h2>
+              <p className="mt-1 text-xs text-zinc-500">TRC20 출금 지갑 등록용</p>
+            </div>
+          </div>
+          <span className="rounded-full border border-emerald-700/40 bg-emerald-950/40 px-3 py-1 text-xs font-semibold text-emerald-200">
+            1 USDT = {rate.toLocaleString("ko-KR")} KRW
+          </span>
         </div>
-        <p className="mt-2 text-xs text-zinc-500">TRC20 (TRON 네트워크)</p>
       </div>
 
-      <div className="p-5">
-        <div className="flex flex-col gap-6 md:flex-row md:items-start">
-          {/* QR */}
-          <div className="flex flex-1 flex-col items-center">
-            <div className="flex h-[200px] w-[200px] items-center justify-center rounded-xl border border-white/10 bg-white p-2">
-              {qrSrc ? (
-                <img
-                  src={qrSrc}
-                  alt="USDT 입금 QR"
-                  width={180}
-                  height={180}
-                  className="h-[180px] w-[180px]"
-                />
+      <div className="space-y-4 p-5">
+        {error ? (
+          <p className="rounded-xl bg-red-950/60 px-4 py-3 text-sm text-red-200">
+            {error}
+          </p>
+        ) : null}
+        {notice ? (
+          <p className="rounded-xl bg-emerald-950/60 px-4 py-3 text-sm text-emerald-200">
+            {notice}
+          </p>
+        ) : null}
+
+        <div className="grid gap-4 xl:grid-cols-[1.35fr_0.95fr]">
+          <div className="rounded-2xl border border-white/8 bg-black/25 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  {savedAddress && !isEditing ? "지갑 등록 완료" : "지갑 등록"}
+                </p>
+                <p className="mt-1 text-sm text-zinc-400">
+                  {savedAddress && !isEditing
+                    ? "등록된 지갑 주소로 테더 출금 기준을 확인할 수 있습니다."
+                    : "지갑 주소를 등록하면 이후 출금 기준을 한눈에 볼 수 있습니다."}
+                </p>
+              </div>
+              {savedAddress && !isEditing ? (
+                <button
+                  type="button"
+                  onClick={startEditing}
+                  className="rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-white/5"
+                >
+                  주소 변경
+                </button>
+              ) : null}
+            </div>
+
+            {savedAddress && !isEditing ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-xl border border-[rgba(38,161,123,0.26)] bg-[rgba(38,161,123,0.1)] px-4 py-3">
+                  <p className="text-xs text-zinc-500">등록된 지갑 주소</p>
+                  <p className="mt-1 break-all font-mono text-sm font-semibold text-white">
+                    {savedAddress}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={copyAddress}
+                  className="rounded-xl border border-white/10 px-4 py-3 text-sm text-zinc-300 hover:bg-white/5"
+                >
+                  {copied ? "복사됨" : "주소 복사"}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <label className="block text-sm text-zinc-400">
+                  TRC20 지갑 주소
+                  <input
+                    value={draftAddress}
+                    onChange={(e) => setDraftAddress(e.target.value)}
+                    placeholder="T로 시작하는 지갑 주소 입력"
+                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-emerald-500/70"
+                  />
+                </label>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={saveWallet}
+                    className="flex-1 rounded-xl bg-gold-gradient py-3 text-sm font-bold text-black transition-opacity hover:opacity-90"
+                  >
+                    지갑 저장
+                  </button>
+                  {savedAddress ? (
+                    <button
+                      type="button"
+                      onClick={cancelEditing}
+                      className="rounded-xl border border-white/10 px-4 py-3 text-sm text-zinc-300 hover:bg-white/5"
+                    >
+                      취소
+                    </button>
+                  ) : null}
+                </div>
+
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  지금은 브라우저에 임시 저장되며, 이후 DB와 연결할 때 같은 구조로 옮기기 쉽게 맞춰둔 상태입니다.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-white/8 bg-black/25 p-4">
+            <p className="text-sm font-semibold text-white">출금 가능 금액</p>
+            <p className="mt-3 font-mono text-3xl font-bold text-main-gold">
+              {formatUsdtAmount(withdrawableUsdt)}
+              <span className="ml-2 text-base text-zinc-500">USDT</span>
+            </p>
+            <div className="mt-4 space-y-3 rounded-xl border border-white/8 bg-zinc-950/80 p-4 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-500">원화 보유금액</span>
+                <span className="font-mono text-zinc-200">
+                  {Number(krwBalanceDisplay ?? 0).toLocaleString("ko-KR", {
+                    maximumFractionDigits: 0,
+                  })}{" "}
+                  KRW
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-500">기준 환율</span>
+                <span className="font-mono text-zinc-200">
+                  {rate.toLocaleString("ko-KR")} KRW
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-zinc-500">지갑 등록 상태</span>
+                <span className={savedAddress ? "text-emerald-300" : "text-amber-300"}>
+                  {savedAddress ? "등록 완료" : "등록 필요"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="grid gap-4 xl:grid-cols-[1fr_260px]">
+            <div className="rounded-2xl border border-white/8 bg-black/25 p-4">
+              <p className="text-sm font-semibold text-white">등록 중 QR 미리보기</p>
+              <p className="mt-1 text-sm text-zinc-500">
+                지갑 등록 단계에서만 QR을 보여주고, 저장이 끝나면 숨깁니다.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center rounded-2xl border border-white/8 bg-white p-4">
+              {qrSource ? (
+                <div className="text-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={qrSource}
+                    alt="지갑 주소 QR"
+                    width={220}
+                    height={220}
+                    className="h-[220px] w-[220px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQrTick((tick) => tick + 1)}
+                    className="mt-3 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                  >
+                    QR 새로고침
+                  </button>
+                </div>
               ) : (
                 <span className="px-4 text-center text-xs text-zinc-500">
-                  입금 주소가 설정되지 않았습니다.
-                  <br />
-                  <span className="mt-1 block font-mono text-[10px] text-zinc-600">
-                    NEXT_PUBLIC_USDT_TRC20_ADDRESS
-                  </span>
+                  지갑 주소를 입력하면 QR 미리보기가 표시됩니다.
                 </span>
               )}
             </div>
-            <div className="mt-3 flex items-center gap-2 text-sm text-zinc-400">
-              <button
-                type="button"
-                title="QR 새로고침"
-                onClick={() => setQrTick((t) => t + 1)}
-                className="rounded-lg border border-white/10 px-2 py-1 text-xs text-zinc-300 hover:bg-white/5"
-              >
-                새로고침
-              </button>
-              <span>QR 코드로 빠른 충전</span>
-            </div>
-            <p className="mt-1 text-center text-[11px] text-zinc-500">
-              QR코드를 스캔하여 입금주소를 <span className="text-zinc-300">확인하세요</span>
-            </p>
           </div>
-
-          {/* 주소 · 정보 */}
-          <div className="min-w-0 flex-1 space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-800/50 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-200">
-              <span className="text-emerald-400">◎</span>
-              TRON 네트워크 (TRC20)
-            </div>
-
-            <div>
-              <p className="mb-1.5 flex items-center gap-1.5 text-xs text-zinc-400">
-                <span className="text-zinc-500">✓</span> 입금 주소
-              </p>
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={address || "주소를 불러오는 중..."}
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 font-mono text-xs text-zinc-200"
-                />
-                <button
-                  type="button"
-                  onClick={copy}
-                  disabled={!address}
-                  className="shrink-0 rounded-lg border border-[rgba(218,174,87,0.5)] bg-[rgba(218,174,87,0.1)] px-4 py-2 text-xs font-semibold text-main-gold disabled:opacity-40"
-                >
-                  {copied ? "복사됨" : "복사"}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-3 rounded-xl border border-white/8 bg-black/25 p-4 text-sm">
-              <div className="flex justify-between gap-4">
-                <span className="text-zinc-500">최소 충전금액</span>
-                <span className="font-semibold text-white">{MIN_USDT} USDT</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-zinc-500">현재 환율 (참고)</span>
-                <span className="font-mono text-zinc-200">
-                  1 USDT = {rate.toLocaleString("ko-KR")} KRW
-                </span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-zinc-500">원화 지갑 잔액</span>
-                <span className="font-mono text-main-gold">
-                  {krwBalanceDisplay ?? "—"} 원
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="my-6 h-px bg-white/10" />
-
-        <div>
-          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-zinc-200">
-            <span className="text-zinc-500">◎</span>
-            충전 안내사항
-          </p>
-          <ul className="space-y-2 text-xs leading-relaxed text-zinc-400">
-            {GUIDES.map((t) => (
-              <li key={t} className="flex gap-2">
-                <span className="shrink-0 text-zinc-600">·</span>
-                <span>{t}</span>
-              </li>
-            ))}
-            <li className="flex gap-2 text-amber-200/90">
-              <span className="shrink-0">⚠</span>
-              <span>
-                TRC20 네트워크로만 입금해주세요 (다른 네트워크 입금 시 자산 손실 위험)
-              </span>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="border-t border-white/8 px-5 py-4">
-        <button
-          type="button"
-          onClick={onScrollToHistory}
-          className="w-full rounded-xl border border-white/15 py-3 text-sm font-medium text-zinc-300 hover:bg-white/5"
-        >
-          거래내역 확인
-        </button>
+        ) : null}
       </div>
     </div>
   );

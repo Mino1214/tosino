@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { AdBanner } from "@/components/SportsLobbyLayout";
 
 /* ──────────────────────────────────────────── 게임 정의 */
 type Market = {
@@ -353,6 +354,11 @@ function GamePlayer({ game, onBack }: { game: GameDef; onBack: () => void }) {
 function GameSelector({ onSelect }: { onSelect: (g: GameDef) => void }) {
   return (
     <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-10">
+      <AdBanner
+        title="미니게임 이벤트  첫충 보너스 혜택을 받아가세요!"
+        variant="billboard"
+      />
+
       <div className="content-pad-phi mx-auto w-full max-w-[90rem]">
         {/* 헤더 */}
         <div className="border-b border-[rgba(218,174,87,0.2)] bg-black py-5">

@@ -27,7 +27,10 @@ export default function LiveCasinoPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-10">
       {/* 광고 배너 */}
-      <AdBanner title="라이브 카지노 이벤트 — 첫충 보너스 혜택을 받아가세요!" />
+      <AdBanner
+        title="라이브 카지노 이벤트  첫충 보너스 혜택을 받아가세요!"
+        variant="billboard"
+      />
 
       <div className="content-pad-phi mx-auto w-full min-w-0 max-w-[90rem]">
         {/* 헤더 */}

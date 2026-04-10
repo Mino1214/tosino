@@ -8,8 +8,17 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "LABDigital";
+  src: url("/font/LAB_digital.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --phi: 1.618;
+  --custom-cursor: url("/cursor/cursor-web.png") 8 8;
   /* 헤더·드로어 로고: px 고정 — 모든 브라우저에서 동일 박스 (크롬/사파리 flex·baseline 차이 최소화) */
   --site-header-logo-h: 52px;
   --site-header-logo-max-w: 260px;
@@ -141,6 +150,18 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: "NoonnuBasicGothic", var(--font-geist-sans), system-ui, sans-serif;
+  cursor: var(--custom-cursor), auto;
+}
+
+a,
+button,
+[role="button"],
+input,
+select,
+textarea,
+label,
+summary {
+  cursor: var(--custom-cursor), pointer;
 }
 
 /* 데스크톱에서 base font-size를 올려 전체 텍스트 크기 상향 (로고는 --site-header-logo-* px로 영향 없음) */
@@ -171,4 +192,97 @@ body {
 @keyframes slideUpCard {
   from { opacity: 0; transform: translateY(16px) scale(0.92); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes billboard-marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+@keyframes billboard-flicker {
+  0%, 18%, 22%, 62%, 66%, 100% {
+    opacity: 1;
+    filter: brightness(1) saturate(1.1);
+  }
+  20%, 64% {
+    opacity: 0.86;
+    filter: brightness(1.28) saturate(1.4);
+  }
+}
+
+.billboard-banner {
+  position: relative;
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 238, 155, 0.42);
+  border-bottom: 1px solid rgba(255, 238, 155, 0.2);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 239, 138, 0.1), transparent 62%),
+    linear-gradient(180deg, rgba(49, 31, 0, 0.98), rgba(10, 7, 0, 0.98)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.035) 0,
+      rgba(255, 255, 255, 0.035) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  box-shadow:
+    inset 0 0 20px rgba(255, 211, 86, 0.14),
+    0 0 22px rgba(255, 222, 102, 0.12);
+}
+
+.billboard-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 247, 186, 0.14), transparent);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.billboard-marquee {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  animation: billboard-marquee 18s linear infinite;
+  will-change: transform;
+}
+
+.billboard-segment {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.78rem 1.25rem;
+}
+
+.billboard-font {
+  font-family: "LABDigital", var(--font-geist-mono), monospace;
+}
+
+.billboard-arrow,
+.billboard-text,
+.billboard-separator {
+  color: #fff07d;
+  text-shadow:
+    0 0 6px rgba(255, 233, 114, 0.95),
+    0 0 12px rgba(255, 214, 59, 0.72),
+    0 0 24px rgba(255, 214, 59, 0.38);
+  animation: billboard-flicker 1.8s steps(2, end) infinite;
+}
+
+.billboard-arrow {
+  font-size: 1rem;
+  letter-spacing: 0.2em;
+}
+
+.billboard-text {
+  font-size: clamp(0.88rem, 0.75rem + 0.25vw, 1rem);
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+}
+
+.billboard-separator {
+  color: #ffd54d;
+  font-size: 0.85rem;
 }

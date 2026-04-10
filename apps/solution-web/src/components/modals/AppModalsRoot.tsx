@@ -59,8 +59,8 @@ export function AppModalsRoot() {
       <ModalScaffold
         open={walletOpen}
         onClose={closeWallet}
-        title="충전 · 출금"
-        wide
+        title="입금 · 출금"
+        xwide
       >
         <WalletPanel
           key={walletOpenVersion}
