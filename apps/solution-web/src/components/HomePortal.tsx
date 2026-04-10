@@ -2,7 +2,7 @@
 
 /*
   ─── HomePortal 규격 ────────────────────────────────
-  · CategoryTabs : sticky top-20 (모바일 헤더 80px 아래)
+  · CategoryTabs : sticky top-28 (모바일 헤더 112px 아래)
                    h-10, 가로 스크롤
   · Content      : 탭에 따라 교체
   ─────────────────────────────────────────────────
@@ -32,7 +32,7 @@ export function HomePortal({ view, onViewChange }: HomePortalProps) {
       {/* ① 카테고리 탭 — sticky: 헤더 바로 아래 */}
       <nav
         aria-label="게임 카테고리"
-        className="sticky top-20 z-40 flex h-10 overflow-x-auto border-b border-[rgba(218,174,87,0.2)] bg-[#0a0a0e] md:top-[13rem] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="sticky top-28 z-40 flex h-10 overflow-x-auto border-b border-[rgba(218,174,87,0.2)] bg-[#0a0a0e] md:top-[13rem] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((tab) => (
           <button

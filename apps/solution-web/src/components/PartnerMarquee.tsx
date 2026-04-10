@@ -2,7 +2,7 @@
 
 /*
   PartnerMarquee — Official Partners (웹 푸터 위)
-  · public/partners 에 있는 이미지 파일만 표시 (빌드 시 스캔된 경로 전달)
+  · public/partner 에 있는 이미지 파일만 표시 (빌드 시 스캔된 경로 전달)
   · 슬롯 크기 통일 + object-contain 로 비율 다른 로고도 동일 박스 안에 맞춤
 */
 

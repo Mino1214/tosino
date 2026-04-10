@@ -288,13 +288,13 @@ export function BottomNav() {
                         <Image
                             src="/icon/playbutton.png"
                             alt=""
-                            width={112}
-                            height={112}
+                            width={156}
+                            height={156}
                             className="h-14 w-14 object-contain drop-shadow-[0_0_14px_rgba(218,174,87,0.5)]"
                             priority
                         />
                     </div>
-                    <span className={playOpen ? "text-main-gold" : ""}>PLAY</span>
+                    {/*<span className={playOpen ? "text-main-gold" : ""}>PLAY</span>*/}
                 </button>
 
                 {/* 고객센터 */}

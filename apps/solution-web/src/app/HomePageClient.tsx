@@ -2,7 +2,7 @@
 
 /*
   ─── HomePage (client) ──────────────────────────────────────────
-  · partnerLogoPaths: 서버에서 public/partners 스캔 결과 전달
+  · partnerLogoPaths: 서버에서 public/partner 스캔 결과 전달
   ─────────────────────────────────────────────────────────────────
 */
 
@@ -62,25 +62,80 @@ function HeroVideos({
   useEffect(() => {
     const d = desktopRef.current;
     const m = mobileRef.current;
-    const sync = () => {
+    const videos = [d, m].filter(Boolean) as HTMLVideoElement[];
+
+    const arm = (v: HTMLVideoElement) => {
+      v.muted = true;
+      v.defaultMuted = true;
+      v.setAttribute("playsinline", "");
+      v.setAttribute("webkit-playsinline", "");
+    };
+
+    videos.forEach(arm);
+
+    const tryPlay = () => {
       if (!isActive) {
         d?.pause();
         m?.pause();
         return;
       }
-      void d?.play?.().catch(() => {});
-      void m?.play?.().catch(() => {});
+      const kick = (v: HTMLVideoElement | null) => {
+        if (!v) return;
+        arm(v);
+        requestAnimationFrame(() => {
+          void v.play().catch(() => {
+            window.setTimeout(() => void v.play().catch(() => {}), 120);
+          });
+        });
+      };
+      kick(d);
+      kick(m);
     };
-    sync();
-    d?.addEventListener("loadeddata", sync);
-    m?.addEventListener("loadeddata", sync);
-    d?.addEventListener("canplay", sync);
-    m?.addEventListener("canplay", sync);
+
+    const onRecover = () => {
+      if (!isActive) return;
+      tryPlay();
+    };
+
+    tryPlay();
+
+    d?.addEventListener("loadeddata", tryPlay);
+    m?.addEventListener("loadeddata", tryPlay);
+    d?.addEventListener("canplay", tryPlay);
+    m?.addEventListener("canplay", tryPlay);
+    d?.addEventListener("canplaythrough", tryPlay);
+    m?.addEventListener("canplaythrough", tryPlay);
+    d?.addEventListener("stalled", onRecover);
+    m?.addEventListener("stalled", onRecover);
+    d?.addEventListener("waiting", onRecover);
+    m?.addEventListener("waiting", onRecover);
+    d?.addEventListener("ended", tryPlay);
+    m?.addEventListener("ended", tryPlay);
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") tryPlay();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) tryPlay();
+    };
+    window.addEventListener("pageshow", onShow);
+
     return () => {
-      d?.removeEventListener("loadeddata", sync);
-      m?.removeEventListener("loadeddata", sync);
-      d?.removeEventListener("canplay", sync);
-      m?.removeEventListener("canplay", sync);
+      d?.removeEventListener("loadeddata", tryPlay);
+      m?.removeEventListener("loadeddata", tryPlay);
+      d?.removeEventListener("canplay", tryPlay);
+      m?.removeEventListener("canplay", tryPlay);
+      d?.removeEventListener("canplaythrough", tryPlay);
+      m?.removeEventListener("canplaythrough", tryPlay);
+      d?.removeEventListener("stalled", onRecover);
+      m?.removeEventListener("stalled", onRecover);
+      d?.removeEventListener("waiting", onRecover);
+      m?.removeEventListener("waiting", onRecover);
+      d?.removeEventListener("ended", tryPlay);
+      m?.removeEventListener("ended", tryPlay);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pageshow", onShow);
     };
   }, [desktopSrc, mobileSrc, isActive]);
 
@@ -126,9 +181,10 @@ function DesktopHeroSlide({ s, index }: { s: HeroSlide; index: number }) {
     const io = new IntersectionObserver(
       ([e]) => {
         if (!e) return;
-        setInView(e.isIntersecting && e.intersectionRatio >= 0.42);
+        /* 스냅 스크롤·주소창으로 비율이 흔들릴 때 재생이 끊기지 않게 완화 */
+        setInView(e.isIntersecting && e.intersectionRatio >= 0.28);
       },
-      { threshold: [0, 0.42, 0.55, 0.72, 1] },
+      { threshold: [0, 0.2, 0.28, 0.45, 0.65, 1], rootMargin: "0px 0px 2% 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
