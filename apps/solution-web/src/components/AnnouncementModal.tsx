@@ -96,7 +96,7 @@ export function AnnouncementModal() {
                 aria-label={`공지 ${i + 1}`}
                 onClick={() => setIndex(i)}
                 className={`h-2 w-2 rounded-full transition ${
-                  i === index ? "bg-[var(--theme-primary,#c9a227)]" : "bg-zinc-600"
+                  i === index ? "bg-gold-gradient" : "bg-zinc-600"
                 }`}
               />
             ))}
@@ -113,7 +113,7 @@ export function AnnouncementModal() {
           <button
             type="button"
             onClick={closeOnly}
-            className="rounded-xl bg-[var(--theme-primary,#c9a227)] py-3 text-sm font-semibold text-black hover:opacity-90"
+            className="rounded-xl bg-gold-gradient py-3 text-sm font-semibold text-black hover:opacity-90"
           >
             닫기
           </button>

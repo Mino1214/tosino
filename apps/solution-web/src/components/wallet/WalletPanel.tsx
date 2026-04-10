@@ -137,8 +137,7 @@ export function WalletPanel({
         <button
           type="button"
           onClick={() => onNeedLogin?.()}
-          className="mt-4 rounded-xl px-6 py-2.5 text-sm font-bold text-black"
-          style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+          className="mt-4 rounded-xl bg-gold-gradient px-6 py-2.5 text-sm font-bold"
         >
           로그인
         </button>
@@ -192,7 +191,7 @@ export function WalletPanel({
               onClick={() => setMainTab("fiat")}
               className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
                 mainTab === "fiat"
-                  ? "bg-[var(--theme-primary,#c9a227)] text-black"
+                  ? "bg-gold-gradient text-black"
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
@@ -217,7 +216,7 @@ export function WalletPanel({
             }`}
           >
             <p className="text-sm text-zinc-500">보유 머니 (심리스 공용)</p>
-            <p className="mt-1 font-mono text-3xl font-bold text-[var(--theme-primary,#c9a227)]">
+            <p className="mt-1 font-mono text-3xl font-bold text-main-gold">
               {balance ?? "—"}{" "}
               <span className="text-lg text-zinc-400">원</span>
             </p>
@@ -294,17 +293,9 @@ export function WalletPanel({
                       onClick={() => setTab(t)}
                       className={`flex-1 rounded-xl py-2.5 text-sm font-medium ${
                         tab === t
-                          ? "text-black"
+                          ? "bg-gold-gradient text-black"
                           : "border border-zinc-600 text-zinc-400"
                       }`}
-                      style={
-                        tab === t
-                          ? {
-                              backgroundColor:
-                                "var(--theme-primary, #c9a227)",
-                            }
-                          : undefined
-                      }
                     >
                       {t === "DEPOSIT" ? "충전 신청" : "출금 신청"}
                     </button>
@@ -342,8 +333,7 @@ export function WalletPanel({
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full rounded-xl py-3 font-semibold text-black disabled:opacity-50"
-                  style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+                  className="w-full rounded-xl bg-gold-gradient py-3 font-semibold disabled:opacity-50"
                 >
                   {submitting ? "처리 중…" : "신청하기"}
                 </button>

@@ -175,20 +175,20 @@ function MarketItemBtn({
         "group flex flex-1 flex-col items-center justify-center gap-0.5 rounded-md py-2.5 text-center",
         "cursor-pointer transition-all duration-150 border",
         selected
-          ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/25 shadow-[0_0_8px_rgba(201,162,39,0.25)]"
+          ? "border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.25)] shadow-[0_0_8px_rgba(218,174,87,0.25)]"
           : "border-zinc-700 bg-zinc-800 hover:border-zinc-500 hover:bg-zinc-700 active:scale-95",
       ].join(" ")}
     >
       <span
         className={`text-[10px] font-semibold uppercase tracking-wide ${
-          selected ? "text-[var(--theme-primary,#c9a227)]" : "text-zinc-400 group-hover:text-zinc-200"
+          selected ? "text-main-gold" : "text-zinc-400 group-hover:text-zinc-200"
         }`}
       >
         {label}
       </span>
       <span
         className={`text-sm font-bold ${
-          selected ? "text-[var(--theme-primary,#c9a227)]" : "text-zinc-100 group-hover:text-white"
+          selected ? "text-main-gold" : "text-zinc-100 group-hover:text-white"
         }`}
       >
         {odds}

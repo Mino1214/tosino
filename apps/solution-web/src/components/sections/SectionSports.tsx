@@ -25,7 +25,7 @@ export function SectionSports() {
         </div>
         <Link
           href="/lobby/sports-kr"
-          className="text-xs text-[var(--theme-primary,#c9a227)]"
+          className="text-xs text-main-gold"
         >
           전체 보기 →
         </Link>
@@ -37,7 +37,7 @@ export function SectionSports() {
           <button
             key={label}
             type="button"
-            className="shrink-0 rounded border border-white/10 px-3 py-1 text-xs text-zinc-400 first:border-[var(--theme-primary,#c9a227)]/60 first:text-[var(--theme-primary,#c9a227)]"
+            className="shrink-0 rounded border border-white/10 px-3 py-1 text-xs text-zinc-400 first:border-[rgba(218,174,87,0.6)] first:text-main-gold"
           >
             {label}
           </button>

@@ -16,10 +16,10 @@ import { useBootstrap } from "./BootstrapProvider";
 
 const DRAWER_NAV = [
   { label: "스포츠",    href: "/lobby/sports-kr",   icon: "⚽" },
-  { label: "프리매치",  href: "/lobby/prematch",     icon: "📅" },
-  { label: "인플레이",  href: "/lobby/inplay",       icon: "🔴" },
+  // { label: "프리매치",  href: "/lobby/prematch",     icon: "📅" },
+  // { label: "인플레이",  href: "/lobby/inplay",       icon: "🔴" },
   { label: "스포츠북",  href: "/lobby/sportsbook",   icon: "📖" },
-  { label: "e스포츠",  href: "/lobby/esports",      icon: "🎮" },
+  // { label: "e스포츠",  href: "/lobby/esports",      icon: "🎮" },
   { label: "카지노",    href: "/lobby/live-casino",  icon: "🎰" },
   { label: "슬롯",      href: "/lobby/slots",        icon: "🎲" },
   { label: "미니게임",  href: "/lobby/minigame",     icon: "🕹️" },

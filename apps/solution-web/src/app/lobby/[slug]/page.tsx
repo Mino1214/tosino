@@ -54,8 +54,7 @@ export default async function LobbyPage({
       </p>
       <Link
         href="/"
-        className="mt-8 inline-block rounded-xl px-6 py-3 text-sm font-medium text-black"
-        style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+        className="mt-8 inline-block rounded-xl bg-gold-gradient px-6 py-3 text-sm font-medium"
       >
         홈으로
       </Link>

@@ -6,6 +6,6 @@
     </linearGradient>
   </defs>
   <rect width="1200" height="400" fill="url(#g)"/>
-  <text x="600" y="200" fill="#c9a227" font-family="system-ui,sans-serif" font-size="48" text-anchor="middle" font-weight="700">BANNER</text>
+  <text x="600" y="200" fill="#daae57" font-family="system-ui,sans-serif" font-size="48" text-anchor="middle" font-weight="700">BANNER</text>
   <text x="600" y="250" fill="#666" font-family="system-ui,sans-serif" font-size="18" text-anchor="middle">Replace with branded assets per deployment</text>
 </svg>

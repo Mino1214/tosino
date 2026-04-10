@@ -93,8 +93,8 @@ function GameCard({ g, onClick }: { g: GameDef; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/8
-                 shadow-lg transition-all duration-300 hover:border-[var(--theme-primary,#c9a227)]/60
-                 hover:shadow-[0_0_18px_rgba(201,162,39,0.18)] active:scale-[0.97]"
+                 shadow-lg transition-all duration-300 hover:border-[rgba(218,174,87,0.6)]
+                 hover:shadow-[0_0_18px_rgba(218,174,87,0.18)] active:scale-[0.97]"
       style={{ minHeight: "140px" }}
     >
       {/* 배경 이미지 */}
@@ -123,7 +123,7 @@ function GameCard({ g, onClick }: { g: GameDef; onClick: () => void }) {
       {/* PLAY 오버레이 on hover */}
       <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl
                       bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <span className="rounded-full bg-[var(--theme-primary,#c9a227)] px-5 py-2 text-xs font-bold text-black shadow-lg">
+        <span className="rounded-full bg-gold-gradient px-5 py-2 text-xs font-bold text-black shadow-lg">
           PLAY
         </span>
       </div>
@@ -156,12 +156,12 @@ function BettingMarket({ market, selected, onSelect }: {
                 "flex flex-col items-center gap-0.5 rounded-lg border py-2 px-1 transition-all",
                 "text-center text-xs font-semibold active:scale-95",
                 isSelected
-                  ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/20 text-[var(--theme-primary,#c9a227)] shadow-[0_0_10px_rgba(201,162,39,0.25)]"
+                  ? "border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.2)] text-main-gold shadow-[0_0_10px_rgba(218,174,87,0.25)]"
                   : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-700",
               ].join(" ")}
             >
               <span>{opt.label}</span>
-              <span className={`text-[11px] font-bold ${isSelected ? "text-[var(--theme-primary,#c9a227)]" : "text-[var(--theme-primary,#c9a227)]/80"}`}>
+              <span className={`text-[11px] font-bold ${isSelected ? "text-main-gold" : "text-main-gold-solid opacity-80"}`}>
                 {opt.odds}
               </span>
             </button>
@@ -325,7 +325,7 @@ function GamePlayer({ game, onBack }: { game: GameDef; onBack: () => void }) {
                 value={parseInt(betAmount).toLocaleString()}
                 onChange={(e) => setBetAmount(e.target.value.replace(/,/g, ""))}
                 className="w-full rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5
-                           text-right text-sm font-bold text-white outline-none focus:border-[var(--theme-primary,#c9a227)]"
+                           text-right text-sm font-bold text-white outline-none focus:border-[rgba(218,174,87,0.75)]"
               />
               <span className="text-xs text-zinc-400">원</span>
             </div>
@@ -334,9 +334,8 @@ function GamePlayer({ game, onBack }: { game: GameDef; onBack: () => void }) {
             <div className="p-2 pt-0">
               <button
                 type="button"
-                className="w-full rounded-xl py-3 text-sm font-bold text-black shadow-md transition-all
+                className="w-full rounded-xl bg-gold-gradient py-3 text-sm font-bold shadow-md transition-all
                            active:scale-95 hover:brightness-110"
-                style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
               >
                 BETTING
               </button>

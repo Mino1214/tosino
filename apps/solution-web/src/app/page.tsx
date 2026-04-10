@@ -84,7 +84,7 @@ export default function HomePage() {
             className={`relative flex h-dvh snap-start items-center justify-center ${s.bg}`}
           >
             <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">
-              <p className="text-xs uppercase tracking-widest text-[var(--theme-primary,#c9a227)]">
+              <p className="text-xs uppercase tracking-widest text-main-gold">
                 {s.label}
               </p>
               <h1 className="text-4xl font-bold text-white lg:text-6xl">{s.title}</h1>
@@ -92,7 +92,7 @@ export default function HomePage() {
               <div className="flex gap-3">
                 <Link
                   href={s.cta1.href}
-                  className="rounded-lg bg-[var(--theme-primary,#c9a227)] px-8 py-3 text-sm font-bold text-black"
+                  className="rounded-lg bg-gold-gradient px-8 py-3 text-sm font-bold text-black"
                 >
                   {s.cta1.label}
                 </Link>
@@ -142,7 +142,7 @@ export default function HomePage() {
                 className={`relative flex w-full h-full shrink-0 items-center justify-center ${s.bg}`}
               >
                 <div className="flex flex-col items-center gap-5 px-6 text-center">
-                  <p className="text-[10px] uppercase tracking-widest text-[var(--theme-primary,#c9a227)]">
+                  <p className="text-[10px] uppercase tracking-widest text-main-gold">
                     {s.label}
                   </p>
                   <h2 className="text-2xl font-bold text-white">{s.title}</h2>
@@ -150,7 +150,7 @@ export default function HomePage() {
                   <div className="flex gap-2">
                     <Link
                       href={s.cta1.href}
-                      className="rounded-lg bg-[var(--theme-primary,#c9a227)] px-6 py-2.5 text-sm font-bold text-black"
+                      className="rounded-lg bg-gold-gradient px-6 py-2.5 text-sm font-bold text-black"
                     >
                       {s.cta1.label}
                     </Link>
@@ -175,7 +175,7 @@ export default function HomePage() {
                 onClick={() => setSlide(i)}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
                   i === slide
-                    ? "w-5 bg-[var(--theme-primary,#c9a227)]"
+                    ? "w-5 bg-gold-gradient"
                     : "w-1.5 bg-white/25"
                 }`}
                 aria-label={`슬라이드 ${i + 1}`}

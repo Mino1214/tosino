@@ -143,7 +143,7 @@ export function SportsFeedsPanel() {
                   onClick={() => setTab(id)}
                   className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition md:px-4 ${
                     active
-                      ? `border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/15 ${isLight ? "text-zinc-900" : "text-white"}`
+                      ? `border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.15)] ${isLight ? "text-zinc-900" : "text-main-gold"}`
                       : isLight
                         ? "border-zinc-200 bg-white/80 text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
                         : "border-white/10 bg-zinc-900/50 text-zinc-400 hover:border-white/20 hover:text-zinc-200"

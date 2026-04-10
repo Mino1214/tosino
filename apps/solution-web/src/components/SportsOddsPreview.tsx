@@ -143,7 +143,7 @@ function GameRow({ g }: { g: SportsLiveGame }) {
           <span
             className={
               Number(s1) > Number(s2)
-                ? "font-bold text-[var(--theme-primary,#c9a227)]"
+                ? "font-bold text-main-gold"
                 : "text-zinc-300"
             }
           >
@@ -153,7 +153,7 @@ function GameRow({ g }: { g: SportsLiveGame }) {
           <span
             className={
               Number(s2) > Number(s1)
-                ? "font-bold text-[var(--theme-primary,#c9a227)]"
+                ? "font-bold text-main-gold"
                 : "text-zinc-300"
             }
           >
@@ -173,7 +173,7 @@ function GameRow({ g }: { g: SportsLiveGame }) {
       <td className="px-3 py-3 text-right">
         <Link
           href="/lobby/sports-kr"
-          className="inline-block rounded-lg bg-[var(--theme-primary,#c9a227)]/10 px-3 py-1.5 text-xs font-medium text-[var(--theme-primary,#c9a227)] ring-1 ring-[var(--theme-primary,#c9a227)]/30 transition hover:bg-[var(--theme-primary,#c9a227)]/20"
+          className="inline-block rounded-lg bg-[rgba(218,174,87,0.1)] px-3 py-1.5 text-xs font-medium text-main-gold ring-1 ring-[rgba(218,174,87,0.3)] transition hover:bg-[rgba(218,174,87,0.2)]"
         >
           베팅
         </Link>

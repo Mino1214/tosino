@@ -35,9 +35,9 @@ const TELECOM = [
 ];
 
 const inputCls =
-  "w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-[var(--theme-primary,#c9a227)]/60 focus:bg-white/8 transition-colors";
+  "w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-[rgba(218,174,87,0.6)] focus:bg-white/8 transition-colors";
 const selectCls =
-  "rounded-lg border border-white/10 bg-[#0d0d14] px-3 py-3 text-sm text-zinc-100 outline-none focus:border-[var(--theme-primary,#c9a227)]/60 transition-colors";
+  "rounded-lg border border-white/10 bg-[#0d0d14] px-3 py-3 text-sm text-zinc-100 outline-none focus:border-[rgba(218,174,87,0.6)] transition-colors";
 const labelCls = "block text-xs font-medium text-zinc-400 mb-1.5";
 const errCls = "mt-1 text-[11px] text-red-400";
 
@@ -57,7 +57,7 @@ function Field({
       <label className={labelCls}>
         {label}
         {required && (
-          <span className="ml-0.5 text-[var(--theme-primary,#c9a227)]">*</span>
+          <span className="ml-0.5 text-main-gold">*</span>
         )}
       </label>
       {children}
@@ -106,7 +106,7 @@ function PinInput({
           value={value[i] ?? ""}
           onChange={(e) => handleChange(i, e)}
           onKeyDown={(e) => handleKey(i, e)}
-          className="h-11 w-full rounded-lg border border-white/10 bg-white/5 text-center text-lg text-zinc-100 outline-none focus:border-[var(--theme-primary,#c9a227)]/60 transition-colors"
+          className="h-11 w-full rounded-lg border border-white/10 bg-white/5 text-center text-lg text-zinc-100 outline-none focus:border-[rgba(218,174,87,0.6)] transition-colors"
           aria-label={`PIN ${i + 1}번째 자리`}
         />
       ))}
@@ -272,7 +272,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
             }}
             className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
               mode === m
-                ? "bg-[var(--theme-primary,#c9a227)] text-black"
+                ? "bg-gold-gradient text-black"
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
@@ -285,7 +285,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
         <span
           className={`rounded-full px-3 py-1 font-medium ${
             step === 1
-              ? "bg-[var(--theme-primary,#c9a227)] text-black"
+              ? "bg-gold-gradient text-black"
               : "bg-zinc-800 text-zinc-500"
           }`}
         >
@@ -295,7 +295,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
         <span
           className={`rounded-full px-3 py-1 font-medium ${
             step === 2
-              ? "bg-[var(--theme-primary,#c9a227)] text-black"
+              ? "bg-gold-gradient text-black"
               : "bg-zinc-800 text-zinc-500"
           }`}
         >
@@ -327,7 +327,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
             </svg>
             <p>
               가입코드가 없으시다면{" "}
-              <span className="font-bold text-[var(--theme-primary,#c9a227)]">
+              <span className="font-bold text-main-gold">
                 ZXX
               </span>
               를 입력해 주세요
@@ -347,8 +347,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 w-full rounded-xl py-3.5 text-sm font-bold text-black transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+            className="mt-2 w-full rounded-xl bg-gold-gradient py-3.5 text-sm font-bold transition-opacity disabled:opacity-40"
           >
             {loading ? "확인 중…" : "코드 확인"}
           </button>
@@ -369,7 +368,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
                 setStep(1);
                 setRefOk(null);
               }}
-              className="text-xs text-[var(--theme-primary,#c9a227)] hover:opacity-70"
+              className="text-xs text-main-gold hover:opacity-70"
             >
               변경
             </button>
@@ -572,8 +571,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 w-full rounded-xl py-3.5 text-sm font-bold text-black transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+            className="mt-2 w-full rounded-xl bg-gold-gradient py-3.5 text-sm font-bold transition-opacity disabled:opacity-40"
           >
             {loading ? "처리 중…" : "회원가입"}
           </button>

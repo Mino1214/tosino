@@ -34,7 +34,7 @@ function CartPanel() {
         <span className="text-sm font-semibold">
           배팅카트
           {lines.length > 0 && (
-            <span className="ml-2 rounded-full bg-[var(--theme-primary,#c9a227)] px-1.5 py-0.5 text-[10px] font-bold text-black">
+            <span className="ml-2 rounded-full bg-gold-gradient px-1.5 py-0.5 text-[10px] font-bold text-black">
               {lines.length}
             </span>
           )}
@@ -57,7 +57,7 @@ function CartPanel() {
                   <p className="mt-0.5 text-sm font-medium">{l.pickLabel}</p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="font-mono text-sm text-[var(--theme-primary,#c9a227)]">{l.odd}</p>
+                  <p className="font-mono text-sm text-main-gold">{l.odd}</p>
                   <button type="button" onClick={() => removeLine(l.id)} className="text-xs text-zinc-600 hover:text-red-400">✕</button>
                 </div>
               </li>
@@ -90,14 +90,14 @@ function CartPanel() {
               value={amount || ""}
               onChange={(e) => setAmount(Math.max(0, Number(e.target.value)))}
               placeholder="배팅금액"
-              className="min-w-0 flex-1 rounded border border-white/10 bg-transparent px-2 py-1.5 text-right text-sm outline-none focus:border-[var(--theme-primary,#c9a227)]/60"
+              className="min-w-0 flex-1 rounded border border-white/10 bg-transparent px-2 py-1.5 text-right text-sm outline-none focus:border-[rgba(218,174,87,0.6)]"
             />
             <button type="button" onClick={() => setAmount(0)} className="shrink-0 rounded border border-white/10 px-2 text-xs text-zinc-500">초기화</button>
           </div>
 
           {/* 배당 · 예상 당첨 */}
           <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-500">배당 <span className="font-mono text-[var(--theme-primary,#c9a227)]">×{totalOdds.toFixed(2)}</span></span>
+            <span className="text-zinc-500">배당 <span className="font-mono text-main-gold">×{totalOdds.toFixed(2)}</span></span>
             <span className="text-zinc-400">예상 <span className="font-mono font-semibold text-white">{expected.toLocaleString("ko-KR")}</span></span>
           </div>
 
@@ -105,7 +105,7 @@ function CartPanel() {
           <button
             type="button"
             disabled={amount <= 0}
-            className="w-full rounded-lg bg-[var(--theme-primary,#c9a227)] py-2.5 text-sm font-bold text-black disabled:opacity-30"
+            className="w-full rounded-lg bg-gold-gradient py-2.5 text-sm font-bold text-black disabled:opacity-30"
           >
             배팅하기
           </button>
@@ -190,7 +190,7 @@ export function BettingCartDock() {
           aria-label="배팅카트"
           className={`fixed bottom-[4.5rem] right-3 z-[65] flex h-12 w-12 items-center justify-center rounded-full border shadow-lg ${
             lines.length > 0
-              ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)] text-black"
+              ? "border-[rgba(218,174,87,0.55)] bg-gold-gradient text-black"
               : "border-white/15 bg-[#0a0a0e] text-zinc-400"
           }`}
         >

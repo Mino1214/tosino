@@ -21,9 +21,9 @@ import { useAppModals } from "@/contexts/AppModalsContext";
 
 const PLAY_ITEMS = [
   { label: "스포츠",    href: "/lobby/sports-kr",  emoji: "⚽" },
-  { label: "프리매치",  href: "/lobby/prematch",    emoji: "📅" },
-  { label: "인플레이",  href: "/lobby/live",         emoji: "🔴" },
-  { label: "e스포츠",  href: "/lobby/esports",     emoji: "🎮" },
+  // { label: "프리매치",  href: "/lobby/prematch",    emoji: "📅" },
+  // { label: "인플레이",  href: "/lobby/live",         emoji: "🔴" },
+  // { label: "e스포츠",  href: "/lobby/esports",     emoji: "🎮" },
   { label: "카지노",    href: "/lobby/live-casino", emoji: "🎰" },
   { label: "슬롯",      href: "/lobby/slots",       emoji: "🎲" },
   { label: "미니게임",  href: "/lobby/minigame",    emoji: "🕹️" },
@@ -37,6 +37,58 @@ type SpeedDialProps = {
   items: SpeedDialItem[];
   onClose: () => void;
 };
+
+/** 모바일 입출금: 2열 그리드, 짧은 높이로 스크롤 없이 한 화면에 표시 */
+function WalletQuickDial({
+  items,
+  onClose,
+}: {
+  items: SpeedDialActionItem[];
+  onClose: () => void;
+}) {
+  const anim = (i: number) => ({
+    animationName: "slideUpCard",
+    animationDuration: "0.2s",
+    animationTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+    animationFillMode: "both" as const,
+    animationDelay: `${i * 35}ms`,
+  });
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="메뉴 닫기"
+        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/55 md:hidden"
+        onClick={onClose}
+        onTouchEnd={onClose}
+      />
+      <div className="fixed inset-x-0 bottom-14 z-[60] px-2 pb-1 md:hidden">
+        <div className="mx-auto grid w-full max-w-sm grid-cols-2 gap-1">
+          {items.map((item, i) => {
+            const lastOdd = i === items.length - 1 && items.length % 2 === 1;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => {
+                  item.onSelect();
+                  onClose();
+                }}
+                style={anim(i)}
+                className={`flex min-h-[2.25rem] items-center justify-center rounded-lg border border-[rgba(218,174,87,0.35)] bg-[#101018] px-1 py-1.5 text-center text-[10px] font-bold leading-[1.15] text-main-gold shadow-[0_0_10px_rgba(218,174,87,0.12)] active:opacity-90 ${
+                  lastOdd ? "col-span-2" : ""
+                }`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
 
 function SpeedDial({ items, onClose }: SpeedDialProps) {
   const anim = (i: number) => ({
@@ -63,7 +115,7 @@ function SpeedDial({ items, onClose }: SpeedDialProps) {
               key={item.href}
               href={item.href}
               onClick={onClose}
-              className="flex items-center gap-2 rounded-full border border-white/15 bg-[#0d0d14] px-5 py-2.5 text-sm font-medium text-white shadow-lg"
+              className="flex items-center gap-2 rounded-full border border-[rgba(218,174,87,0.35)] bg-[#0d0d14] px-5 py-2.5 text-sm font-medium text-main-gold shadow-gold-glow"
               style={anim(i)}
             >
               {item.emoji && <span className="text-base">{item.emoji}</span>}
@@ -77,7 +129,7 @@ function SpeedDial({ items, onClose }: SpeedDialProps) {
                 item.onSelect();
                 onClose();
               }}
-              className="flex items-center gap-2 rounded-full border border-white/15 bg-[#0d0d14] px-5 py-2.5 text-sm font-medium text-white shadow-lg"
+              className="flex items-center gap-2 rounded-full border border-[rgba(218,174,87,0.35)] bg-[#0d0d14] px-5 py-2.5 text-sm font-medium text-main-gold shadow-gold-glow"
               style={anim(i)}
             >
               {item.emoji && <span className="text-base">{item.emoji}</span>}
@@ -103,7 +155,7 @@ export function BottomNav() {
       { label: "입금신청", onSelect: () => openWalletModal({ fiatTab: "DEPOSIT" }) },
       { label: "출금신청", onSelect: () => openWalletModal({ fiatTab: "WITHDRAWAL" }) },
       { label: "포인트전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
-      { label: "추천인보너스전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
+      { label: "추천인보너스", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
       { label: "콤프전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
     ],
     [openWalletModal],
@@ -134,8 +186,8 @@ export function BottomNav() {
   return (
     <>
       {/* Speed Dial 오버레이 */}
-      {playOpen   && <SpeedDial items={PLAY_ITEMS}   onClose={closeAll} />}
-      {walletDialOpen && <SpeedDial items={walletDialItems} onClose={closeAll} />}
+      {playOpen && <SpeedDial items={PLAY_ITEMS} onClose={closeAll} />}
+      {walletDialOpen && <WalletQuickDial items={walletDialItems} onClose={closeAll} />}
 
       {/* 하단 탭바 */}
       <nav
@@ -156,7 +208,7 @@ export function BottomNav() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
             </svg>
             {lines.length > 0 && (
-              <span className="absolute right-3 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--theme-primary)] text-[8px] font-bold text-black">
+              <span className="absolute right-3 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-gold-gradient text-[8px] font-bold">
                 {lines.length}
               </span>
             )}

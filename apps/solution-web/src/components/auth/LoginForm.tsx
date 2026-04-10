@@ -101,8 +101,7 @@ export function LoginForm({
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg py-2.5 font-medium text-black hover:opacity-90 disabled:opacity-50"
-        style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+        className="w-full rounded-lg bg-gold-gradient py-2.5 font-medium hover:opacity-90 disabled:opacity-50"
       >
         {loading ? "처리 중…" : "로그인"}
       </button>
@@ -112,7 +111,7 @@ export function LoginForm({
           <button
             type="button"
             onClick={onRequestSignup}
-            className="text-[var(--theme-primary,#c9a227)] hover:underline"
+            className="text-main-gold hover:underline"
           >
             총판 코드로 가입
           </button>

@@ -136,7 +136,7 @@ export function UsdtDepositPanel({
                   type="button"
                   onClick={copy}
                   disabled={!address}
-                  className="shrink-0 rounded-lg border border-[var(--theme-primary,#c9a227)]/50 bg-[var(--theme-primary,#c9a227)]/10 px-4 py-2 text-xs font-semibold text-[var(--theme-primary,#c9a227)] disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-[rgba(218,174,87,0.5)] bg-[rgba(218,174,87,0.1)] px-4 py-2 text-xs font-semibold text-main-gold disabled:opacity-40"
                 >
                   {copied ? "복사됨" : "복사"}
                 </button>
@@ -156,7 +156,7 @@ export function UsdtDepositPanel({
               </div>
               <div className="flex justify-between gap-4">
                 <span className="text-zinc-500">원화 지갑 잔액</span>
-                <span className="font-mono text-[var(--theme-primary,#c9a227)]">
+                <span className="font-mono text-main-gold">
                   {krwBalanceDisplay ?? "—"} 원
                 </span>
               </div>

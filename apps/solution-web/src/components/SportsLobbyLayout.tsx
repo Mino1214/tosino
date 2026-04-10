@@ -20,9 +20,9 @@ import { SportsDomesticList, type LeagueGroupData } from "./SportsDomesticCard";
 export function AdBanner({ title = "이벤트 배너" }: { title?: string }) {
   return (
     <div className="flex h-12 w-full items-center justify-center bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 px-4 text-center text-xs text-zinc-400 border-b border-white/5">
-      <span className="text-[var(--theme-primary,#c9a227)] font-semibold mr-2">★</span>
+      <span className="text-main-gold font-semibold mr-2">★</span>
       {title}
-      <span className="text-[var(--theme-primary,#c9a227)] font-semibold ml-2">★</span>
+      <span className="text-main-gold font-semibold ml-2">★</span>
     </div>
   );
 }
@@ -59,7 +59,7 @@ function SportTypeNav({
             className={[
               "flex flex-col items-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors",
               active === s.id
-                ? "bg-[var(--theme-primary,#c9a227)]/15 text-[var(--theme-primary,#c9a227)]"
+                ? "bg-[rgba(218,174,87,0.15)] text-main-gold"
                 : s.count === 0
                 ? "text-zinc-700"
                 : "text-zinc-400 hover:text-zinc-200",
@@ -102,7 +102,7 @@ function BetTypeNav({
             className={[
               "rounded px-3 py-1 text-[11px] font-semibold transition-colors",
               active === t.id
-                ? "bg-[var(--theme-primary,#c9a227)] text-black"
+                ? "bg-gold-gradient text-black"
                 : "text-zinc-400 hover:text-zinc-200",
             ].join(" ")}
           >
@@ -145,7 +145,7 @@ function FolderBonus() {
           className={[
             "flex flex-1 items-center justify-center gap-1.5 rounded border py-1.5 text-xs transition-colors",
             active === b.id
-              ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/10 text-[var(--theme-primary,#c9a227)]"
+              ? "border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.1)] text-main-gold"
               : "border-white/5 text-zinc-400 hover:border-white/15",
           ].join(" ")}
         >
@@ -185,7 +185,7 @@ function Pagination({
           className={[
             "flex h-7 w-7 items-center justify-center rounded border text-xs font-semibold transition-colors",
             p === current
-              ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/15 text-[var(--theme-primary,#c9a227)]"
+              ? "border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.15)] text-main-gold"
               : "border-white/5 text-zinc-500 hover:text-zinc-200",
           ].join(" ")}
         >

@@ -142,12 +142,7 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
             type="button"
             role="tab"
             aria-selected={vendorIdx === i}
-            className={`${tabBtn} ${vendorIdx === i ? tabActive : tabInactive}`}
-            style={
-              vendorIdx === i
-                ? { backgroundColor: "var(--theme-primary, #c9a227)" }
-                : undefined
-            }
+            className={`${tabBtn} ${vendorIdx === i ? `${tabActive} bg-gold-gradient` : tabInactive}`}
             onClick={() => setVendorIdx(i)}
           >
             {v.label}

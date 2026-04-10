@@ -28,10 +28,10 @@ import { useAppModals } from "@/contexts/AppModalsContext";
 
 const NAV_ITEMS = [
   { label: "스포츠",   href: "/lobby/sports-kr"  },
-  { label: "프리매치", href: "/lobby/prematch"    },
-  { label: "인플레이", href: "/lobby/live"         },
+  // { label: "프리매치", href: "/lobby/prematch"    },
+  // { label: "인플레이", href: "/lobby/live"         },
   { label: "스포츠북", href: "/lobby/sportsbook"  },
-  { label: "e스포츠",  href: "/lobby/esports"    },
+  // { label: "e스포츠",  href: "/lobby/esports"    },
   { label: "카지노",   href: "/lobby/live-casino" },
   { label: "슬롯",     href: "/lobby/slots"       },
   { label: "미니게임", href: "/lobby/minigame"    },
@@ -156,7 +156,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
                 <div className="h-3 w-px bg-white/15" />
 
                 <button type="button" className="hover:text-white">포인트전환</button>
-                <button type="button" onClick={() => openWallet({ fiatTab: "DEPOSIT" })} className="rounded bg-[var(--theme-primary)] px-2 py-0.5 font-bold text-black hover:opacity-90">입금하기</button>
+                <button type="button" onClick={() => openWallet({ fiatTab: "DEPOSIT" })} className="rounded bg-gold-gradient px-2 py-0.5 text-xs font-bold transition-opacity hover:opacity-90">입금하기</button>
                 <button type="button" onClick={() => openWallet({ fiatTab: "WITHDRAWAL" })} className="rounded border border-white/20 px-2 py-0.5 text-zinc-300 hover:text-white">출금하기</button>
                 <button type="button" onClick={logout} className="hover:text-white">로그아웃</button>
 
@@ -179,8 +179,8 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
               </>
             ) : (
               <>
-                <button type="button" onClick={() => openLogin()} className="rounded bg-[var(--theme-primary)] px-2.5 py-0.5 font-bold text-black">로그인</button>
-                <button type="button" onClick={() => openSignup()} className="rounded border border-white/20 px-2.5 py-0.5 text-zinc-300">회원가입</button>
+                <button type="button" onClick={() => openLogin()} className="rounded bg-gold-gradient px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90">로그인</button>
+                <button type="button" onClick={() => openSignup()} className="rounded border border-white/20 px-2.5 py-0.5 text-zinc-300 hover:text-main-gold-solid">회원가입</button>
 
                 <div className="h-3 w-px bg-white/15" />
 

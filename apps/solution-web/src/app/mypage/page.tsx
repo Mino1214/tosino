@@ -20,7 +20,7 @@ function ProfileSection() {
         <div className="flex w-full gap-3">
           <div className="flex flex-1 flex-col items-center gap-1 rounded-xl border border-white/8 bg-white/3 py-4">
             <span className="text-[10px] uppercase tracking-widest text-zinc-500">MONEY</span>
-            <span className="font-mono text-xl font-bold text-[var(--theme-primary,#c9a227)]">0</span>
+            <span className="font-mono text-xl font-bold text-main-gold">0</span>
             <span className="text-[10px] text-zinc-500">원</span>
           </div>
           <div className="flex flex-1 flex-col items-center gap-1 rounded-xl border border-white/8 bg-white/3 py-4">
@@ -49,7 +49,7 @@ function RollingSection() {
         </div>
         <div className="h-3 overflow-hidden rounded-full bg-zinc-800">
           <div
-            className="h-full rounded-full bg-[var(--theme-primary,#c9a227)] transition-all duration-500"
+            className="h-full rounded-full bg-gold-gradient transition-all duration-500"
             style={{ width: `${rolling}%` }}
           />
         </div>
@@ -86,7 +86,7 @@ function ConversionSection() {
         {cards.map((card) => (
           <div key={card.title} className="flex flex-col gap-2 rounded-xl border border-white/8 bg-white/3 p-3 text-center">
             <p className="text-xs font-semibold text-zinc-200">{card.title}</p>
-            <Link href={card.href} className="rounded-lg bg-[var(--theme-primary,#c9a227)] py-1.5 text-[11px] font-bold text-black">
+            <Link href={card.href} className="rounded-lg bg-gold-gradient py-1.5 text-[11px] font-bold text-black">
               {card.btnLabel}
             </Link>
             <Link href={card.historyHref} className="text-[10px] text-zinc-500 hover:text-zinc-300">
@@ -132,9 +132,9 @@ function AttendanceSection() {
         </div>
         <div className="grid grid-cols-7">
           {cells.map((day, i) => (
-            <div key={i} className={`flex h-10 items-center justify-center text-xs ${!day ? "" : day === todayDate ? "font-bold text-[var(--theme-primary,#c9a227)]" : checked.has(day) ? "text-zinc-400" : "text-zinc-600"}`}>
+            <div key={i} className={`flex h-10 items-center justify-center text-xs ${!day ? "" : day === todayDate ? "font-bold text-main-gold" : checked.has(day) ? "text-zinc-400" : "text-zinc-600"}`}>
               {day && (
-                <span className={`flex h-7 w-7 items-center justify-center rounded-full ${checked.has(day) ? "bg-[var(--theme-primary,#c9a227)]/20" : ""} ${day === todayDate ? "ring-1 ring-[var(--theme-primary,#c9a227)]" : ""}`}>
+                <span className={`flex h-7 w-7 items-center justify-center rounded-full ${checked.has(day) ? "bg-[rgba(218,174,87,0.2)]" : ""} ${day === todayDate ? "ring-1 ring-[rgba(218,174,87,0.65)]" : ""}`}>
                   {day}
                 </span>
               )}
@@ -142,7 +142,7 @@ function AttendanceSection() {
           ))}
         </div>
         <div className="border-t border-white/8 p-3">
-          <button type="button" className="w-full rounded-lg bg-[var(--theme-primary,#c9a227)] py-2.5 text-sm font-bold text-black">
+          <button type="button" className="w-full rounded-lg bg-gold-gradient py-2.5 text-sm font-bold text-black">
             오늘 출석체크
           </button>
         </div>
@@ -195,7 +195,7 @@ function EventSection() {
       <div className="space-y-3">
         {events.map((ev) => (
           <div key={ev.id} id={ev.id} className={`relative overflow-hidden rounded-xl border border-white/8 bg-gradient-to-r ${ev.color} to-transparent p-4`}>
-            <span className="mb-1 inline-block rounded bg-[var(--theme-primary,#c9a227)] px-1.5 py-0.5 text-[10px] font-bold text-black">{ev.badge}</span>
+            <span className="mb-1 inline-block rounded bg-gold-gradient px-1.5 py-0.5 text-[10px] font-bold text-black">{ev.badge}</span>
             <h3 className="text-sm font-bold text-white">{ev.title}</h3>
             <p className="mt-1 text-xs text-zinc-400">{ev.desc}</p>
             <button type="button" className="mt-3 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-zinc-300">자세히 보기</button>

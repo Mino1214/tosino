@@ -148,7 +148,7 @@ export function CasinoPortalCards() {
               className={`group relative flex min-h-[200px] w-full flex-col overflow-hidden rounded-2xl text-left shadow-lg ring-1 ring-white/10 outline-none touch-manipulation select-none sm:min-h-[220px] md:min-h-[240px] ${
                 paused
                   ? "cursor-not-allowed opacity-85"
-                  : "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--theme-primary,#c9a227)]"
+                  : "cursor-pointer focus-visible:ring-2 focus-visible:ring-[rgba(218,174,87,0.55)]"
               }`}
             >
               {/* z-0: 배경 */}
@@ -257,10 +257,7 @@ export function CasinoPortalCards() {
                       if (launchingSlug) return;
                       void runVinusLaunch(c);
                     }}
-                    className="pointer-events-auto flex min-w-[7rem] items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold text-black shadow-lg disabled:opacity-70"
-                    style={{
-                      backgroundColor: "var(--theme-primary, #c9a227)",
-                    }}
+                    className="pointer-events-auto flex min-w-[7rem] items-center justify-center gap-2 rounded-full bg-gold-gradient px-6 py-2.5 text-sm font-semibold shadow-lg disabled:opacity-70"
                   >
                     {launchingSlug === c.slug ? (
                       <>

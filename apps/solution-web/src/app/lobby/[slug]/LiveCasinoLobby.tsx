@@ -105,7 +105,7 @@ export function LiveCasinoLobby({
       {walletBalance !== null ? (
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-left">
           <p className="text-xs text-zinc-500">충전·입금과 같은 지갑 (심리스)</p>
-          <p className="mt-0.5 font-mono text-xl font-semibold text-[var(--theme-primary,#c9a227)]">
+          <p className="mt-0.5 font-mono text-xl font-semibold text-main-gold">
             {walletBalance}{" "}
             <span className="text-sm font-normal text-zinc-400">원</span>
           </p>
@@ -138,8 +138,7 @@ export function LiveCasinoLobby({
           type="button"
           onClick={() => void launch()}
           disabled={loading}
-          className="inline-flex w-full justify-center rounded-xl px-6 py-3 text-sm font-medium text-black disabled:opacity-60"
-          style={{ backgroundColor: "var(--theme-primary, #c9a227)" }}
+          className="inline-flex w-full justify-center rounded-xl bg-gold-gradient px-6 py-3 text-sm font-medium disabled:opacity-60"
         >
           {loading ? "연결 중…" : "입장"}
         </button>

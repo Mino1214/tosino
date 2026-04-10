@@ -27,7 +27,7 @@ export function SectionCasino() {
       {/* 섹션 헤더 */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-bold text-white">카지노</h2>
-        <Link href="/lobby/live-casino" className="text-xs text-[var(--theme-primary,#c9a227)]">
+        <Link href="/lobby/live-casino" className="text-xs text-main-gold">
           전체 보기 →
         </Link>
       </div>

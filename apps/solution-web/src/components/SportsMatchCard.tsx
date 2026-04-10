@@ -108,7 +108,7 @@ export function SportsMatchCard({
             }`}
           >
             <span className="text-[10px] text-zinc-500 uppercase">{market.label}</span>
-            <span className="mt-0.5 font-mono text-sm font-semibold text-[var(--theme-primary,#c9a227)]">
+            <span className="mt-0.5 font-mono text-sm font-semibold text-main-gold">
               {market.odds}
             </span>
           </button>

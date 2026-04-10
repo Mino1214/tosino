@@ -46,7 +46,7 @@ export default function LiveCasinoPage() {
               className={[
                 "rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors",
                 activeTab === tab
-                  ? "bg-[var(--theme-primary,#c9a227)] text-black"
+                  ? "bg-gold-gradient text-black"
                   : "border border-white/10 text-zinc-400 hover:text-zinc-200",
               ].join(" ")}
             >

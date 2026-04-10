@@ -90,7 +90,7 @@ function HistoryContent({ onClose }: { onClose: () => void }) {
               className={[
                 "flex flex-1 flex-col items-center rounded-lg py-1.5 text-[11px] font-semibold transition-colors",
                 tab === t.id
-                  ? "bg-[var(--theme-primary,#c9a227)] text-black"
+                  ? "bg-gold-gradient text-black"
                   : "text-zinc-500 hover:text-zinc-300",
               ].join(" ")}
             >
@@ -109,7 +109,7 @@ function HistoryContent({ onClose }: { onClose: () => void }) {
           { label: "총 배팅", value: `${summary.total}건`, color: "text-zinc-300" },
           { label: "적중",    value: `${summary.win}건`,  color: "text-emerald-400" },
           { label: "배팅금액",value: `${summary.totalBet.toLocaleString("ko-KR")}원`, color: "text-zinc-300" },
-          { label: "당첨금액",value: `${summary.totalWin.toLocaleString("ko-KR")}원`, color: "text-[var(--theme-primary,#c9a227)]" },
+          { label: "당첨금액",value: `${summary.totalWin.toLocaleString("ko-KR")}원`, color: "text-main-gold" },
         ].map((s, i, arr) => (
           <div key={s.label} className="flex items-center gap-4">
             <div className="flex flex-col items-center gap-0.5">
