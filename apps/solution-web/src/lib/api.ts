@@ -1,6 +1,7 @@
 const ENV_API_BASE = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api"
 ).replace(/\/$/, "");
+const AUTH_CHANGED_EVENT = "tosino:auth-changed";
 
 function trimApiBase(s: string | undefined): string {
   return (s || "").replace(/\/$/, "").trim();
@@ -86,11 +87,40 @@ export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
 }
 
+function emitAuthChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
+export function setSession(data: {
+  accessToken: string;
+  refreshToken: string;
+  user: unknown;
+}) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("accessToken", data.accessToken);
+  localStorage.setItem("refreshToken", data.refreshToken);
+  localStorage.setItem("user", JSON.stringify(data.user));
+  emitAuthChanged();
+}
+
+export function subscribeAuthChange(listener: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const onChange = () => listener();
+  window.addEventListener(AUTH_CHANGED_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(AUTH_CHANGED_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
 export function clearSession() {
   if (typeof window === "undefined") return;
   localStorage.removeItem("accessToken");
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("user");
+  emitAuthChanged();
 }
 
 export async function apiFetch<T = unknown>(

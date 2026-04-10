@@ -18,7 +18,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useBootstrap } from "./BootstrapProvider";
-import { apiFetch, getAccessToken, clearSession } from "@/lib/api";
+import {
+  apiFetch,
+  getAccessToken,
+  clearSession,
+  subscribeAuthChange,
+} from "@/lib/api";
 import { useBettingCart } from "./BettingCartContext";
 import { useAppModals } from "@/contexts/AppModalsContext";
 import { isSportsBettingPath } from "@/lib/sports-lobby-path";
@@ -51,15 +56,37 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const isSportPage = isSportsBettingPath(pathname);
 
   useEffect(() => {
-    const ok = !!getAccessToken();
-    setLogged(ok);
-    if (ok) {
-      void apiFetch<{ balance: string }>("/me/wallet")
-        .then((w) => setMoney(Number(w.balance)))
-        .catch(() => null);
-    } else {
-      setMoney(null);
+    let alive = true;
+
+    async function refreshAuthUi() {
+      const ok = !!getAccessToken();
+      if (!alive) return;
+      setLogged(ok);
+
+      if (!ok) {
+        setMoney(null);
+        return;
+      }
+
+      try {
+        const w = await apiFetch<{ balance: string }>("/me/wallet");
+        if (!alive) return;
+        setMoney(Number(w.balance));
+      } catch {
+        if (!alive) return;
+        setMoney(null);
+      }
     }
+
+    void refreshAuthUi();
+    const unsubscribe = subscribeAuthChange(() => {
+      void refreshAuthUi();
+    });
+
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
   }, [pathname]);
 
   useEffect(() => {

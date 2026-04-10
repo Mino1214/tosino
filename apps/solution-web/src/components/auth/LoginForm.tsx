@@ -5,6 +5,7 @@ import {
   apiFetch,
   buildLoginPlatformBody,
   clearSession,
+  setSession,
 } from "@/lib/api";
 
 type LoginFormProps = {
@@ -54,9 +55,7 @@ export function LoginForm({
         );
         return;
       }
-      localStorage.setItem("accessToken", data.accessToken);
-      localStorage.setItem("refreshToken", data.refreshToken);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      setSession(data);
       onSuccess?.();
     } catch (err) {
       clearSession();

@@ -12,7 +12,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { clearSession, getAccessToken } from "@/lib/api";
+import { clearSession, getAccessToken, subscribeAuthChange } from "@/lib/api";
 import { publicAsset } from "@/lib/public-asset";
 
 type DrawerNavItem =
@@ -48,9 +48,16 @@ export function MobileDrawer({ open, onClose }: Props) {
   const [logged, setLogged] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    const refreshAuthUi = () => {
       setLogged(!!getAccessToken());
-    }
+    };
+
+    refreshAuthUi();
+    const unsubscribe = subscribeAuthChange(refreshAuthUi);
+
+    return () => {
+      unsubscribe();
+    };
   }, [open, pathname]);
 
   useEffect(() => {
