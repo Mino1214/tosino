@@ -352,18 +352,20 @@ function GamePlayer({ game, onBack }: { game: GameDef; onBack: () => void }) {
 /* ──────────────────────────────────────────── 선택 화면 (3×3 그리드) */
 function GameSelector({ onSelect }: { onSelect: (g: GameDef) => void }) {
   return (
-    <div className="min-h-screen bg-zinc-950 pb-10">
-      {/* 헤더 */}
-      <div className="border-b border-[rgba(218,174,87,0.2)] bg-black px-4 py-5">
-        <h1 className="text-xl font-bold text-main-gold">미니게임</h1>
-        <p className="mt-0.5 text-xs text-main-gold-solid/75">BET BIG. WIN BIGGER!</p>
-      </div>
+    <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-10">
+      <div className="content-pad-phi mx-auto w-full max-w-[90rem]">
+        {/* 헤더 */}
+        <div className="border-b border-[rgba(218,174,87,0.2)] bg-black py-5">
+          <h1 className="text-xl font-bold text-main-gold">미니게임</h1>
+          <p className="mt-0.5 text-xs text-main-gold-solid/75">BET BIG. WIN BIGGER!</p>
+        </div>
 
-      {/* 3×3 게임 카드 그리드 */}
-      <div className="grid grid-cols-3 gap-3 px-3 pt-5 sm:gap-4 sm:px-4">
-        {GAMES.map((g) => (
-          <GameCard key={g.id} g={g} onClick={() => onSelect(g)} />
-        ))}
+        {/* 3×3 게임 카드 그리드 */}
+        <div className="grid grid-cols-3 gap-3 pt-5 sm:gap-4">
+          {GAMES.map((g) => (
+            <GameCard key={g.id} g={g} onClick={() => onSelect(g)} />
+          ))}
+        </div>
       </div>
     </div>
   );

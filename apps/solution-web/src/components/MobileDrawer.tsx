@@ -147,7 +147,7 @@ export function MobileDrawer({ open, onClose }: Props) {
             <button
               type="button"
               onClick={logout}
-              className="w-full rounded-lg border border-white/15 bg-zinc-900/80 py-3 text-center text-sm font-semibold text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+              className="w-full rounded-lg bg-gold-gradient px-5 py-2.5 text-center text-sm font-bold text-[#0f0f12] transition-opacity hover:opacity-90"
             >
               로그아웃
             </button>
@@ -155,7 +155,7 @@ export function MobileDrawer({ open, onClose }: Props) {
             <Link
               href="/login"
               onClick={onClose}
-              className="block w-full rounded-lg border border-[rgba(218,174,87,0.35)] bg-gold-gradient py-3 text-center text-sm font-bold text-[#0f0f12]"
+              className="block w-full rounded-lg bg-gold-gradient px-5 py-2.5 text-center text-sm font-bold text-[#0f0f12] transition-opacity hover:opacity-90"
             >
               로그인
             </Link>

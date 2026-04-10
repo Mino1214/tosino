@@ -123,7 +123,7 @@ function HeroVideos({
   return (
     <video
       ref={videoRef}
-      className="pointer-events-none h-full w-full bg-black object-cover md:object-contain"
+      className="pointer-events-none h-full w-full bg-black object-cover md:object-contain md:scale-[1.01] md:transform-gpu"
       autoPlay
       muted
       loop
@@ -162,7 +162,7 @@ function DesktopHeroSlide({ s, index }: { s: HeroSlide; index: number }) {
       id={s.id}
       className="relative flex h-[100svh] snap-start items-stretch justify-stretch bg-black"
     >
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 overflow-hidden">
         <HeroVideos
           desktopSrc={s.desktopSrc}
           mobileSrc={s.mobileSrc}

@@ -33,7 +33,7 @@ type SpeedDialLinkItem = { label: string; href: string; emoji?: string };
 type SpeedDialActionItem = { label: string; onSelect: () => void; emoji?: string };
 
 const QUICK_DIAL_ITEM_CLASS =
-  "flex min-h-[2.35rem] items-center justify-center rounded-md border border-[rgba(110,76,24,0.48)] bg-gold-gradient px-1.5 py-1.5 text-center text-[10px] font-bold leading-[1.15] text-[#0f0f12] ring-1 ring-white/10 shadow-none active:brightness-95";
+  "flex min-h-[2.75rem] items-center justify-center rounded-lg bg-gold-gradient px-5 py-2.5 text-center text-sm font-bold leading-tight text-[#0f0f12] transition-opacity hover:opacity-90 active:opacity-100";
 
 /** 모바일 입출금: 2열 그리드, 짧은 높이로 스크롤 없이 한 화면에 표시 */
 function WalletQuickDial({
@@ -284,11 +284,7 @@ export function BottomNav() {
                     }`}
                 >
                     <div
-                        className={`absolute -top-5 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center overflow-hidden rounded-full border p-[3px] ${
-                            playOpen
-                                ? "border-[rgba(218,174,87,0.58)] bg-[#17120b]"
-                                : "border-[rgba(218,174,87,0.34)] bg-[#0d0b08]"
-                        } ${
+                        className={`absolute -top-5 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center overflow-visible drop-shadow-[0_8px_16px_rgba(0,0,0,0.45)] ${
                             playSpinning ? "play-button-spin" : ""
                         }`}
                     >
@@ -367,7 +363,7 @@ export function BottomNav() {
                 className="fixed bottom-5 left-1/2 z-[45] hidden -translate-x-1/2 md:flex md:flex-col md:items-center md:gap-1 text-[rgba(218,174,87,0.72)]"
             >
                 <div
-                    className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[rgba(218,174,87,0.32)] bg-[#0d0b08] p-[3px] ${
+                    className={`flex h-14 w-14 items-center justify-center overflow-visible drop-shadow-[0_8px_16px_rgba(0,0,0,0.45)] ${
                         playSpinning ? "play-button-spin" : ""
                     }`}
                 >

@@ -15,7 +15,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useBootstrap } from "./BootstrapProvider";
 import { apiFetch, getAccessToken, clearSession } from "@/lib/api";
@@ -46,8 +46,6 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const [money, setMoney] = useState<number | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [row1Hidden, setRow1Hidden] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef<HTMLDivElement>(null);
 
   const isHome = pathname === "/";
   const isSportPage = isSportsBettingPath(pathname);
@@ -73,16 +71,6 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
     return () => window.removeEventListener("scroll", onScroll);
   }, [isSportPage]);
 
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setProfileOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
   function logout() {
     clearSession();
     setLogged(false);
@@ -105,7 +93,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
       {/* ════════════════════════════════════════════════════
           DESKTOP — 단일 행 (로고 | 네비 | 유저)
           ════════════════════════════════════════════════════ */}
-      <div className="relative hidden h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-[rgba(218,174,87,0.12)] px-4 lg:gap-5 lg:px-6 md:grid">
+      <div className="relative hidden h-20 w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-[rgba(218,174,87,0.12)] px-4 lg:gap-5 lg:px-6 md:grid">
         {/* 좌: 로고 전용 열 — 가운데 absolute 네비와 겹치지 않게 전체가 보이게 */}
         <Link
           href="/"
@@ -126,7 +114,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
         {/* 중앙 네비 — 중간 열 안에서만 가로 스크롤, 로고 위에 덮지 않음 */}
         <nav
           aria-label="메인 메뉴"
-          className="flex min-w-0 justify-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden"
+          className="justify-self-center flex min-w-0 justify-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden"
         >
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href) && item.href !== "/";
@@ -134,16 +122,10 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`relative flex shrink-0 items-center whitespace-nowrap px-2.5 transition-colors sm:px-3 ${
-                  isHome ? "text-[0.9375rem] font-semibold leading-tight" : "text-sm font-medium"
-                } ${
-                  isHome
-                    ? active
-                      ? "text-main-gold drop-shadow-[0_1px_8px_rgba(0,0,0,0.95)]"
-                      : "text-[#f0e6c8] drop-shadow-[0_1px_8px_rgba(0,0,0,0.95)] hover:text-main-gold-solid"
-                    : active
-                      ? "text-main-gold"
-                      : "text-zinc-300 hover:text-main-gold-solid"
+                className={`relative flex shrink-0 items-center whitespace-nowrap px-2.5 text-[0.9375rem] font-semibold leading-tight transition-colors sm:px-3 ${
+                  active
+                    ? "text-main-gold drop-shadow-[0_1px_8px_rgba(0,0,0,0.95)]"
+                    : "text-[#f0e6c8] drop-shadow-[0_1px_8px_rgba(0,0,0,0.95)] hover:text-main-gold-solid"
                 }`}
               >
                 {item.label}
@@ -284,7 +266,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
         </Link>
 
         {/* 우: 알림 + 프로필 — 고정 폭 */}
-        <div className="flex w-[5.25rem] shrink-0 items-center justify-end gap-2" ref={profileRef}>
+        <div className="flex w-[5.25rem] shrink-0 items-center justify-end gap-2">
           <button type="button" className="relative flex h-9 w-9 items-center justify-center text-zinc-400">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
               <path strokeLinecap="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
