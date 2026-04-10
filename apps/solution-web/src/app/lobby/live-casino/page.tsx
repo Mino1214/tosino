@@ -31,7 +31,7 @@ export default function LiveCasinoPage() {
 
       <div className="content-pad-phi mx-auto w-full min-w-0 max-w-[90rem]">
         {/* 헤더 */}
-        <div className="border-b border-[rgba(218,174,87,0.2)] py-4">
+        <div className="border-b border-[rgba(218,174,87,0.2)] bg-black py-4">
           <h1 className="text-lg font-bold text-main-gold sm:text-xl">라이브 카지노</h1>
           <p className="mt-0.5 text-xs text-main-gold-solid/75">
             Evolution · Pragmatic · Vivo Gaming 외

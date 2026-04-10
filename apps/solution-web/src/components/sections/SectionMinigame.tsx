@@ -23,14 +23,14 @@ const MINIGAME_ITEMS = [
   { provider: "로투스 식보",        status: "LIVE" },
   { provider: "로투스 홀짝",        status: "LIVE" },
   { provider: "로투스 바카라",      status: "LIVE" },
-  { provider: "보글보글",           status: "1분"  },
-  { provider: "보글보글",           status: "2분"  },
-  { provider: "보글보글",           status: "3분"  },
-  { provider: "슈퍼마리오",         status: "1분"  },
-  { provider: "슈퍼마리오",         status: "2분"  },
-  { provider: "슈퍼마리오",         status: "3분"  },
-  { provider: "룰렛",               status: "1분"  },
-  { provider: "룰렛",               status: "2분"  },
+  { provider: "보글보글 1분",           status: "1분"  },
+  { provider: "보글보글 2분",           status: "2분"  },
+  { provider: "보글보글 3분",           status: "3분"  },
+  { provider: "슈퍼마리오 1분",         status: "1분"  },
+  { provider: "슈퍼마리오 2분",         status: "2분"  },
+  { provider: "슈퍼마리오 3분",         status: "3분"  },
+  { provider: "가위바위보 1분",               status: "1분"  },
+  { provider: "가위바위보 2분",               status: "2분"  },
 ];
 
 export function SectionMinigame() {

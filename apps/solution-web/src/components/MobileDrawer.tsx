@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { clearSession, getAccessToken } from "@/lib/api";
+import { publicAsset } from "@/lib/public-asset";
 
 type DrawerNavItem =
   | { label: string; href: string }
@@ -92,7 +93,7 @@ export function MobileDrawer({ open, onClose }: Props) {
             className="flex min-w-0 flex-1 items-center justify-center leading-none"
           >
             <Image
-              src="/main/logo.png"
+              src={publicAsset("/main/logo.webp")}
               alt=""
               width={200}
               height={60}

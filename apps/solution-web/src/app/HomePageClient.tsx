@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { PartnerMarquee } from "@/components/PartnerMarquee";
+import { publicAsset } from "@/lib/public-asset";
 
 const HERO_SLIDES = [
   {
@@ -18,8 +19,8 @@ const HERO_SLIDES = [
     sub: "Evolution · Pragmatic · Vivo Gaming",
     cta1: { label: "카지노 입장", href: "/lobby/live-casino" },
     cta2: { label: "슬롯 게임", href: "/lobby/slots" },
-    desktopSrc: "/thumbnail/one.mp4",
-    mobileSrc: "/thumbnail/m_one.mp4",
+    desktopSrc: publicAsset("/thumbnail/one.mp4"),
+    mobileSrc: publicAsset("/thumbnail/m_one.mp4"),
   },
   {
     id: "slots",
@@ -28,8 +29,8 @@ const HERO_SLIDES = [
     sub: "Pragmatic · Hacksaw · Nolimit City · CQ9",
     cta1: { label: "슬롯 입장", href: "/lobby/slots" },
     cta2: { label: "카지노 입장", href: "/lobby/live-casino" },
-    desktopSrc: "/thumbnail/two.mp4",
-    mobileSrc: "/thumbnail/m_two.mp4",
+    desktopSrc: publicAsset("/thumbnail/two.mp4"),
+    mobileSrc: publicAsset("/thumbnail/m_two.mp4"),
   },
   {
     id: "minigame",
@@ -38,8 +39,8 @@ const HERO_SLIDES = [
     sub: "보글보글 · 슈퍼마리오 · 룰렛 · BTC 파워볼",
     cta1: { label: "미니게임 입장", href: "/lobby/minigame" },
     cta2: { label: "이벤트", href: "/mypage#event1" },
-    desktopSrc: "/thumbnail/three.mp4",
-    mobileSrc: "/thumbnail/m_three.mp4",
+    desktopSrc: publicAsset("/thumbnail/three.mp4"),
+    mobileSrc: publicAsset("/thumbnail/m_three.mp4"),
   },
 ] as const;
 
@@ -56,13 +57,11 @@ function HeroVideos({
   preload: "auto" | "metadata" | "none";
   isActive?: boolean;
 }) {
-  const desktopRef = useRef<HTMLVideoElement>(null);
-  const mobileRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    const d = desktopRef.current;
-    const m = mobileRef.current;
-    const videos = [d, m].filter(Boolean) as HTMLVideoElement[];
+    const video = videoRef.current;
+    if (!video) return;
 
     const arm = (v: HTMLVideoElement) => {
       v.muted = true;
@@ -71,25 +70,19 @@ function HeroVideos({
       v.setAttribute("webkit-playsinline", "");
     };
 
-    videos.forEach(arm);
+    arm(video);
 
     const tryPlay = () => {
       if (!isActive) {
-        d?.pause();
-        m?.pause();
+        video.pause();
         return;
       }
-      const kick = (v: HTMLVideoElement | null) => {
-        if (!v) return;
-        arm(v);
-        requestAnimationFrame(() => {
-          void v.play().catch(() => {
-            window.setTimeout(() => void v.play().catch(() => {}), 120);
-          });
+      arm(video);
+      requestAnimationFrame(() => {
+        void video.play().catch(() => {
+          window.setTimeout(() => void video.play().catch(() => {}), 120);
         });
-      };
-      kick(d);
-      kick(m);
+      });
     };
 
     const onRecover = () => {
@@ -99,18 +92,12 @@ function HeroVideos({
 
     tryPlay();
 
-    d?.addEventListener("loadeddata", tryPlay);
-    m?.addEventListener("loadeddata", tryPlay);
-    d?.addEventListener("canplay", tryPlay);
-    m?.addEventListener("canplay", tryPlay);
-    d?.addEventListener("canplaythrough", tryPlay);
-    m?.addEventListener("canplaythrough", tryPlay);
-    d?.addEventListener("stalled", onRecover);
-    m?.addEventListener("stalled", onRecover);
-    d?.addEventListener("waiting", onRecover);
-    m?.addEventListener("waiting", onRecover);
-    d?.addEventListener("ended", tryPlay);
-    m?.addEventListener("ended", tryPlay);
+    video.addEventListener("loadeddata", tryPlay);
+    video.addEventListener("canplay", tryPlay);
+    video.addEventListener("canplaythrough", tryPlay);
+    video.addEventListener("stalled", onRecover);
+    video.addEventListener("waiting", onRecover);
+    video.addEventListener("ended", tryPlay);
 
     const onVis = () => {
       if (document.visibilityState === "visible") tryPlay();
@@ -122,52 +109,31 @@ function HeroVideos({
     window.addEventListener("pageshow", onShow);
 
     return () => {
-      d?.removeEventListener("loadeddata", tryPlay);
-      m?.removeEventListener("loadeddata", tryPlay);
-      d?.removeEventListener("canplay", tryPlay);
-      m?.removeEventListener("canplay", tryPlay);
-      d?.removeEventListener("canplaythrough", tryPlay);
-      m?.removeEventListener("canplaythrough", tryPlay);
-      d?.removeEventListener("stalled", onRecover);
-      m?.removeEventListener("stalled", onRecover);
-      d?.removeEventListener("waiting", onRecover);
-      m?.removeEventListener("waiting", onRecover);
-      d?.removeEventListener("ended", tryPlay);
-      m?.removeEventListener("ended", tryPlay);
+      video.removeEventListener("loadeddata", tryPlay);
+      video.removeEventListener("canplay", tryPlay);
+      video.removeEventListener("canplaythrough", tryPlay);
+      video.removeEventListener("stalled", onRecover);
+      video.removeEventListener("waiting", onRecover);
+      video.removeEventListener("ended", tryPlay);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pageshow", onShow);
     };
   }, [desktopSrc, mobileSrc, isActive]);
 
   return (
-    <>
-      <video
-        ref={desktopRef}
-        key={`d-${desktopSrc}`}
-        className="pointer-events-none hidden h-full w-full bg-black object-contain md:block"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload={preload}
-        aria-hidden
-      >
-        <source src={desktopSrc} type="video/mp4" />
-      </video>
-      <video
-        ref={mobileRef}
-        key={`m-${mobileSrc}`}
-        className="pointer-events-none h-full w-full bg-black object-cover md:hidden"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload={preload}
-        aria-hidden
-      >
-        <source src={mobileSrc} type="video/mp4" />
-      </video>
-    </>
+    <video
+      ref={videoRef}
+      className="pointer-events-none h-full w-full bg-black object-cover md:object-contain"
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload={preload}
+      aria-hidden
+    >
+      <source media="(max-width: 767px)" src={mobileSrc} type="video/mp4" />
+      <source media="(min-width: 768px)" src={desktopSrc} type="video/mp4" />
+    </video>
   );
 }
 
@@ -296,8 +262,8 @@ export function HomePageClient({ partnerLogoPaths }: { partnerLogoPaths: string[
                   <HeroVideos
                     desktopSrc={s.desktopSrc}
                     mobileSrc={s.mobileSrc}
-                    /* slide 상태에 따라 preload를 바꾸지 않음 — 바뀔 때마다 영상이 늦게 로드·깜빡임 */
-                    preload="auto"
+                    /* 현재 슬라이드만 적극 로드하고, 나머지는 메타데이터만 받아 초기 자산 폭주를 막음 */
+                    preload={slide === i ? "auto" : "metadata"}
                     isActive={slide === i}
                   />
                 </div>

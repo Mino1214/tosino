@@ -22,6 +22,7 @@ import { apiFetch, getAccessToken, clearSession } from "@/lib/api";
 import { useBettingCart } from "./BettingCartContext";
 import { useAppModals } from "@/contexts/AppModalsContext";
 import { isSportsBettingPath } from "@/lib/sports-lobby-path";
+import { publicAsset } from "@/lib/public-asset";
 
 const NAV_ITEMS = [
   // { label: "스포츠",   href: "/lobby/sports-kr"  },
@@ -112,7 +113,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           className="inline-flex min-w-0 shrink-0 items-center py-1 leading-none"
         >
           <Image
-            src="/main/logo.png"
+            src={publicAsset("/main/logo.webp")}
             alt=""
             width={880}
             height={256}
@@ -272,7 +273,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           className="flex min-w-0 flex-1 items-center justify-center py-1 leading-none"
         >
           <Image
-            src="/main/logo.png"
+            src={publicAsset("/main/logo.webp")}
             alt=""
             width={300}
             height={90}

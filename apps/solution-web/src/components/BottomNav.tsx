@@ -17,6 +17,7 @@ import { useBettingCart } from "./BettingCartContext";
 import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 import { useAppModals } from "@/contexts/AppModalsContext";
 import { isSportsBettingPath } from "@/lib/sports-lobby-path";
+import { publicAsset } from "@/lib/public-asset";
 
 const PLAY_ITEMS = [
   // { label: "스포츠",    href: "/lobby/sports-kr",  emoji: "⚽" },
@@ -285,7 +286,7 @@ export function BottomNav() {
                         }`}
                     >
                         <Image
-                            src="/icon/playbutton.png"
+                            src={publicAsset("/icon/playbutton.png")}
                             alt=""
                             width={156}
                             height={156}
@@ -360,7 +361,7 @@ export function BottomNav() {
             >
                 <div className={`flex h-14 w-14 items-center justify-center ${playSpinning ? "play-button-spin" : ""}`}>
                     <Image
-                        src="/icon/playbutton.png"
+                        src={publicAsset("/icon/playbutton.png")}
                         alt=""
                         width={112}
                         height={112}

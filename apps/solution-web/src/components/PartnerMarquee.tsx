@@ -7,6 +7,7 @@
 */
 
 import Image from "next/image";
+import { publicAsset } from "@/lib/public-asset";
 
 type Props = {
   logoPaths: string[];
@@ -16,7 +17,7 @@ export function PartnerMarquee({ logoPaths }: Props) {
   const loop = logoPaths.length > 0 ? [...logoPaths, ...logoPaths] : [];
 
   return (
-    <div className="hidden border-t border-white/5 bg-zinc-950 py-14 md:block">
+    <div className="hidden border-t border-white/5 bg-black py-14 md:block">
       {logoPaths.length > 0 ? (
         <>
           <p className="mb-6 text-center text-[10px] uppercase tracking-[0.2em] text-zinc-600">
@@ -24,18 +25,21 @@ export function PartnerMarquee({ logoPaths }: Props) {
           </p>
           <div className="overflow-hidden">
             <div className="flex w-max animate-marquee items-center gap-10">
-              {loop.map((src, i) => (
+              {loop.map((src, i) => {
+                const assetSrc = publicAsset(src);
+                return (
                 <Image
                   key={`${src}-${i}`}
-                  src={src}
+                  src={assetSrc}
                   alt=""
                   width={280}
                   height={64}
                   className="h-16 w-auto max-w-[17.5rem] shrink-0 object-contain"
                   sizes="280px"
-                  unoptimized={src.endsWith(".svg")}
+                  unoptimized={/\.svg(?:$|\?)/i.test(assetSrc)}
                 />
-              ))}
+                );
+              })}
             </div>
           </div>
         </>

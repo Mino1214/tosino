@@ -7,7 +7,7 @@ export type CasinoCardAsset = {
   logo: string;
 };
 
-export const CASINO_CARD_BG = "/casinoGirl/bg.png";
+export const CASINO_CARD_BG = "/casinoGirl/bg.webp";
 
 /** 11~88 썸네일을 slug 순서에 맞춰 한 번 섞어 배정 */
 const SLUG_ORDER = [
@@ -22,14 +22,14 @@ const SLUG_ORDER = [
 ] as const;
 
 const THUMBS_SHUFFLED: string[] = [
-  "/casinoGirl/77.png",
-  "/casinoGirl/33.png",
-  "/casinoGirl/88.png",
-  "/casinoGirl/11.png",
-  "/casinoGirl/55.png",
-  "/casinoGirl/44.png",
-  "/casinoGirl/66.png",
-  "/casinoGirl/22.png",
+  "/casinoGirl/77.webp",
+  "/casinoGirl/33.webp",
+  "/casinoGirl/88.webp",
+  "/casinoGirl/11.webp",
+  "/casinoGirl/55.webp",
+  "/casinoGirl/44.webp",
+  "/casinoGirl/66.webp",
+  "/casinoGirl/22.webp",
 ];
 
 const LOGO_BY_SLUG: Record<string, string> = {

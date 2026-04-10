@@ -9,7 +9,7 @@ export default function SlotsPage() {
     <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-10">
       <div className="content-pad-phi mx-auto w-full max-w-[90rem]">
         {/* 헤더 */}
-        <div className="border-b border-[rgba(218,174,87,0.2)] bg-zinc-900/60 py-5">
+        <div className="border-b border-[rgba(218,174,87,0.2)] bg-black py-5">
           <h1 className="text-xl font-bold text-main-gold">슬롯 게임</h1>
           <p className="mt-0.5 text-xs text-main-gold-solid/75">프라그마틱 · 하바네로 · 마이크로</p>
         </div>

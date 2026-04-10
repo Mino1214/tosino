@@ -237,7 +237,7 @@ export function SportsLobbyLayout({
         <AdBanner title={bannerText ?? `${title} 이벤트 진행 중 — 실시간 채널 이벤트 혜택을 받아가세요!`} />
       )}
 
-      <div className="border-b border-[rgba(218,174,87,0.2)] bg-zinc-950/90 px-4 py-2.5 md:px-6 lg:px-10">
+      <div className="border-b border-[rgba(218,174,87,0.2)] bg-black px-4 py-2.5 md:px-6 lg:px-10">
         <h1 className="text-base font-bold text-main-gold sm:text-lg md:text-xl">{title}</h1>
       </div>
 

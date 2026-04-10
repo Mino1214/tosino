@@ -20,6 +20,10 @@ function nextAppBasePath(): string | undefined {
 }
 
 const basePath = nextAppBasePath();
+const assetVersion =
+  process.env.NEXT_PUBLIC_ASSET_VERSION?.trim() ||
+  process.env.ASSET_VERSION?.trim() ||
+  `${Date.now()}`;
 
 function devApiRewrites() {
   if (process.env.NODE_ENV !== "development") return [];
@@ -39,6 +43,9 @@ export default function defineConfig(phase: string): NextConfig {
     transpilePackages: ["@tosino/shared"],
     ...(basePath ? { basePath } : {}),
     ...(!isDev ? { output: "export" as const } : {}),
+    env: {
+      NEXT_PUBLIC_ASSET_VERSION: assetVersion,
+    },
     ...(isDev
       ? {
           async rewrites() {

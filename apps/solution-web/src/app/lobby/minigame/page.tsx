@@ -26,33 +26,33 @@ const ROULETTE_LOGO = "https://files-zx.asia-sportradar.com//img/frontend/miniga
 
 const GAMES: GameDef[] = [
   // 보글보글 ×3
-  { id:"bubble-1", name:"보글보글", type:"bubble", minutes:1, url:"https://retrototo.com/bubble/?GameTime=1",
+  { id:"bubble-1", name:"보글보글 1분", type:"bubble", minutes:1, url:"https://retrototo.com/bubble/?GameTime=1",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/zxx_assets/minigame/Bubble1.webp?ver=3",
     logoSrc: BUBBLE_LOGO, accentColor:"from-pink-950" },
-  { id:"bubble-2", name:"보글보글", type:"bubble", minutes:2, url:"https://retrototo.com/bubble/?GameTime=2",
+  { id:"bubble-2", name:"보글보글 2분", type:"bubble", minutes:2, url:"https://retrototo.com/bubble/?GameTime=2",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/minigame/card_bg/bb_2.webp",
     logoSrc: BUBBLE_LOGO, accentColor:"from-pink-950" },
-  { id:"bubble-3", name:"보글보글", type:"bubble", minutes:3, url:"https://retrototo.com/bubble/?GameTime=3",
+  { id:"bubble-3", name:"보글보글 3분", type:"bubble", minutes:3, url:"https://retrototo.com/bubble/?GameTime=3",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/minigame/card_bg/bb_3.webp",
     logoSrc: BUBBLE_LOGO, accentColor:"from-pink-950" },
   // 슈퍼마리오 ×3
-  { id:"mario-1", name:"슈퍼 마리오", type:"mario", minutes:1, url:"https://retrototo.com/super/?GameTime=1",
+  { id:"mario-1", name:"슈퍼 마리오 1분", type:"mario", minutes:1, url:"https://retrototo.com/super/?GameTime=1",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/zxx_assets/minigame/Mario1.webp?ver=2",
     logoSrc: MARIO_LOGO, accentColor:"from-red-950" },
-  { id:"mario-2", name:"슈퍼 마리오", type:"mario", minutes:2, url:"https://retrototo.com/super/?GameTime=2",
+  { id:"mario-2", name:"슈퍼 마리오 2분", type:"mario", minutes:2, url:"https://retrototo.com/super/?GameTime=2",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/minigame/card_bg/sm_2.webp",
     logoSrc: MARIO_LOGO, accentColor:"from-red-950" },
-  { id:"mario-3", name:"슈퍼 마리오", type:"mario", minutes:3, url:"https://retrototo.com/super/?GameTime=3",
+  { id:"mario-3", name:"슈퍼 마리오 3분", type:"mario", minutes:3, url:"https://retrototo.com/super/?GameTime=3",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/minigame/card_bg/sm_3.webp",
     logoSrc: MARIO_LOGO, accentColor:"from-red-950" },
   // 룰렛 ×3
-  { id:"roulette-1", name:"룰렛", type:"roulette", minutes:1, url:"https://retrototo.com/ruletee/?GameTime=1",
+  { id:"roulette-1", name:"가위바위보 1분", type:"roulette", minutes:1, url:"https://retrototo.com/ruletee/?GameTime=1",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/minigame/card_bg/roulette_1.jpg",
     logoSrc: ROULETTE_LOGO, accentColor:"from-violet-950" },
-  { id:"roulette-2", name:"룰렛", type:"roulette", minutes:2, url:"https://retrototo.com/ruletee/?GameTime=2",
+  { id:"roulette-2", name:"가위바위보 2분", type:"roulette", minutes:2, url:"https://retrototo.com/ruletee/?GameTime=2",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/minigame/card_bg/roulette_2.jpg",
     logoSrc: ROULETTE_LOGO, accentColor:"from-violet-950" },
-  { id:"roulette-3", name:"룰렛", type:"roulette", minutes:3, url:"https://retrototo.com/ruletee/?GameTime=3",
+  { id:"roulette-3", name:"가위바위보 3분", type:"roulette", minutes:3, url:"https://retrototo.com/ruletee/?GameTime=3",
     cardBg:"https://files-zx.asia-sportradar.com//img/frontend/minigame/card_bg/roulette_3.jpg",
     logoSrc: ROULETTE_LOGO, accentColor:"from-violet-950" },
 ];
@@ -352,7 +352,7 @@ function GameSelector({ onSelect }: { onSelect: (g: GameDef) => void }) {
   return (
     <div className="min-h-screen bg-zinc-950 pb-10">
       {/* 헤더 */}
-      <div className="border-b border-[rgba(218,174,87,0.2)] bg-zinc-900/60 px-4 py-5">
+      <div className="border-b border-[rgba(218,174,87,0.2)] bg-black px-4 py-5">
         <h1 className="text-xl font-bold text-main-gold">미니게임</h1>
         <p className="mt-0.5 text-xs text-main-gold-solid/75">BET BIG. WIN BIGGER!</p>
       </div>
