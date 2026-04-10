@@ -284,8 +284,8 @@ export function HomePageClient({ partnerLogoPaths }: { partnerLogoPaths: string[
           onTouchEnd={onTouchEnd}
         >
           <div
-            className="flex h-full transition-transform duration-500 ease-in-out"
-            style={{ transform: `translateX(-${slide * 100}%)` }}
+            className="flex h-full will-change-transform transition-transform duration-500 ease-in-out [backface-visibility:hidden]"
+            style={{ transform: `translate3d(-${slide * 100}%,0,0)` }}
           >
             {HERO_SLIDES.map((s, i) => (
               <div
@@ -296,7 +296,8 @@ export function HomePageClient({ partnerLogoPaths }: { partnerLogoPaths: string[
                   <HeroVideos
                     desktopSrc={s.desktopSrc}
                     mobileSrc={s.mobileSrc}
-                    preload={slide === i ? "auto" : "none"}
+                    /* slide 상태에 따라 preload를 바꾸지 않음 — 바뀔 때마다 영상이 늦게 로드·깜빡임 */
+                    preload="auto"
                     isActive={slide === i}
                   />
                 </div>

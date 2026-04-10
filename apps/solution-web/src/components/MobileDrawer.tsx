@@ -85,13 +85,19 @@ export function MobileDrawer({ open, onClose }: Props) {
         }`}
       >
         <div className="flex h-16 shrink-0 items-center border-b border-[rgba(218,174,87,0.3)] px-3">
-          <Link href="/" onClick={onClose} aria-label="홈" className="flex min-w-0 flex-1 items-center justify-center">
+          <Link
+            href="/"
+            onClick={onClose}
+            aria-label="홈"
+            className="flex min-w-0 flex-1 items-center justify-center leading-none"
+          >
             <Image
               src="/main/logo.png"
               alt=""
               width={200}
               height={60}
-              className="h-[var(--site-header-logo-h)] w-auto max-w-[var(--site-header-logo-max-w)] object-contain"
+              sizes="200px"
+              className="site-header-logo-img"
             />
           </Link>
         </div>

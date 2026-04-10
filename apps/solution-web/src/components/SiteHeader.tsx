@@ -106,13 +106,18 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           ════════════════════════════════════════════════════ */}
       <div className="relative hidden h-20 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-[rgba(218,174,87,0.12)] px-4 lg:gap-5 lg:px-6 md:grid">
         {/* 좌: 로고 전용 열 — 가운데 absolute 네비와 겹치지 않게 전체가 보이게 */}
-        <Link href="/" aria-label="홈" className="min-w-0 shrink-0 py-1">
+        <Link
+          href="/"
+          aria-label="홈"
+          className="inline-flex min-w-0 shrink-0 items-center py-1 leading-none"
+        >
           <Image
             src="/main/logo.png"
             alt=""
             width={880}
             height={256}
-            className="h-[var(--site-header-logo-h)] w-auto max-w-[var(--site-header-logo-max-w)] object-contain object-left"
+            sizes="(max-width: 767px) 200px, 360px"
+            className="site-header-logo-img site-header-logo-img--left"
             priority
           />
         </Link>
@@ -261,13 +266,18 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
         </div>
 
         {/* 중앙: 남는 폭만 쓰는 로고 — 좌우 버튼에 가리지 않음 */}
-        <Link href="/" aria-label="홈" className="flex min-w-0 flex-1 justify-center py-1">
+        <Link
+          href="/"
+          aria-label="홈"
+          className="flex min-w-0 flex-1 items-center justify-center py-1 leading-none"
+        >
           <Image
             src="/main/logo.png"
             alt=""
             width={300}
             height={90}
-            className="h-[var(--site-header-logo-h)] w-auto max-w-[var(--site-header-logo-max-w)] shrink-0 object-contain"
+            sizes="(max-width: 767px) 200px, 360px"
+            className="site-header-logo-img"
             priority
           />
         </Link>

@@ -10,7 +10,7 @@
 
 :root {
   --phi: 1.618;
-  /* 헤더·드로어 로고: vw/rem 가변 제거, px 고정 (브라우저·기기마다 비율만 동일) */
+  /* 헤더·드로어 로고: px 고정 — 모든 브라우저에서 동일 박스 (크롬/사파리 flex·baseline 차이 최소화) */
   --site-header-logo-h: 40px;
   --site-header-logo-max-w: 200px;
   --app-mobile-header: 5rem; /* h-20, 모바일 헤더 */
@@ -32,8 +32,29 @@
   );
 }
 
-/* 메인 골드 그라데이션 텍스트 + 글로우 */
+/* 헤더·드로어 로고: 한 클래스로 크기 고정 (Next/Image·flex 안에서도 동일) */
+.site-header-logo-img {
+  display: block;
+  box-sizing: border-box;
+  width: auto;
+  height: var(--site-header-logo-h);
+  max-height: var(--site-header-logo-h);
+  max-width: var(--site-header-logo-max-w);
+  min-width: 0;
+  object-fit: contain;
+  object-position: center center;
+  flex-shrink: 0;
+}
+.site-header-logo-img--left {
+  object-position: left center;
+}
+
+/* 메인 골드 그라데이션 텍스트 + 글로우
+   - background-clip:text + 눈누만 지정 시 모바일 WebKit에서 라틴(A–Z)이 안 보이는 경우가 있어
+     Geist(라틴) → Noonnu(한글) 순으로 글리프 매칭 */
 .text-main-gold {
+  font-family: var(--font-geist-sans), "NoonnuBasicGothic", ui-sans-serif, system-ui,
+    sans-serif;
   background: var(--gold-gradient);
   -webkit-background-clip: text;
   background-clip: text;
@@ -126,8 +147,8 @@ body {
     font-size: 112%;
   }
   :root {
-    --site-header-logo-h: 48px;
-    --site-header-logo-max-w: 280px;
+    --site-header-logo-h: 56px;
+    --site-header-logo-max-w: 360px;
   }
 }
 @media (min-width: 1280px) {
