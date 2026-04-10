@@ -245,6 +245,26 @@ model User {
   parent               User?              @relation("AgentTree", fields: [parentUserId], references: [id], onDelete: SetNull)
   children             User[]             @relation("AgentTree")
   displayName          String?
+  /** 가입 유형: full(실명) | anonymous(무기명) */
+  signupMode           String?
+  /** 텔레그램 아이디 (@ 제외) */
+  telegramUsername     String?
+  /** 전화번호 (010XXXXXXXX 형식) */
+  phone                String?
+  /** 통신사 */
+  telecomCompany       String?
+  /** 생년월일 YYYYMMDD */
+  birthDate            String?
+  /** 성별 M | F */
+  gender               String?
+  /** 은행 코드 */
+  bankCode             String?
+  /** 계좌번호 */
+  bankAccountNumber    String?
+  /** 예금주 */
+  bankAccountHolder    String?
+  /** 입출금 2차 비밀번호 (bcrypt hash) */
+  exchangePinHash      String?
   /** 총판(또는 플랫폼)이 하위 회원에게 남기는 메모 */
   agentMemo            String?            @db.Text
   /** 회원 본인이 쓰는 메모(본인·플랫폼 관리자 조회) */

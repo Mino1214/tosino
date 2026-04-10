@@ -143,16 +143,25 @@ export async function fetchReferral(code: string, host: string) {
   }>;
 }
 
-export async function publicRegister(
-  body: {
-    loginId: string;
-    password: string;
-    referralCode: string;
-    displayName?: string;
-    contactEmail?: string;
-  },
-  host: string,
-) {
+export type PublicRegisterBody = {
+  loginId: string;
+  password: string;
+  referralCode: string;
+  displayName?: string;
+  contactEmail?: string;
+  signupMode?: "full" | "anonymous";
+  telegramUsername?: string;
+  phone?: string;
+  telecomCompany?: string;
+  birthDate?: string;
+  gender?: string;
+  bankCode?: string;
+  bankAccountNumber?: string;
+  bankAccountHolder?: string;
+  exchangePin?: string;
+};
+
+export async function publicRegister(body: PublicRegisterBody, host: string) {
   const res = await fetch(`${getApiBase()}/public/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -161,6 +170,16 @@ export async function publicRegister(
       password: body.password,
       referralCode: body.referralCode.trim().toUpperCase(),
       displayName: body.displayName,
+      signupMode: body.signupMode,
+      telegramUsername: body.telegramUsername?.trim() || undefined,
+      phone: body.phone?.trim() || undefined,
+      telecomCompany: body.telecomCompany || undefined,
+      birthDate: body.birthDate?.trim() || undefined,
+      gender: body.gender || undefined,
+      bankCode: body.bankCode || undefined,
+      bankAccountNumber: body.bankAccountNumber?.trim() || undefined,
+      bankAccountHolder: body.bankAccountHolder?.trim() || undefined,
+      exchangePin: body.exchangePin || undefined,
       ...(body.contactEmail?.trim()
         ? { contactEmail: body.contactEmail.trim().toLowerCase() }
         : {}),

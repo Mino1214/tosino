@@ -149,6 +149,16 @@ export class PublicRegistrationService {
       dto.contactEmail?.trim() != null && dto.contactEmail.trim().length > 0
         ? dto.contactEmail.trim().toLowerCase()
         : null;
+
+    // 입출금 PIN 해싱
+    const exchangePinHash =
+      dto.exchangePin && dto.exchangePin.length >= 4
+        ? await bcrypt.hash(dto.exchangePin, 10)
+        : null;
+
+    const isAnonymous = dto.signupMode === 'anonymous';
+    const now = new Date();
+
     await this.prisma.user.create({
       data: {
         loginId,
@@ -158,13 +168,28 @@ export class PublicRegistrationService {
         platformId: agent.platformId,
         parentUserId: agent.id,
         displayName: dto.displayName?.trim() || null,
-        registrationStatus: RegistrationStatus.PENDING,
+        registrationStatus: isAnonymous
+          ? RegistrationStatus.APPROVED
+          : RegistrationStatus.PENDING,
+        registrationResolvedAt: isAnonymous ? now : null,
+        // 프로필 확장 필드
+        signupMode:       dto.signupMode ?? null,
+        telegramUsername: dto.telegramUsername?.trim() || null,
+        phone:            dto.phone?.trim() || null,
+        telecomCompany:   dto.telecomCompany?.trim() || null,
+        birthDate:        dto.birthDate?.trim() || null,
+        gender:           dto.gender ?? null,
+        bankCode:         dto.bankCode?.trim() || null,
+        bankAccountNumber: dto.bankAccountNumber?.trim() || null,
+        bankAccountHolder: dto.bankAccountHolder?.trim() || null,
+        exchangePinHash,
       },
     });
     return {
       ok: true,
-      message:
-        '가입 신청이 접수되었습니다. 플랫폼 관리자 승인 후 로그인할 수 있습니다.',
+      message: isAnonymous
+        ? '가입이 완료되었습니다. 바로 로그인할 수 있습니다.'
+        : '가입 신청이 접수되었습니다. 플랫폼 관리자 승인 후 로그인할 수 있습니다.',
     };
   }
 }

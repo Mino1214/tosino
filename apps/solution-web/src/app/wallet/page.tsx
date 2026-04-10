@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, clearSession, getAccessToken } from "@/lib/api";
+import { UsdtDepositPanel } from "@/components/UsdtDepositPanel";
 
 type Profile = {
   role: string;
@@ -32,8 +33,10 @@ export default function WalletPage() {
   const [amount, setAmount] = useState("10000");
   const [note, setNote] = useState("");
   const [depositorName, setDepositorName] = useState("");
+  const [mainTab, setMainTab] = useState<"fiat" | "usdt">("fiat");
   const [tab, setTab] = useState<"DEPOSIT" | "WITHDRAWAL">("DEPOSIT");
   const [submitting, setSubmitting] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
   const [myMemo, setMyMemo] = useState("");
   const [memoSaving, setMemoSaving] = useState(false);
 
@@ -138,6 +141,31 @@ export default function WalletPage() {
 
       {profile?.role === "USER" && (
         <>
+          <div className="mt-6 flex gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
+            <button
+              type="button"
+              onClick={() => setMainTab("fiat")}
+              className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
+                mainTab === "fiat"
+                  ? "bg-[var(--theme-primary,#c9a227)] text-black"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              원화 충전 · 출금
+            </button>
+            <button
+              type="button"
+              onClick={() => setMainTab("usdt")}
+              className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
+                mainTab === "usdt"
+                  ? "bg-emerald-600 text-white"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              USDT 충전
+            </button>
+          </div>
+
           <div className="mt-6 rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900 to-black p-6">
             <p className="text-sm text-zinc-500">보유 머니 (심리스 공용)</p>
             <p className="mt-1 font-mono text-3xl font-bold text-[var(--theme-primary,#c9a227)]">
@@ -151,6 +179,19 @@ export default function WalletPage() {
             </Link>
           </div>
 
+          {mainTab === "usdt" && (
+            <div className="mt-6">
+              <UsdtDepositPanel
+                krwBalanceDisplay={balance ?? undefined}
+                onScrollToHistory={() =>
+                  historyRef.current?.scrollIntoView({ behavior: "smooth" })
+                }
+              />
+            </div>
+          )}
+
+          {mainTab === "fiat" && (
+          <>
           <div className="mt-6 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="text-sm font-medium text-zinc-300">내 메모</h2>
             <p className="text-xs text-zinc-500">
@@ -248,8 +289,10 @@ export default function WalletPage() {
               {submitting ? "처리 중…" : "신청하기"}
             </button>
           </form>
+          </>
+          )}
 
-          <div className="mt-8">
+          <div ref={historyRef} className="mt-8 scroll-mt-24">
             <h2 className="text-sm font-medium text-zinc-400">내 신청 내역</h2>
             <ul className="mt-3 space-y-2">
               {(requests ?? []).length === 0 ? (
