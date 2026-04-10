@@ -178,7 +178,7 @@ export function CasinoPortalCards() {
 
               {/* z-10: 로고 — 우측 상단 (회사명 위) */}
               {assets ? (
-                <div className="pointer-events-none absolute right-4 top-4 z-10 h-9 w-[min(44%,160px)] md:right-5 md:top-5">
+                <div className="pointer-events-none absolute right-3 top-3 z-10 h-12 w-[min(58%,220px)] md:right-5 md:top-5 md:h-9 md:w-[min(44%,160px)]">
                   <Image
                     src={publicAsset(assets.logo)}
                     alt=""

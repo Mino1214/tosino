@@ -32,6 +32,9 @@ const PLAY_ITEMS = [
 type SpeedDialLinkItem = { label: string; href: string; emoji?: string };
 type SpeedDialActionItem = { label: string; onSelect: () => void; emoji?: string };
 
+const QUICK_DIAL_ITEM_CLASS =
+  "flex min-h-[2.35rem] items-center justify-center rounded-md border border-[rgba(110,76,24,0.48)] bg-gold-gradient px-1.5 py-1.5 text-center text-[10px] font-bold leading-[1.15] text-[#0f0f12] ring-1 ring-white/10 shadow-none active:brightness-95";
+
 /** 모바일 입출금: 2열 그리드, 짧은 높이로 스크롤 없이 한 화면에 표시 */
 function WalletQuickDial({
   items,
@@ -70,7 +73,7 @@ function WalletQuickDial({
                   onClose();
                 }}
                 style={anim(i)}
-                className={`flex min-h-[2.25rem] items-center justify-center rounded-lg border border-black/20 bg-gold-gradient px-1 py-1.5 text-center text-[10px] font-bold leading-[1.15] text-[#0f0f12] shadow-[0_0_12px_rgba(218,174,87,0.35)] active:brightness-95 ${
+                className={`${QUICK_DIAL_ITEM_CLASS} ${
                   lastOdd ? "col-span-2" : ""
                 }`}
               >
@@ -119,7 +122,7 @@ function PlayGameDial({
                 href={item.href}
                 onClick={onClose}
                 style={anim(i)}
-                className={`flex min-h-[2.25rem] items-center justify-center gap-1 rounded-lg border border-black/20 bg-gold-gradient px-1 py-1.5 text-center text-[10px] font-bold leading-[1.15] text-[#0f0f12] shadow-[0_0_12px_rgba(218,174,87,0.35)] active:brightness-95 ${
+                className={`${QUICK_DIAL_ITEM_CLASS} gap-1 ${
                   lastOdd ? "col-span-2" : ""
                 }`}
               >
@@ -281,7 +284,11 @@ export function BottomNav() {
                     }`}
                 >
                     <div
-                        className={`absolute -top-5 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center ${
+                        className={`absolute -top-5 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center overflow-hidden rounded-full border p-[3px] ${
+                            playOpen
+                                ? "border-[rgba(218,174,87,0.58)] bg-[#17120b]"
+                                : "border-[rgba(218,174,87,0.34)] bg-[#0d0b08]"
+                        } ${
                             playSpinning ? "play-button-spin" : ""
                         }`}
                     >
@@ -290,7 +297,7 @@ export function BottomNav() {
                             alt=""
                             width={156}
                             height={156}
-                            className="h-14 w-14 object-contain drop-shadow-[0_0_14px_rgba(218,174,87,0.5)]"
+                            className="h-full w-full object-contain"
                             priority
                         />
                     </div>
@@ -359,13 +366,17 @@ export function BottomNav() {
                 onClick={desktopPlaySpin}
                 className="fixed bottom-5 left-1/2 z-[45] hidden -translate-x-1/2 md:flex md:flex-col md:items-center md:gap-1 text-[rgba(218,174,87,0.72)]"
             >
-                <div className={`flex h-14 w-14 items-center justify-center ${playSpinning ? "play-button-spin" : ""}`}>
+                <div
+                    className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-[rgba(218,174,87,0.32)] bg-[#0d0b08] p-[3px] ${
+                        playSpinning ? "play-button-spin" : ""
+                    }`}
+                >
                     <Image
                         src={publicAsset("/icon/playbutton.png")}
                         alt=""
                         width={112}
                         height={112}
-                        className="h-14 w-14 object-contain drop-shadow-[0_0_14px_rgba(218,174,87,0.45)]"
+                        className="h-full w-full object-contain"
                         priority
                     />
                 </div>

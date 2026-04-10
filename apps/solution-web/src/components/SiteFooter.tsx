@@ -33,7 +33,7 @@ export function SiteFooter() {
             {row1.map((src, i) => (
               <div
                 key={`r1-${i}`}
-                className="relative flex h-12 items-center justify-center sm:h-14"
+                className="relative flex h-16 items-center justify-center md:h-14"
               >
                 <Image
                   src={publicAsset(src)}
@@ -49,7 +49,7 @@ export function SiteFooter() {
             {row2.map((src, i) => (
               <div
                 key={`r2-${i}`}
-                className="relative flex h-12 items-center justify-center sm:h-14"
+                className="relative flex h-16 items-center justify-center md:h-14"
               >
                 <Image
                   src={publicAsset(src)}
@@ -65,7 +65,7 @@ export function SiteFooter() {
             {row3.map((src, i) => (
               <div
                 key={`r3-${i}`}
-                className="relative h-12 w-32 sm:h-14 sm:w-40"
+                className="relative h-16 w-40 md:h-14 md:w-40"
               >
                 <Image
                   src={publicAsset(src)}

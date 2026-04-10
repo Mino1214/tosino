@@ -11,8 +11,8 @@
 :root {
   --phi: 1.618;
   /* 헤더·드로어 로고: px 고정 — 모든 브라우저에서 동일 박스 (크롬/사파리 flex·baseline 차이 최소화) */
-  --site-header-logo-h: 40px;
-  --site-header-logo-max-w: 200px;
+  --site-header-logo-h: 52px;
+  --site-header-logo-max-w: 260px;
   --app-mobile-header: 5rem; /* h-20, 모바일 헤더 */
   --app-mobile-nav: 3.5rem; /* h-14 */
   --app-mobile-nav-safe: env(safe-area-inset-bottom, 0px);
