@@ -68,7 +68,7 @@ export function MobileDrawer({ open, onClose }: Props) {
         <div className="flex h-16 items-center justify-between border-b border-[rgba(218,174,87,0.3)] px-4">
           <Link href="/" onClick={onClose} className="flex min-w-0 items-center">
             <Image
-              src="/main/logo.png"
+              src="/main/logo.jpg"
               alt={b?.theme.siteName ?? "홈"}
               width={240}
               height={72}
