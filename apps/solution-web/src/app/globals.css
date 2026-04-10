@@ -10,6 +10,9 @@
 
 :root {
   --phi: 1.618;
+  /* 헤더·드로어 로고: vw/rem 가변 제거, px 고정 (브라우저·기기마다 비율만 동일) */
+  --site-header-logo-h: 40px;
+  --site-header-logo-max-w: 200px;
   --app-mobile-header: 5rem; /* h-20, 모바일 헤더 */
   --app-mobile-nav: 3.5rem; /* h-14 */
   --theme-primary: #daae57;
@@ -117,9 +120,15 @@ body {
   font-family: "NoonnuBasicGothic", var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* 데스크톱에서 base font-size를 올려 전체 텍스트 크기 상향 */
+/* 데스크톱에서 base font-size를 올려 전체 텍스트 크기 상향 (로고는 --site-header-logo-* px로 영향 없음) */
 @media (min-width: 768px) {
-  html { font-size: 112%; }
+  html {
+    font-size: 112%;
+  }
+  :root {
+    --site-header-logo-h: 48px;
+    --site-header-logo-max-w: 280px;
+  }
 }
 @media (min-width: 1280px) {
   html { font-size: 118%; }

@@ -2,7 +2,7 @@
 
 /*
   ─── MobileDrawer ───────────────────────────────────────────────
-  · 로고: 헤더와 동일 /main/logo.png (사이드바 영역에 맞는 크기는 기존 유지)
+  · 로고: /main/logo.png — 크기는 globals --site-header-logo-* 와 동일(px 고정)
   · 상단: 로고만(닫기는 오버레이·햄버거) / 행 우측: 꽉 찬 삼각형(▶)
   · 하단: 로그아웃
   ─────────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ export function MobileDrawer({ open, onClose }: Props) {
               alt=""
               width={200}
               height={60}
-              className="h-[2.92rem] w-auto max-w-[min(100%,134px)] object-contain"
+              className="h-[var(--site-header-logo-h)] w-auto max-w-[var(--site-header-logo-max-w)] object-contain"
             />
           </Link>
         </div>

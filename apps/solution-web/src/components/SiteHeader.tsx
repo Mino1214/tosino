@@ -5,7 +5,7 @@
   Desktop (md+):
     · 홈(/) : 배경 투명 → 스크롤 시 반투명
     · 그 외 : 배경 #0a0a0e
-    · 단일 행 h-20: 로고(좌) | 카지노·슬롯·미니게임·마이페이지(중앙) | 유저 영역(우)
+    · 단일 행 h-20: 로고(좌, px 고정) | 네비(중앙) | 유저(우)
     · 스포츠: 스크롤 시 우측 유저 블록만 접힘 (로고·탭 유지)
 
   Mobile:
@@ -112,7 +112,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
             alt=""
             width={880}
             height={256}
-            className="h-11 w-auto max-w-[min(46vw,380px)] object-contain object-left lg:h-12 lg:max-w-[min(50vw,440px)]"
+            className="h-[var(--site-header-logo-h)] w-auto max-w-[var(--site-header-logo-max-w)] object-contain object-left"
             priority
           />
         </Link>
@@ -267,7 +267,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
             alt=""
             width={300}
             height={90}
-            className="h-[4.375rem] w-auto max-w-full object-contain"
+            className="h-[var(--site-header-logo-h)] w-auto max-w-[var(--site-header-logo-max-w)] shrink-0 object-contain"
             priority
           />
         </Link>
