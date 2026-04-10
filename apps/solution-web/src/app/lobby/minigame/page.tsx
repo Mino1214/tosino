@@ -352,9 +352,9 @@ function GameSelector({ onSelect }: { onSelect: (g: GameDef) => void }) {
   return (
     <div className="min-h-screen bg-zinc-950 pb-10">
       {/* 헤더 */}
-      <div className="border-b border-white/5 bg-zinc-900/60 px-4 py-5">
-        <h1 className="text-xl font-bold text-white">미니게임</h1>
-        <p className="mt-0.5 text-xs text-zinc-500">BET BIG. WIN BIGGER!</p>
+      <div className="border-b border-[rgba(218,174,87,0.2)] bg-zinc-900/60 px-4 py-5">
+        <h1 className="text-xl font-bold text-main-gold">미니게임</h1>
+        <p className="mt-0.5 text-xs text-main-gold-solid/75">BET BIG. WIN BIGGER!</p>
       </div>
 
       {/* 3×3 게임 카드 그리드 */}

@@ -31,9 +31,11 @@ export default function LiveCasinoPage() {
 
       <div className="content-pad-phi mx-auto w-full min-w-0 max-w-[90rem]">
         {/* 헤더 */}
-        <div className="border-b border-white/5 py-4">
-          <h1 className="text-lg font-bold text-white">라이브 카지노</h1>
-          <p className="mt-0.5 text-xs text-zinc-500">Evolution · Pragmatic · Vivo Gaming 외</p>
+        <div className="border-b border-[rgba(218,174,87,0.2)] py-4">
+          <h1 className="text-lg font-bold text-main-gold sm:text-xl">라이브 카지노</h1>
+          <p className="mt-0.5 text-xs text-main-gold-solid/75">
+            Evolution · Pragmatic · Vivo Gaming 외
+          </p>
         </div>
 
         {/* 제공사 탭 (가로 스크롤) */}
@@ -55,7 +57,7 @@ export default function LiveCasinoPage() {
                   "rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors",
                   activeTab === tab
                     ? "bg-gold-gradient text-black"
-                    : "border border-white/10 text-zinc-400 hover:text-zinc-200",
+                    : "border border-[rgba(218,174,87,0.25)] text-main-gold-solid/70 hover:border-[rgba(218,174,87,0.45)] hover:text-main-gold-solid",
                 ].join(" ")}
               >
                 {tab}

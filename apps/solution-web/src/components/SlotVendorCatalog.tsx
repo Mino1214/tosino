@@ -121,7 +121,7 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
   const tabActive = "text-black shadow-md";
   const tabInactive = isLight
     ? "text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100"
-    : "text-zinc-300 ring-1 ring-white/15 hover:bg-white/5";
+    : "text-main-gold-solid/65 ring-1 ring-[rgba(218,174,87,0.25)] hover:bg-[rgba(218,174,87,0.08)] hover:text-main-gold-solid";
 
   return (
     <div

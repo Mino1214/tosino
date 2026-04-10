@@ -61,8 +61,8 @@ function SportTypeNav({
               active === s.id
                 ? "bg-[rgba(218,174,87,0.15)] text-main-gold"
                 : s.count === 0
-                ? "text-zinc-700"
-                : "text-zinc-400 hover:text-zinc-200",
+                  ? "text-zinc-700"
+                  : "text-main-gold-solid/55 hover:text-main-gold-solid",
             ].join(" ")}
           >
             <span className="text-base">{s.icon}</span>
@@ -103,7 +103,7 @@ function BetTypeNav({
               "rounded px-3 py-1 text-[11px] font-semibold transition-colors",
               active === t.id
                 ? "bg-gold-gradient text-black"
-                : "text-zinc-400 hover:text-zinc-200",
+                : "text-main-gold-solid/65 hover:text-main-gold-solid",
             ].join(" ")}
           >
             {t.label}
@@ -146,7 +146,7 @@ function FolderBonus() {
             "flex flex-1 items-center justify-center gap-1.5 rounded border py-1.5 text-xs transition-colors",
             active === b.id
               ? "border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.1)] text-main-gold"
-              : "border-white/5 text-zinc-400 hover:border-white/15",
+              : "border-[rgba(218,174,87,0.15)] text-main-gold-solid/55 hover:border-[rgba(218,174,87,0.35)] hover:text-main-gold-solid",
           ].join(" ")}
         >
           <span className="font-semibold">{b.label}</span>
@@ -236,6 +236,10 @@ export function SportsLobbyLayout({
       {!hideBanner && (
         <AdBanner title={bannerText ?? `${title} 이벤트 진행 중 — 실시간 채널 이벤트 혜택을 받아가세요!`} />
       )}
+
+      <div className="border-b border-[rgba(218,174,87,0.2)] bg-zinc-950/90 px-4 py-2.5 md:px-6 lg:px-10">
+        <h1 className="text-base font-bold text-main-gold sm:text-lg md:text-xl">{title}</h1>
+      </div>
 
       {/* 종목 아이콘 Nav */}
       <div className="md:px-6 lg:px-10">

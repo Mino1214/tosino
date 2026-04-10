@@ -47,8 +47,8 @@ export default async function LobbyPage({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <p className="text-sm text-zinc-500">준비 중</p>
-      <h1 className="mt-2 text-2xl font-bold text-white">{title}</h1>
+      <p className="text-sm text-main-gold-solid/65">준비 중</p>
+      <h1 className="mt-2 text-2xl font-bold text-main-gold">{title}</h1>
       <p className="mt-4 text-zinc-400">
         게임사/API 연동 시 이 경로에서 런처 또는 iframe을 붙이면 됩니다.
       </p>

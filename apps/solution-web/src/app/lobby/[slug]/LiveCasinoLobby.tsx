@@ -100,8 +100,8 @@ export function LiveCasinoLobby({
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
-      <p className="text-sm text-zinc-500">Vinus Gaming</p>
-      <h1 className="mt-2 text-2xl font-bold text-white">{title}</h1>
+      <p className="text-sm text-main-gold-solid/65">Vinus Gaming</p>
+      <h1 className="mt-2 text-2xl font-bold text-main-gold">{title}</h1>
       {walletBalance !== null ? (
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-left">
           <p className="text-xs text-zinc-500">충전·입금과 같은 지갑 (심리스)</p>
