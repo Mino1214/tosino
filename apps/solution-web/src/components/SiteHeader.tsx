@@ -5,11 +5,10 @@
   Desktop:
     · 홈(/)        : 배경 투명, 스크롤 내리면 반투명 처리
     · 다른 페이지   : 배경 불투명 (#0a0a0e)
-    · Row 1 (h-10) : 고객센터 | 알림 | 프로필아이콘 | 닉네임 | 잔액 |
-                     포인트 | 포인트전환 | 입금 | 출금 | 로그아웃
-    · Row 2 (h-12) : 스포츠 프리매치 인플레이 스포츠북 e스포츠 카지노 슬롯 미니게임 마이페이지
-    · 스포츠/프리매치/e스포츠 페이지: 스크롤 or 마우스업 → Row1 숨김
-    Total desktop: h-[5.5rem] (88px)
+    · Row 1 (h-14) : 로고(좌·크게) | 고객센터·알림·잔액·입출금·로그인 등(우)
+    · Row 2 (h-12) : 스포츠 · 카지노 · 슬롯 · 미니게임 · 마이페이지
+    · 스포츠 페이지: 스크롤 시 Row1 우측 유저 줄만 숨김 (로고 유지)
+    Total desktop: h-[6.5rem] (104px)
 
   Mobile:
     · 단일 row (h-12): [☰드로어] [로고(center)] [🔔알림] [👤프로필]
@@ -30,7 +29,7 @@ const NAV_ITEMS = [
   { label: "스포츠",   href: "/lobby/sports-kr"  },
   // { label: "프리매치", href: "/lobby/prematch"    },
   // { label: "인플레이", href: "/lobby/live"         },
-  { label: "스포츠북", href: "/lobby/sportsbook"  },
+  // { label: "스포츠북", href: "/lobby/sportsbook"  },
   // { label: "e스포츠",  href: "/lobby/esports"    },
   { label: "카지노",   href: "/lobby/live-casino" },
   { label: "슬롯",     href: "/lobby/slots"       },
@@ -111,13 +110,26 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           DESKTOP HEADER
           ════════════════════════════════════════════════════ */}
       <div className="hidden md:block">
-        {/* Row 1: 유저 영역 (스포츠 페이지에서 스크롤 시 숨김) */}
-        <div
-          className={`overflow-hidden transition-all duration-300 ${
-            row1Hidden ? "max-h-0 opacity-0" : "max-h-10 opacity-100"
-          }`}
-        >
-          <div className="flex h-10 items-center justify-end gap-3 px-6 text-xs text-zinc-500">
+        {/* Row 1: 로고(좌) + 유저 영역(우) — 스포츠 페이지 스크롤 시 유저 줄만 접힘 */}
+        <div className="flex h-14 items-center justify-between gap-4 border-b border-[rgba(218,174,87,0.12)] px-6">
+          <Link href="/" className="shrink-0 py-1">
+            <Image
+              src="/main/logo.png"
+              alt={b.theme.siteName}
+              width={220}
+              height={64}
+              className="h-10 w-auto max-w-[min(42vw,240px)] object-contain md:h-11"
+              priority
+            />
+          </Link>
+          <div
+            className={`min-w-0 flex-1 transition-all duration-300 ${
+              row1Hidden
+                ? "pointer-events-none max-h-0 overflow-hidden opacity-0"
+                : "max-h-20 opacity-100"
+            }`}
+          >
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-zinc-500">
             {/* 고객센터 */}
             <a href="https://t.me/nimo7788" target="_blank" rel="noopener noreferrer"
                className="flex items-center gap-1 hover:text-white">
@@ -194,21 +206,12 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
               </>
             )}
           </div>
+          </div>
         </div>
 
-        {/* Row 2: 로고 + 메인 Nav */}
-        <div className="grid h-12 grid-cols-[auto_minmax(0,1fr)] items-center gap-4 px-6">
-          <Link href="/" className="shrink-0">
-            <Image
-              src="/main/logo.png"
-              alt={b.theme.siteName}
-              width={140}
-              height={40}
-              className="h-7 w-auto max-w-[140px] object-contain"
-              priority
-            />
-          </Link>
-          <div className="flex min-w-0 justify-center gap-0.5 overflow-x-auto sm:gap-1">
+        {/* Row 2: 메인 Nav */}
+        <div className="flex h-12 items-center justify-center px-6">
+          <div className="flex min-w-0 max-w-full justify-center gap-0.5 overflow-x-auto sm:gap-1">
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href) && item.href !== "/";
             return (
@@ -246,7 +249,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
         <button
           type="button"
           onClick={onDrawerOpen}
-          className="flex h-9 w-9 items-center justify-center text-zinc-300"
+          className="flex h-9 w-9 items-center justify-center text-main-gold-solid"
           aria-label="메뉴"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">

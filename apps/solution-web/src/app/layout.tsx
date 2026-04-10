@@ -23,9 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {/*
         ─── 헤더 높이 규격 ─────────────────────────────────────
         Desktop:
-          Row1 (유저영역): h-10 (40px) — 스포츠 페이지에서 스크롤시 숨김
-          Row2 (Nav)     : h-12 (48px)
-          Total          : h-[5.5rem] (88px) → pt-[5.5rem]
+          Row1: h-14 — 로고 + 유저(스포츠 페이지 스크롤 시 유저만 숨김)
+          Row2: h-12 — 메인 Nav
+          Total: h-[6.5rem] (104px) → pt-[6.5rem]
 
         홈(/)에서는 헤더 투명이므로 pt-0 (콘텐츠가 헤더 뒤부터)
 

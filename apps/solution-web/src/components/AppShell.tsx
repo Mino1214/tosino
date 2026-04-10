@@ -5,7 +5,7 @@
   · SiteHeader, MobileDrawer, BottomNav 를 하나로 묶어
     드로어 open 상태를 공유
   · 홈(/)에서 헤더 투명 → <main> pt-0 (콘텐츠가 헤더 뒤로 들어감)
-  · 다른 페이지   → <main> pt-12 md:pt-[5.5rem]
+  · 다른 페이지   → <main> pt-12 md:pt-[6.5rem] (데스크톱 헤더 h-14+h-12)
   ─────────────────────────────────────────────────────────────────
 */
 
@@ -25,7 +25,6 @@ const SPORTS_PATHS = [
   "/lobby/sports-kr",
   "/lobby/prematch",
   "/lobby/live",
-  "/lobby/sportsbook",
   "/lobby/esports",
 ];
 
@@ -45,14 +44,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       {/* 메인 콘텐츠
-          · 홈: pt-0 (투명 헤더가 콘텐츠 위에 float)
-          · 기타: pt-12 (mobile h-12) / pt-[5.5rem] (desktop h-10+h-12)
-          · 스포츠 데스크톱: 우측에 배팅카트 패널 공간(mr-80) 확보
+          · 모바일: 높이 100svh + 하단 safe까지 pb — 스크롤은 main 내부만 (탭바는 고정)
+          · 홈: pt-0 / 그 외: pt-12 · md: pt-[6.5rem]
+          · 스포츠 데스크톱: 우측 배팅카트 mr-72
       */}
       <main
         className={[
-          "pb-14 md:pb-0",
-          isHome ? "" : "pt-12 md:pt-[5.5rem]",
+          "max-md:app-main-mobile-scroll max-md:box-border",
+          "max-md:pb-[calc(var(--app-mobile-nav)+env(safe-area-inset-bottom,0px))]",
+          "md:overflow-visible md:pb-0",
+          isHome ? "" : "pt-12 md:pt-[6.5rem]",
           isSports ? "md:mr-72" : "",
         ].join(" ")}
       >

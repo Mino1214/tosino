@@ -9,7 +9,6 @@
 */
 
 import Link from "next/link";
-import { CasinoPortalCards } from "./CasinoPortalCards";
 import { SlotVendorCatalog } from "./SlotVendorCatalog";
 import { SportsOddsPreview } from "./SportsOddsPreview";
 
@@ -35,7 +34,7 @@ export function HomePortal({ view, onViewChange }: HomePortalProps) {
       {/* ① 카테고리 탭 — sticky: 헤더(48px) 바로 아래 */}
       <nav
         aria-label="게임 카테고리"
-        className="sticky top-12 z-40 flex h-10 overflow-x-auto border-b border-white/8 bg-[#0a0a0e] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="sticky top-12 z-40 flex h-10 overflow-x-auto border-b border-[rgba(218,174,87,0.2)] bg-[#0a0a0e] md:top-[6.5rem] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((tab) => (
           <button
@@ -94,11 +93,13 @@ function SportsContent() {
 function CasinoContent() {
   return (
     <div className="space-y-3">
-      <Link href="/lobby/live-casino" className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-4">
+      <Link
+        href="/lobby/live-casino"
+        className="flex items-center justify-between rounded-lg border border-[rgba(218,174,87,0.25)] px-4 py-4"
+      >
         <span className="text-sm font-semibold text-white">라이브 카지노</span>
         <span className="text-xs text-main-gold">입장 →</span>
       </Link>
-      <CasinoPortalCards />
     </div>
   );
 }

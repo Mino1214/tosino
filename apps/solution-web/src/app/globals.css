@@ -9,6 +9,9 @@
 }
 
 :root {
+  --phi: 1.618;
+  --app-mobile-header: 3rem; /* h-12 */
+  --app-mobile-nav: 3.5rem; /* h-14 */
   --theme-primary: #daae57;
   --gold-gradient: linear-gradient(
     180deg,
@@ -19,6 +22,11 @@
   --background: #0a0a0e;
   /* 본문: 살짝 따뜻한 톤 (그라데이션 악센트와 조화) */
   --foreground: #f2ead8;
+  --content-pad-phi: clamp(
+    0.75rem,
+    calc((100vw - min(100vw, 42rem)) / (2 * var(--phi))),
+    2.618rem
+  );
 }
 
 /* 메인 골드 그라데이션 텍스트 + 글로우 */
@@ -72,6 +80,28 @@
 
 .shadow-gold-glow {
   box-shadow: 0 0 12px rgba(218, 174, 87, 0.28);
+}
+
+/*
+  모바일: 문서 전체 스크롤 대신 헤더·하단 탭 사이 <main>만 스크롤.
+  100svh 로 iOS 주소창(dvh)에 덜 흔들리게 고정.
+*/
+@media (max-width: 767px) {
+  .app-main-mobile-scroll {
+    height: 100svh;
+    max-height: 100svh;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 카지노·슬롯 본문 좌우 여백 (--content-pad-phi) */
+.content-pad-phi {
+  padding-left: var(--content-pad-phi);
+  padding-right: var(--content-pad-phi);
 }
 
 @theme inline {

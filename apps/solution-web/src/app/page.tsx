@@ -1,17 +1,10 @@
 "use client";
 
 /*
-  ─── HomePage 규격 ──────────────────────────────────────────────
-  Desktop:
-    · 3개 섹션 + 파트너 푸터를 scroll-snap-y 컨테이너로 감쌈
-    · 컨테이너: h-dvh overflow-y-scroll snap-y snap-mandatory
-    · 각 섹션: h-dvh snap-start
-    · 파트너 푸터: snap-start (별도 높이)
-    · 헤더는 fixed 투명이므로 pt-0
-
-  Mobile:
-    · 3개 섹션이 좌우 가로 슬라이드 (CSS translate)
-    · 4초마다 자동 전환, 하단 인디케이터 표시
+  ─── HomePage ───────────────────────────────────────────────────
+  · 데스크톱: /thumbnail/one|two|three.mp4 (원본 비율 object-contain)
+  · 모바일:  /thumbnail/m_one|m_two|m_three.mp4
+  · 첫 슬라이드 preload=auto + 첫 데스크톱/모바일 소스 우선 로드
   ─────────────────────────────────────────────────────────────────
 */
 
@@ -19,40 +12,81 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { PartnerMarquee } from "@/components/PartnerMarquee";
 
-const SECTIONS = [
-  {
-    id: "sports",
-    label: "LIVE SPORTS",
-    title: "실시간 스포츠 베팅",
-    sub: "크로스 · 스페셜 · 실시간 · BJ크리에이터",
-    cta1: { label: "스포츠 입장", href: "/lobby/sports-kr" },
-    cta2: { label: "프리매치",   href: "/lobby/prematch"  },
-    bg: "bg-gradient-to-br from-emerald-950/50 via-zinc-950 to-black",
-  },
+const HERO_SLIDES = [
   {
     id: "casino",
     label: "LIVE CASINO",
     title: "라이브 카지노",
     sub: "Evolution · Pragmatic · Vivo Gaming",
     cta1: { label: "카지노 입장", href: "/lobby/live-casino" },
-    cta2: { label: "슬롯 게임",   href: "/lobby/slots"       },
-    bg: "bg-gradient-to-br from-amber-950/50 via-zinc-950 to-black",
+    cta2: { label: "슬롯 게임", href: "/lobby/slots" },
+    desktopSrc: "/thumbnail/two.mp4",
+    mobileSrc: "/thumbnail/m_two.mp4",
+  },
+  {
+    id: "slots",
+    label: "SLOTS",
+    title: "슬롯 게임",
+    sub: "Pragmatic · Hacksaw · Nolimit City · CQ9",
+    cta1: { label: "슬롯 입장", href: "/lobby/slots" },
+    cta2: { label: "카지노 입장", href: "/lobby/live-casino" },
+    desktopSrc: "/thumbnail/two.mp4",
+    mobileSrc: "/thumbnail/m_two.mp4",
   },
   {
     id: "minigame",
     label: "MINIGAMES",
     title: "미니게임",
     sub: "보글보글 · 슈퍼마리오 · 룰렛 · BTC 파워볼",
-    cta1: { label: "미니게임 입장", href: "/lobby/minigame"   },
-    cta2: { label: "이벤트",       href: "/mypage#event1"    },
-    bg: "bg-gradient-to-br from-violet-950/50 via-zinc-950 to-black",
+    cta1: { label: "미니게임 입장", href: "/lobby/minigame" },
+    cta2: { label: "이벤트", href: "/mypage#event1" },
+    desktopSrc: "/thumbnail/three.mp4",
+    mobileSrc: "/thumbnail/m_three.mp4",
   },
 ] as const;
+
+function HeroVideos({
+  desktopSrc,
+  mobileSrc,
+  preload,
+}: {
+  desktopSrc: string;
+  mobileSrc: string;
+  preload: "auto" | "metadata";
+}) {
+  return (
+    <>
+      <video
+        key={`d-${desktopSrc}`}
+        className="pointer-events-none hidden h-full w-full bg-black object-contain md:block"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload={preload}
+        aria-hidden
+      >
+        <source src={desktopSrc} type="video/mp4" />
+      </video>
+      <video
+        key={`m-${mobileSrc}`}
+        className="pointer-events-none h-full w-full bg-black object-contain md:hidden"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload={preload}
+        aria-hidden
+      >
+        <source src={mobileSrc} type="video/mp4" />
+      </video>
+    </>
+  );
+}
 
 export default function HomePage() {
   const [slide, setSlide] = useState(0);
 
-  /* 터치 스와이프 */
   const touchStartX = useRef<number | null>(null);
   function onTouchStart(e: React.TouchEvent) {
     touchStartX.current = e.touches[0]?.clientX ?? null;
@@ -61,52 +95,61 @@ export default function HomePage() {
     if (touchStartX.current === null) return;
     const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
     if (Math.abs(dx) < 40) return;
-    if (dx < 0) setSlide((p) => Math.min(p + 1, SECTIONS.length - 1));
-    else        setSlide((p) => Math.max(p - 1, 0));
+    if (dx < 0) setSlide((p) => Math.min(p + 1, HERO_SLIDES.length - 1));
+    else setSlide((p) => Math.max(p - 1, 0));
     touchStartX.current = null;
   }
 
   return (
     <>
-      {/* ══════════════════════════════════════════════════════
-          DESKTOP — scroll-snap 컨테이너
-          (h-dvh + overflow-y-scroll + snap-y mandatory)
-          ══════════════════════════════════════════════════════ */}
+      {/* 데스크톱 — scroll-snap */}
       <div
-        className="hidden md:block h-dvh overflow-y-scroll snap-y snap-mandatory
+        className="hidden h-dvh snap-y snap-mandatory overflow-y-scroll md:block
                    [-ms-overflow-style:none] [scrollbar-width:none]
                    [&::-webkit-scrollbar]:hidden"
       >
-        {SECTIONS.map((s) => (
+        {HERO_SLIDES.map((s, i) => (
           <section
             key={s.id}
             id={s.id}
-            className={`relative flex h-dvh snap-start items-center justify-center ${s.bg}`}
+            className="relative flex h-dvh snap-start items-stretch justify-stretch bg-black"
           >
-            <div className="relative z-10 flex flex-col items-center gap-6 px-6 text-center">
-              <p className="text-xs uppercase tracking-widest text-main-gold">
-                {s.label}
-              </p>
-              <h1 className="text-4xl font-bold text-white lg:text-6xl">{s.title}</h1>
-              <p className="text-base text-zinc-400">{s.sub}</p>
-              <div className="flex gap-3">
-                <Link
-                  href={s.cta1.href}
-                  className="rounded-lg bg-gold-gradient px-8 py-3 text-sm font-bold text-black"
-                >
-                  {s.cta1.label}
-                </Link>
-                <Link
-                  href={s.cta2.href}
-                  className="rounded-lg border border-white/20 px-8 py-3 text-sm font-semibold text-white"
-                >
-                  {s.cta2.label}
-                </Link>
+            <div className="absolute inset-0">
+              <HeroVideos
+                desktopSrc={s.desktopSrc}
+                mobileSrc={s.mobileSrc}
+                preload={i === 0 ? "auto" : "metadata"}
+              />
+            </div>
+
+            <div className="relative z-10 flex w-full flex-col justify-end bg-gradient-to-t from-black/95 via-black/35 to-transparent px-6 pb-16 pt-32 md:pb-20 md:pt-40">
+              <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 text-center md:gap-6">
+                <p className="text-xs uppercase tracking-widest text-main-gold">
+                  {s.label}
+                </p>
+                <h1 className="text-3xl font-bold text-white lg:text-5xl xl:text-6xl">
+                  {s.title}
+                </h1>
+                <p className="text-sm text-zinc-300 md:text-base">{s.sub}</p>
+                <div className="flex flex-wrap justify-center gap-2 md:gap-3">
+                  <Link
+                    href={s.cta1.href}
+                    className="rounded-lg bg-gold-gradient px-6 py-2.5 text-sm font-bold md:px-8 md:py-3"
+                  >
+                    {s.cta1.label}
+                  </Link>
+                  <Link
+                    href={s.cta2.href}
+                    className="rounded-lg border border-white/25 px-6 py-2.5 text-sm font-semibold text-white md:px-8 md:py-3"
+                  >
+                    {s.cta2.label}
+                  </Link>
+                </div>
               </div>
             </div>
-            {/* 스크롤 인디케이터 */}
-            <div className="absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-zinc-600">
-              <div className="flex h-8 w-5 justify-center rounded-full border border-zinc-700">
+
+            <div className="pointer-events-none absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-1 text-zinc-600 md:bottom-8">
+              <div className="flex h-8 w-5 justify-center rounded-full border border-zinc-600">
                 <div className="mt-1.5 h-1.5 w-0.5 animate-bounce rounded-full bg-zinc-500" />
               </div>
               <span className="text-[10px] uppercase tracking-widest">Scroll</span>
@@ -114,21 +157,17 @@ export default function HomePage() {
           </section>
         ))}
 
-        {/* 파트너 푸터 섹션 */}
         <div className="snap-start">
           <PartnerMarquee />
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════
-          MOBILE — 수동 가로 캐러셀 (기기 화면에 딱 맞게 고정)
-          ══════════════════════════════════════════════════════ */}
+      {/* 모바일 — 가로 캐러셀 */}
       <div
-        className="md:hidden"
-        style={{ height: "calc(100dvh - 3.5rem)", overflow: "hidden" }}
+        className="md:hidden h-[calc(100svh-var(--app-mobile-nav)-env(safe-area-inset-bottom,0px))] overflow-hidden"
       >
         <div
-          className="relative h-full overflow-hidden"
+          className="relative h-full overflow-hidden bg-black"
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
@@ -136,47 +175,53 @@ export default function HomePage() {
             className="flex h-full transition-transform duration-500 ease-in-out"
             style={{ transform: `translateX(-${slide * 100}%)` }}
           >
-            {SECTIONS.map((s) => (
+            {HERO_SLIDES.map((s, i) => (
               <div
                 key={s.id}
-                className={`relative flex w-full h-full shrink-0 items-center justify-center ${s.bg}`}
+                className="relative h-full w-full shrink-0 bg-black"
               >
-                <div className="flex flex-col items-center gap-5 px-6 text-center">
-                  <p className="text-[10px] uppercase tracking-widest text-main-gold">
-                    {s.label}
-                  </p>
-                  <h2 className="text-2xl font-bold text-white">{s.title}</h2>
-                  <p className="text-sm text-zinc-400">{s.sub}</p>
-                  <div className="flex gap-2">
-                    <Link
-                      href={s.cta1.href}
-                      className="rounded-lg bg-gold-gradient px-6 py-2.5 text-sm font-bold text-black"
-                    >
-                      {s.cta1.label}
-                    </Link>
-                    <Link
-                      href={s.cta2.href}
-                      className="rounded-lg border border-white/20 px-6 py-2.5 text-sm text-white"
-                    >
-                      {s.cta2.label}
-                    </Link>
+                <div className="absolute inset-0">
+                  <HeroVideos
+                    desktopSrc={s.desktopSrc}
+                    mobileSrc={s.mobileSrc}
+                    preload={slide === i ? "auto" : "metadata"}
+                  />
+                </div>
+                <div className="relative z-10 flex h-full flex-col justify-end bg-gradient-to-t from-black/95 via-black/40 to-transparent px-5 pb-14 pt-24">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <p className="text-[10px] uppercase tracking-widest text-main-gold">
+                      {s.label}
+                    </p>
+                    <h2 className="text-2xl font-bold text-white">{s.title}</h2>
+                    <p className="text-sm text-zinc-300">{s.sub}</p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <Link
+                        href={s.cta1.href}
+                        className="rounded-lg bg-gold-gradient px-5 py-2.5 text-sm font-bold"
+                      >
+                        {s.cta1.label}
+                      </Link>
+                      <Link
+                        href={s.cta2.href}
+                        className="rounded-lg border border-white/25 px-5 py-2.5 text-sm text-white"
+                      >
+                        {s.cta2.label}
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* 슬라이드 인디케이터 */}
-          <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 gap-1.5">
-            {SECTIONS.map((_, i) => (
+          <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-1.5">
+            {HERO_SLIDES.map((_, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => setSlide(i)}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
-                  i === slide
-                    ? "w-5 bg-gold-gradient"
-                    : "w-1.5 bg-white/25"
+                  i === slide ? "w-5 bg-gold-gradient" : "w-1.5 bg-white/25"
                 }`}
                 aria-label={`슬라이드 ${i + 1}`}
               />

@@ -29,36 +29,45 @@ export default function LiveCasinoPage() {
       {/* 광고 배너 */}
       <AdBanner title="라이브 카지노 이벤트 — 첫충 보너스 혜택을 받아가세요!" />
 
-      {/* 헤더 */}
-      <div className="border-b border-white/5 px-4 py-4">
-        <h1 className="text-lg font-bold text-white">라이브 카지노</h1>
-        <p className="mt-0.5 text-xs text-zinc-500">Evolution · Pragmatic · Vivo Gaming 외</p>
-      </div>
-
-      {/* 제공사 탭 (가로 스크롤) */}
-      <div className="overflow-x-auto border-b border-white/5 bg-zinc-950">
-        <div className="flex gap-1 px-3 py-2" style={{ minWidth: "max-content" }}>
-          {PROVIDER_TABS.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={[
-                "rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors",
-                activeTab === tab
-                  ? "bg-gold-gradient text-black"
-                  : "border border-white/10 text-zinc-400 hover:text-zinc-200",
-              ].join(" ")}
-            >
-              {tab}
-            </button>
-          ))}
+      <div className="content-pad-phi">
+        {/* 헤더 */}
+        <div className="border-b border-white/5 py-4">
+          <h1 className="text-lg font-bold text-white">라이브 카지노</h1>
+          <p className="mt-0.5 text-xs text-zinc-500">Evolution · Pragmatic · Vivo Gaming 외</p>
         </div>
-      </div>
 
-      {/* 메인 카드 그리드 — 기존 CasinoPortalCards (여자사진 + 카드) */}
-      <div className="px-4 pt-5 md:px-8 lg:px-12">
-        <CasinoPortalCards />
+        {/* 제공사 탭 (가로 스크롤) */}
+        <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-b border-white/5 bg-zinc-950">
+          <div
+            className="flex gap-1 py-2"
+            style={{
+              minWidth: "max-content",
+              paddingLeft: "var(--content-pad-phi)",
+              paddingRight: "var(--content-pad-phi)",
+            }}
+          >
+            {PROVIDER_TABS.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={[
+                  "rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors",
+                  activeTab === tab
+                    ? "bg-gold-gradient text-black"
+                    : "border border-white/10 text-zinc-400 hover:text-zinc-200",
+                ].join(" ")}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 메인 카드 그리드 */}
+        <div className="pt-5">
+          <CasinoPortalCards />
+        </div>
       </div>
     </div>
   );

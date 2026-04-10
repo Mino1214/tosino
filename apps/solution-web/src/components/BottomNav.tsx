@@ -161,8 +161,13 @@ export function BottomNav() {
     [openWalletModal],
   );
 
-  const isSportPage = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"]
-    .some((p) => pathname.startsWith(p));
+  const isSportPage = [
+    "/lobby/sports-kr",
+    "/lobby/sports",
+    "/lobby/prematch",
+    "/lobby/live",
+    "/lobby/esports",
+  ].some((p) => pathname.startsWith(p));
 
   /* 스피드 다이얼 열림 시 배경 스크롤 잠금 (iOS 호환) */
   useEffect(() => {
@@ -176,11 +181,26 @@ export function BottomNav() {
     setWalletDialOpen(false);
   }
 
+  const desktopPlaySpin = useCallback(() => {
+    setPlaySpinning(true);
+    window.setTimeout(() => setPlaySpinning(false), 700);
+  }, []);
+
   const togglePlayMenu = useCallback(() => {
     setPlaySpinning(true);
     window.setTimeout(() => setPlaySpinning(false), 700);
     setWalletDialOpen(false);
     setPlayOpen((o) => !o);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const clearPlay = () => {
+      if (mq.matches) setPlayOpen(false);
+    };
+    clearPlay();
+    mq.addEventListener("change", clearPlay);
+    return () => mq.removeEventListener("change", clearPlay);
   }, []);
 
   return (
@@ -191,7 +211,7 @@ export function BottomNav() {
 
       {/* 하단 탭바 */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 h-14 border-t border-white/8 bg-[#0a0a0e] md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-50 h-14 shrink-0 transform-gpu border-t border-[rgba(218,174,87,0.35)] bg-[#0a0806] [backface-visibility:hidden] md:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
         <div className="flex h-full">
@@ -201,7 +221,9 @@ export function BottomNav() {
             type="button"
             onClick={() => { closeAll(); setPanelOpen(true); }}
             className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${
-              isSportPage ? "text-zinc-400 active:text-main-gold-solid" : "text-zinc-600"
+              isSportPage
+                ? "text-[rgba(218,174,87,0.9)] active:text-main-gold"
+                : "text-[rgba(218,174,87,0.45)]"
             }`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
@@ -219,7 +241,7 @@ export function BottomNav() {
           <button
             type="button"
             onClick={() => { closeAll(); setHistoryOpen(true); }}
-            className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-zinc-500 active:text-main-gold-solid"
+            className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-[rgba(218,174,87,0.85)] active:text-main-gold"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
               <path strokeLinecap="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
@@ -232,7 +254,7 @@ export function BottomNav() {
             type="button"
             onClick={togglePlayMenu}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-colors ${
-              playOpen ? "text-main-gold-solid" : "text-zinc-400"
+              playOpen ? "text-main-gold" : "text-[rgba(218,174,87,0.88)]"
             }`}
           >
             <div
@@ -255,9 +277,9 @@ export function BottomNav() {
             href="https://t.me/nimo7788"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-zinc-500"
+            className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-[rgba(218,174,87,0.82)]"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 text-sky-400">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 text-sky-300">
               <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
             </svg>
             고객센터
@@ -271,7 +293,7 @@ export function BottomNav() {
               setWalletDialOpen((o) => !o);
             }}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
-              walletDialOpen ? "text-main-gold-solid" : "text-zinc-500"
+              walletDialOpen ? "text-main-gold" : "text-[rgba(218,174,87,0.85)]"
             }`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
@@ -286,11 +308,9 @@ export function BottomNav() {
       {/* 데스크톱 웹: 하단 중앙 플로팅 PLAY (모바일 탭바와 동일 메뉴) */}
       <button
         type="button"
-        aria-label="게임 메뉴"
-        onClick={togglePlayMenu}
-        className={`fixed bottom-5 left-1/2 z-[45] hidden -translate-x-1/2 md:flex md:flex-col md:items-center md:gap-1 ${
-          playOpen ? "text-main-gold-solid" : "text-zinc-500"
-        }`}
+        aria-label="장식 버튼"
+        onClick={desktopPlaySpin}
+        className="fixed bottom-5 left-1/2 z-[45] hidden -translate-x-1/2 md:flex md:flex-col md:items-center md:gap-1 text-[rgba(218,174,87,0.72)]"
       >
         <div className={`flex h-14 w-14 items-center justify-center ${playSpinning ? "play-button-spin" : ""}`}>
           <Image
@@ -302,7 +322,7 @@ export function BottomNav() {
             priority
           />
         </div>
-        <span className={`text-[10px] font-bold ${playOpen ? "text-main-gold" : "text-zinc-500"}`}>PLAY</span>
+        <span className="text-[10px] font-bold text-[rgba(218,174,87,0.55)]">PLAY</span>
       </button>
 
       <style>{`
