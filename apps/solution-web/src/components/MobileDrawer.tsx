@@ -2,7 +2,7 @@
 
 /*
   ─── MobileDrawer ───────────────────────────────────────────────
-  · 로고: 헤더와 동일 /main/logo.jpg (사이드바 영역에 맞는 크기는 기존 유지)
+  · 로고: 헤더와 동일 /main/logo.png (사이드바 영역에 맞는 크기는 기존 유지)
   · 닫기: 꽉 찬 삼각형(◀) / 행 우측: 꽉 찬 삼각형(▶), 이모지 없음
   · 하단: 로그아웃
   ─────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ export function MobileDrawer({ open, onClose }: Props) {
         <div className="flex h-20 shrink-0 items-center justify-between border-b border-[rgba(218,174,87,0.3)] px-3">
           <Link href="/" onClick={onClose} className="flex min-w-0 flex-1 items-center pr-2">
             <Image
-              src="/main/logo.jpg"
+              src="/main/logo.png"
               alt={b?.theme.siteName ?? "홈"}
               width={300}
               height={90}
