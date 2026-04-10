@@ -328,7 +328,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
             <p>
               가입코드가 없으시다면{" "}
               <span className="font-bold text-main-gold">
-                ZXX
+                ION
               </span>
               를 입력해 주세요
             </p>

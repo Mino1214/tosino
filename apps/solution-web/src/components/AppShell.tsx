@@ -5,7 +5,7 @@
   · SiteHeader, MobileDrawer, BottomNav 를 하나로 묶어
     드로어 open 상태를 공유
   · 홈(/)에서 헤더 투명 → <main> pt-0 (콘텐츠가 헤더 뒤로 들어감)
-  · 다른 페이지   → <main> pt-16 md:pt-[8.5rem] (모바일 h-16 + 데스크톱 Row1+Row2)
+  · 다른 페이지   → <main> pt-20 md:pt-[13rem] (모바일 h-20 + 데스크톱 Row1+Row2)
   ─────────────────────────────────────────────────────────────────
 */
 
@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* 메인 콘텐츠
           · 모바일: 높이 100svh + 하단 safe까지 pb — 스크롤은 main 내부만 (탭바는 고정)
-          · 홈: pt-0 / 그 외: pt-16 · md: pt-[8.5rem]
+          · 홈: pt-0 / 그 외: pt-20 · md: pt-[13rem]
           · 스포츠 데스크톱: 우측 배팅카트 mr-72
       */}
       <main
@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ? "max-md:h-[100svh] max-md:max-h-[100svh] max-md:overflow-hidden max-md:overscroll-none"
             : "max-md:app-main-mobile-scroll",
           "md:overflow-visible md:pb-0",
-          isHome ? "" : "pt-16 md:pt-[8.5rem]",
+          isHome ? "" : "pt-20 md:pt-[13rem]",
           isSports ? "md:mr-72" : "",
         ].join(" ")}
       >

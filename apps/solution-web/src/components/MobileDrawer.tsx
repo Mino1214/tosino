@@ -65,14 +65,14 @@ export function MobileDrawer({ open, onClose }: Props) {
         }`}
       >
         {/* 상단 로고 영역 */}
-        <div className="flex h-16 items-center justify-between border-b border-[rgba(218,174,87,0.3)] px-4">
+        <div className="flex h-20 items-center justify-between border-b border-[rgba(218,174,87,0.3)] px-4">
           <Link href="/" onClick={onClose} className="flex min-w-0 items-center">
             <Image
               src="/main/logo.jpg"
               alt={b?.theme.siteName ?? "홈"}
-              width={240}
-              height={72}
-              className="h-14 w-auto max-w-[280px] object-contain"
+              width={300}
+              height={90}
+              className="h-[4.375rem] w-auto max-w-[350px] object-contain"
             />
           </Link>
           <button type="button" onClick={onClose} className="text-main-gold-solid">

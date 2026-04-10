@@ -3,7 +3,7 @@
 /*
   ─── BettingCartDock 규격 ──────────────────────────
   Desktop (md+):
-    · position : fixed right-0 top-[8.5rem] bottom-0
+    · position : fixed right-0 top-[13rem] bottom-0
     · width    : w-72 (288px)  — layout.tsx md:mr-72 과 맞춤
     · layout   : flex col (헤더 | 목록(scroll) | 입력)
 
@@ -145,9 +145,9 @@ export function BettingCartDock() {
 
   return (
     <>
-      {/* ── 데스크톱: fixed right-0 top-[8.5rem] bottom-0 w-72 ── */}
+      {/* ── 데스크톱: fixed right-0 top-[13rem] bottom-0 w-72 ── */}
       <aside
-        className="fixed right-0 top-[8.5rem] bottom-0 z-40 hidden w-72 border-l border-white/8 bg-[#0a0a0e] md:flex"
+        className="fixed right-0 top-[13rem] bottom-0 z-40 hidden w-72 border-l border-white/8 bg-[#0a0a0e] md:flex"
         aria-label="배팅카트"
       >
         <CartPanel />

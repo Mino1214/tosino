@@ -138,7 +138,7 @@ export function BottomNav() {
   const [playOpen, setPlayOpen]     = useState(false);
   const [playSpinning, setPlaySpinning] = useState(false);
   const [walletDialOpen, setWalletDialOpen] = useState(false);
-  const { lines, setPanelOpen, setHistoryOpen } = useBettingCart();
+  const { setPanelOpen, setHistoryOpen } = useBettingCart();
   const { openWallet: openWalletModal } = useAppModals();
 
   const walletDialItems: SpeedDialActionItem[] = useMemo(
@@ -153,6 +153,7 @@ export function BottomNav() {
   );
 
   const isSportPage = isSportsBettingPath(pathname);
+  const isHome = pathname === "/";
 
   /* 스포츠 로비 이탈 시 배팅 패널 닫기 */
   useEffect(() => {
@@ -272,7 +273,6 @@ export function BottomNav() {
                     배팅내역
                 </button>
 
-                {/* PLAY 중앙 버튼 */}
                 <button
                     type="button"
                     onClick={togglePlayMenu}
@@ -352,25 +352,26 @@ export function BottomNav() {
         </nav>
 
 
-        {/* 데스크톱 웹: 하단 중앙 플로팅 PLAY (모바일 탭바와 동일 메뉴) */}
-        <button
-            type="button"
-            aria-label="장식 버튼"
-            onClick={desktopPlaySpin}
-            className="fixed bottom-5 left-1/2 z-[45] hidden -translate-x-1/2 md:flex md:flex-col md:items-center md:gap-1 text-[rgba(218,174,87,0.72)]"
-        >
-            <div className={`flex h-14 w-14 items-center justify-center ${playSpinning ? "play-button-spin" : ""}`}>
-                <Image
-                    src="/icon/playbutton.png"
-                    alt=""
-                    width={112}
-                    height={112}
-                    className="h-14 w-14 object-contain drop-shadow-[0_0_14px_rgba(218,174,87,0.45)]"
-                    priority
-                />
-            </div>
-            <span className="text-[10px] font-bold text-[rgba(218,174,87,0.55)]">PLAY</span>
-        </button>
+        {!isHome && (
+            <button
+                type="button"
+                aria-label="장식 버튼"
+                onClick={desktopPlaySpin}
+                className="fixed bottom-5 left-1/2 z-[45] hidden -translate-x-1/2 md:flex md:flex-col md:items-center md:gap-1 text-[rgba(218,174,87,0.72)]"
+            >
+                <div className={`flex h-14 w-14 items-center justify-center ${playSpinning ? "play-button-spin" : ""}`}>
+                    <Image
+                        src="/icon/playbutton.png"
+                        alt=""
+                        width={112}
+                        height={112}
+                        className="h-14 w-14 object-contain drop-shadow-[0_0_14px_rgba(218,174,87,0.45)]"
+                        priority
+                    />
+                </div>
+                <span className="text-[10px] font-bold text-[rgba(218,174,87,0.55)]">PLAY</span>
+            </button>
+        )}
 
         <style>{`
         @keyframes slideUpCard {

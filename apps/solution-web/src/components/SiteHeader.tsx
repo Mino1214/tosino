@@ -5,13 +5,13 @@
   Desktop:
     · 홈(/)        : 배경 투명, 스크롤 내리면 반투명 처리
     · 다른 페이지   : 배경 불투명 (#0a0a0e)
-    · Row 1 (min-h ~5.5rem): 로고(좌·크게) | 고객센터·알림·잔액·입출금·로그인 등(우)
-    · Row 2 (h-12) : 카지노 · 슬롯 · 미니게임 · 마이페이지
+    · Row 1 (min-h ~9rem): 로고(좌·크게) | 고객센터·알림·잔액·입출금·로그인 등(우)
+    · Row 2: 홈(/) h-16·탭 글자 ~1.31rem 금색 / 그 외 h-12·text-sm
     · 스포츠 페이지: 스크롤 시 Row1 우측 유저 줄만 숨김 (로고 유지)
-    Total desktop: ~8.5rem (Row1+Row2)
+    Total desktop: ~13rem (Row1+Row2)
 
   Mobile:
-    · 단일 row (h-16): [☰드로어] [로고(center)] [🔔알림] [👤프로필]
+    · 단일 row (h-20): [☰드로어] [로고(center)] [🔔알림] [👤프로필]
     · 프로필 드롭다운: 대시보드, 출석체크, 이벤트1, 이벤트2, 고객센터, 배팅내역
   ─────────────────────────────────────────────────────────────────
 */
@@ -109,14 +109,14 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           ════════════════════════════════════════════════════ */}
       <div className="hidden md:block">
         {/* Row 1: 로고(좌) + 유저 영역(우) — 스포츠 페이지 스크롤 시 유저 줄만 접힘 */}
-        <div className="flex min-h-[5.5rem] items-center justify-between gap-4 border-b border-[rgba(218,174,87,0.12)] px-6 py-2">
+        <div className="flex min-h-[9rem] items-center justify-between gap-4 border-b border-[rgba(218,174,87,0.12)] px-6 py-2">
           <Link href="/" className="shrink-0 py-1">
             <Image
               src="/main/logo.png"
               alt={b.theme.siteName}
-              width={440}
-              height={128}
-              className="h-20 w-auto max-w-[min(42vw,480px)] object-contain md:h-[5.5rem]"
+              width={880}
+              height={256}
+              className="h-20 w-auto max-w-[min(42vw,480px)] object-contain md:h-32 md:max-w-[min(58vw,780px)]"
               priority
             />
           </Link>
@@ -124,7 +124,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
             className={`min-w-0 flex-1 transition-all duration-300 ${
               row1Hidden
                 ? "pointer-events-none max-h-0 overflow-hidden opacity-0"
-                : "max-h-20 opacity-100"
+                : "max-h-40 opacity-100"
             }`}
           >
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-zinc-500">
@@ -207,8 +207,10 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           </div>
         </div>
 
-        {/* Row 2: 메인 Nav */}
-        <div className="flex h-12 items-center justify-center px-6">
+        {/* Row 2: 메인 Nav — 홈(/)에서만 금색·큰 탭(영상 위 가독성) */}
+        <div
+          className={`flex items-center justify-center px-6 ${isHome ? "h-16" : "h-12"}`}
+        >
           <div className="flex min-w-0 max-w-full justify-center gap-0.5 overflow-x-auto sm:gap-1">
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href) && item.href !== "/";
@@ -216,10 +218,16 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`relative flex h-12 shrink-0 items-center px-3 text-sm transition-colors sm:px-4 ${
-                  active
-                    ? "text-main-gold"
-                    : "text-zinc-300 hover:text-main-gold-solid"
+                className={`relative flex shrink-0 items-center px-3 transition-colors sm:px-4 ${
+                  isHome ? "h-16 items-center text-[1.3125rem] font-semibold leading-snug" : "h-12 text-sm font-normal"
+                } ${
+                  isHome
+                    ? active
+                      ? "text-main-gold drop-shadow-[0_1px_8px_rgba(0,0,0,0.95)]"
+                      : "text-[#f0e6c8] drop-shadow-[0_1px_8px_rgba(0,0,0,0.95)] hover:text-main-gold-solid"
+                    : active
+                      ? "text-main-gold"
+                      : "text-zinc-300 hover:text-main-gold-solid"
                 }`}
               >
                 {item.label}
@@ -242,7 +250,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
       {/* ════════════════════════════════════════════════════
           MOBILE HEADER (단일 행)
           ════════════════════════════════════════════════════ */}
-      <div className="flex h-16 items-center justify-between px-3 md:hidden">
+      <div className="flex h-20 items-center justify-between px-3 md:hidden">
         {/* 좌: 드로어 햄버거 */}
         <button
           type="button"
@@ -260,9 +268,9 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           <Image
             src="/main/logo.png"
             alt={b.theme.siteName}
-            width={240}
-            height={72}
-            className="h-14 w-auto max-w-[min(70vw,280px)] object-contain"
+            width={300}
+            height={90}
+            className="h-[4.375rem] w-auto max-w-[min(88vw,350px)] object-contain"
             priority
           />
         </Link>
