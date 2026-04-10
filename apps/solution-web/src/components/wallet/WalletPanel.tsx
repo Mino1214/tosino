@@ -154,6 +154,9 @@ export function WalletPanel({
   });
   const [savingPayout, setSavingPayout] = useState(false);
   const [editingPayout, setEditingPayout] = useState(false);
+  const [selectedSection, setSelectedSection] = useState<"deposit" | "usdt" | "withdraw">(
+    () => getInitialTarget(initialOpts),
+  );
 
   const pendingCount = useMemo(
     () => (requests ?? []).filter((item) => item.status === "PENDING").length,
@@ -199,6 +202,7 @@ export function WalletPanel({
 
   useEffect(() => {
     const target = getInitialTarget(initialOpts);
+    setSelectedSection(target);
     const node =
       target === "withdraw"
         ? withdrawRef.current
@@ -219,6 +223,17 @@ export function WalletPanel({
     value: PayoutAccountForm[K],
   ) {
     setPayoutForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function jumpToSection(target: "deposit" | "usdt" | "withdraw") {
+    setSelectedSection(target);
+    const node =
+      target === "withdraw"
+        ? withdrawRef.current
+        : target === "usdt"
+          ? usdtRef.current
+          : depositRef.current;
+    node?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function submitDepositRequest(e: React.FormEvent) {
@@ -425,6 +440,50 @@ export function WalletPanel({
                 최근 신청 내역과 현재 처리 상태를 아래에서 한 번에 확인할 수 있습니다.
               </p>
             </div>
+          </div>
+
+          <div
+            className={`grid gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-2 ${
+              isPage ? "mt-6" : "mt-4"
+            } md:grid-cols-3`}
+          >
+            {[
+              {
+                key: "deposit" as const,
+                label: "원화입금",
+                hint: "금액 + 입금자명",
+              },
+              {
+                key: "usdt" as const,
+                label: "테더입금",
+                hint: "지갑 등록 + 환율 확인",
+              },
+              {
+                key: "withdraw" as const,
+                label: "출금신청",
+                hint: "계좌 저장 후 출금",
+              },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => jumpToSection(item.key)}
+                className={`rounded-xl px-4 py-3 text-left transition-all ${
+                  selectedSection === item.key
+                    ? "bg-gold-gradient text-black"
+                    : "border border-white/8 bg-black/20 text-zinc-300 hover:border-[rgba(218,174,87,0.35)] hover:text-white"
+                }`}
+              >
+                <p className="text-sm font-bold">{item.label}</p>
+                <p
+                  className={`mt-1 text-xs ${
+                    selectedSection === item.key ? "text-black/75" : "text-zinc-500"
+                  }`}
+                >
+                  {item.hint}
+                </p>
+              </button>
+            ))}
           </div>
 
           <div className={`grid gap-4 ${isPage ? "mt-6" : "mt-4"} xl:grid-cols-2`}>

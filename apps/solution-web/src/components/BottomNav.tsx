@@ -150,7 +150,6 @@ export function BottomNav() {
       { label: "입금신청", onSelect: () => openWalletModal({ fiatTab: "DEPOSIT" }) },
       { label: "출금신청", onSelect: () => openWalletModal({ fiatTab: "WITHDRAWAL" }) },
       { label: "포인트전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
-      { label: "추천인보너스", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
       { label: "콤프전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
     ],
     [openWalletModal],

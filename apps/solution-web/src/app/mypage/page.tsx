@@ -82,11 +82,10 @@ function ConversionSection() {
   const cards = [
     { title: "콤프전환", btnLabel: "콤프전환", href: "/wallet?tab=comp", historyHref: "/mypage#comp-history" },
     { title: "포인트전환", btnLabel: "포인트전환", href: "/wallet?tab=point", historyHref: "/mypage#point-history" },
-    { title: "지인추천", btnLabel: "추천인보너스", href: "/wallet?tab=referral", historyHref: "/mypage#referral-history" },
   ];
   return (
     <section className="py-6">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3">
         {cards.map((card) => (
           <div
             key={card.title}
