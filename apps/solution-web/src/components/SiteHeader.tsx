@@ -11,7 +11,7 @@
     Total desktop: ~13rem (Row1+Row2)
 
   Mobile:
-    · 단일 row (h-28): [☰드로어] [로고(center) 1.5×] [🔔알림] [👤프로필]
+    · 단일 row (h-20): [☰드로어] [로고(center)] [🔔알림] [👤프로필]
     · 프로필 드롭다운: 대시보드, 출석체크, 이벤트1, 이벤트2, 고객센터, 배팅내역
   ─────────────────────────────────────────────────────────────────
 */
@@ -250,7 +250,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
       {/* ════════════════════════════════════════════════════
           MOBILE HEADER (단일 행)
           ════════════════════════════════════════════════════ */}
-      <div className="flex h-28 items-center justify-between px-3 md:hidden">
+      <div className="flex h-20 items-center justify-between px-3 md:hidden">
         {/* 좌: 드로어 햄버거 */}
         <button
           type="button"
@@ -268,9 +268,9 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           <Image
             src="/main/logo.png"
             alt={b.theme.siteName}
-            width={450}
-            height={135}
-            className="h-[6.5625rem] w-auto max-w-[min(92vw,525px)] object-contain"
+            width={300}
+            height={90}
+            className="h-[4.375rem] w-auto max-w-[min(88vw,350px)] object-contain"
             priority
           />
         </Link>

@@ -3,7 +3,7 @@
 /*
   ─── MobileDrawer ───────────────────────────────────────────────
   · 로고: 헤더와 동일 /main/logo.png (사이드바 영역에 맞는 크기는 기존 유지)
-  · 닫기: 꽉 찬 삼각형(◀) / 행 우측: 꽉 찬 삼각형(▶), 이모지 없음
+  · 상단: 로고만(닫기는 오버레이·햄버거) / 행 우측: 꽉 찬 삼각형(▶)
   · 하단: 로그아웃
   ─────────────────────────────────────────────────────────────────
 */
@@ -33,14 +33,6 @@ function ChevronRightFilled({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>
       <path fill="currentColor" d="M9 6v12l7-6-7-6z" />
-    </svg>
-  );
-}
-
-function ChevronLeftFilled({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <path fill="currentColor" d="M15 6v12L8 12l7-6z" />
     </svg>
   );
 }
@@ -94,24 +86,16 @@ export function MobileDrawer({ open, onClose }: Props) {
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-20 shrink-0 items-center justify-between border-b border-[rgba(218,174,87,0.3)] px-3">
-          <Link href="/" onClick={onClose} className="flex min-w-0 flex-1 items-center pr-2">
+        <div className="flex h-16 shrink-0 items-center border-b border-[rgba(218,174,87,0.3)] px-3">
+          <Link href="/" onClick={onClose} className="flex min-w-0 flex-1 items-center justify-center">
             <Image
               src="/main/logo.png"
               alt={b?.theme.siteName ?? "홈"}
-              width={300}
-              height={90}
-              className="h-[4.375rem] w-auto max-w-[min(100%,200px)] object-contain"
+              width={200}
+              height={60}
+              className="h-[2.92rem] w-auto max-w-[min(100%,134px)] object-contain"
             />
           </Link>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 shrink-0 items-center justify-center text-main-gold-solid"
-            aria-label="메뉴 닫기"
-          >
-            <ChevronLeftFilled className="h-6 w-6" />
-          </button>
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">

@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         홈(/)에서는 헤더 투명이므로 pt-0 (콘텐츠가 헤더 뒤부터)
 
         Mobile:
-          단일 row: h-28 (112px) → pt-28
+          단일 row: h-20 (80px) → pt-20
 
         BottomNav: h-14 (56px), mobile only → pb-14
         ─────────────────────────────────────────────────────

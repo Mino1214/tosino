@@ -276,7 +276,7 @@ export default function MyPage() {
       <div className="content-pad-phi">
         <div className="mx-auto w-full min-w-0 max-w-[90rem]">
           {/* 모바일 앵커 탭 — 5열 고정, 줄바꿈 없이 가로 스크롤 없음 */}
-          <div className="sticky top-28 z-30 border-b border-white/8 bg-[#0a0a0e] md:hidden">
+          <div className="sticky top-20 z-30 border-b border-white/8 bg-[#0a0a0e] md:hidden">
             <div className="grid w-full grid-cols-5 gap-0.5 py-1">
               {MOBILE_TABS.map(({ label, hash }) => (
                 <a
