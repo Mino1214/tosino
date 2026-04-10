@@ -12,7 +12,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { useBootstrap } from "./BootstrapProvider";
 import { clearSession, getAccessToken } from "@/lib/api";
 
 type DrawerNavItem =
@@ -45,7 +44,6 @@ type Props = {
 export function MobileDrawer({ open, onClose }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const b = useBootstrap();
   const [logged, setLogged] = useState(false);
 
   useEffect(() => {
@@ -87,10 +85,10 @@ export function MobileDrawer({ open, onClose }: Props) {
         }`}
       >
         <div className="flex h-16 shrink-0 items-center border-b border-[rgba(218,174,87,0.3)] px-3">
-          <Link href="/" onClick={onClose} className="flex min-w-0 flex-1 items-center justify-center">
+          <Link href="/" onClick={onClose} aria-label="홈" className="flex min-w-0 flex-1 items-center justify-center">
             <Image
               src="/main/logo.png"
-              alt={b?.theme.siteName ?? "홈"}
+              alt=""
               width={200}
               height={60}
               className="h-[2.92rem] w-auto max-w-[min(100%,134px)] object-contain"

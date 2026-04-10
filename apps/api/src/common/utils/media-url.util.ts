@@ -28,12 +28,11 @@ export function normalizePublicAssetUrl(
   if (s.startsWith('http://') || s.startsWith('https://')) {
     try {
       const u = new URL(s);
-      const isUploads = u.pathname.startsWith('/uploads/');
       const isLocal =
         u.hostname === 'localhost' ||
         u.hostname === '127.0.0.1' ||
         /^127\.\d+\.\d+\.\d+$/.test(u.hostname);
-      if (isUploads && isLocal) {
+      if (isLocal) {
         return `${base}${u.pathname}${u.search}${u.hash}`;
       }
     } catch {
