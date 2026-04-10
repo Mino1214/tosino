@@ -276,7 +276,7 @@ export function BottomNav() {
                 <button
                     type="button"
                     onClick={togglePlayMenu}
-                    className={`relative flex flex-1 flex-col items-center justify-end pb-1 text-[10px] font-bold transition-colors ${
+                    className={`relative flex flex-1 flex-col items-center justify-center text-[10px] font-bold transition-colors ${
                         playOpen ? "text-main-gold" : "text-[rgba(218,174,87,0.88)]"
                     }`}
                 >

@@ -112,7 +112,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
         <div className="flex min-h-[9rem] items-center justify-between gap-4 border-b border-[rgba(218,174,87,0.12)] px-6 py-2">
           <Link href="/" className="shrink-0 py-1">
             <Image
-              src="/main/logo.png"
+              src="/main/logo.jpg"
               alt={b.theme.siteName}
               width={880}
               height={256}
@@ -266,7 +266,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
         {/* 중앙: 로고 */}
         <Link href="/" className="absolute left-1/2 -translate-x-1/2">
           <Image
-            src="/main/logo.png"
+            src="/main/logo.jpg"
             alt={b.theme.siteName}
             width={450}
             height={135}
