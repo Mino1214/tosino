@@ -123,7 +123,7 @@ function HeroVideos({
   return (
     <video
       ref={videoRef}
-      className="pointer-events-none h-full w-full bg-black object-cover md:object-contain md:scale-[1.01] md:transform-gpu"
+      className="pointer-events-none h-full w-full bg-black object-cover md:object-cover md:object-center"
       autoPlay
       muted
       loop
