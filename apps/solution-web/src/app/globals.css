@@ -10,7 +10,7 @@
 
 :root {
   --phi: 1.618;
-  --app-mobile-header: 3rem; /* h-12 */
+  --app-mobile-header: 4rem; /* h-16 */
   --app-mobile-nav: 3.5rem; /* h-14 */
   --theme-primary: #daae57;
   --gold-gradient: linear-gradient(

@@ -5,13 +5,13 @@
   Desktop:
     · 홈(/)        : 배경 투명, 스크롤 내리면 반투명 처리
     · 다른 페이지   : 배경 불투명 (#0a0a0e)
-    · Row 1 (h-14) : 로고(좌·크게) | 고객센터·알림·잔액·입출금·로그인 등(우)
-    · Row 2 (h-12) : 스포츠 · 카지노 · 슬롯 · 미니게임 · 마이페이지
+    · Row 1 (min-h ~5.5rem): 로고(좌·크게) | 고객센터·알림·잔액·입출금·로그인 등(우)
+    · Row 2 (h-12) : 카지노 · 슬롯 · 미니게임 · 마이페이지
     · 스포츠 페이지: 스크롤 시 Row1 우측 유저 줄만 숨김 (로고 유지)
-    Total desktop: h-[6.5rem] (104px)
+    Total desktop: ~8.5rem (Row1+Row2)
 
   Mobile:
-    · 단일 row (h-12): [☰드로어] [로고(center)] [🔔알림] [👤프로필]
+    · 단일 row (h-16): [☰드로어] [로고(center)] [🔔알림] [👤프로필]
     · 프로필 드롭다운: 대시보드, 출석체크, 이벤트1, 이벤트2, 고객센터, 배팅내역
   ─────────────────────────────────────────────────────────────────
 */
@@ -24,9 +24,10 @@ import { useBootstrap } from "./BootstrapProvider";
 import { apiFetch, getAccessToken, clearSession } from "@/lib/api";
 import { useBettingCart } from "./BettingCartContext";
 import { useAppModals } from "@/contexts/AppModalsContext";
+import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 
 const NAV_ITEMS = [
-  { label: "스포츠",   href: "/lobby/sports-kr"  },
+  // { label: "스포츠",   href: "/lobby/sports-kr"  },
   // { label: "프리매치", href: "/lobby/prematch"    },
   // { label: "인플레이", href: "/lobby/live"         },
   // { label: "스포츠북", href: "/lobby/sportsbook"  },
@@ -36,9 +37,6 @@ const NAV_ITEMS = [
   { label: "미니게임", href: "/lobby/minigame"    },
   { label: "마이페이지", href: "/mypage"          },
 ];
-
-/* 스크롤하면 Row1이 숨는 페이지 */
-const SPORT_PATHS = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"];
 
 export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const b = useBootstrap();
@@ -54,7 +52,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const profileRef = useRef<HTMLDivElement>(null);
 
   const isHome = pathname === "/";
-  const isSportPage = SPORT_PATHS.some((p) => pathname.startsWith(p));
+  const isSportPage = isSportsBettingPath(pathname);
 
   useEffect(() => {
     const ok = !!getAccessToken();
@@ -111,14 +109,14 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           ════════════════════════════════════════════════════ */}
       <div className="hidden md:block">
         {/* Row 1: 로고(좌) + 유저 영역(우) — 스포츠 페이지 스크롤 시 유저 줄만 접힘 */}
-        <div className="flex h-14 items-center justify-between gap-4 border-b border-[rgba(218,174,87,0.12)] px-6">
+        <div className="flex min-h-[5.5rem] items-center justify-between gap-4 border-b border-[rgba(218,174,87,0.12)] px-6 py-2">
           <Link href="/" className="shrink-0 py-1">
             <Image
               src="/main/logo.png"
               alt={b.theme.siteName}
-              width={220}
-              height={64}
-              className="h-10 w-auto max-w-[min(42vw,240px)] object-contain md:h-11"
+              width={440}
+              height={128}
+              className="h-20 w-auto max-w-[min(42vw,480px)] object-contain md:h-[5.5rem]"
               priority
             />
           </Link>
@@ -244,7 +242,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
       {/* ════════════════════════════════════════════════════
           MOBILE HEADER (단일 행)
           ════════════════════════════════════════════════════ */}
-      <div className="flex h-12 items-center justify-between px-3 md:hidden">
+      <div className="flex h-16 items-center justify-between px-3 md:hidden">
         {/* 좌: 드로어 햄버거 */}
         <button
           type="button"
@@ -262,9 +260,9 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           <Image
             src="/main/logo.png"
             alt={b.theme.siteName}
-            width={120}
-            height={36}
-            className="h-7 w-auto max-w-[min(42vw,140px)] object-contain"
+            width={240}
+            height={72}
+            className="h-14 w-auto max-w-[min(70vw,280px)] object-contain"
             priority
           />
         </Link>

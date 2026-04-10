@@ -15,7 +15,7 @@ import { usePathname } from "next/navigation";
 import { useBootstrap } from "./BootstrapProvider";
 
 const DRAWER_NAV = [
-  { label: "스포츠",    href: "/lobby/sports-kr",   icon: "⚽" },
+  // { label: "스포츠",    href: "/lobby/sports-kr",   icon: "⚽" },
   // { label: "프리매치",  href: "/lobby/prematch",     icon: "📅" },
   // { label: "인플레이",  href: "/lobby/inplay",       icon: "🔴" },
   // { label: "스포츠북",  href: "/lobby/sportsbook",   icon: "📖" },
@@ -65,14 +65,14 @@ export function MobileDrawer({ open, onClose }: Props) {
         }`}
       >
         {/* 상단 로고 영역 */}
-        <div className="flex h-14 items-center justify-between border-b border-[rgba(218,174,87,0.3)] px-4">
+        <div className="flex h-16 items-center justify-between border-b border-[rgba(218,174,87,0.3)] px-4">
           <Link href="/" onClick={onClose} className="flex min-w-0 items-center">
             <Image
               src="/main/logo.png"
               alt={b?.theme.siteName ?? "홈"}
-              width={120}
-              height={36}
-              className="h-7 w-auto max-w-[160px] object-contain"
+              width={240}
+              height={72}
+              className="h-14 w-auto max-w-[280px] object-contain"
             />
           </Link>
           <button type="button" onClick={onClose} className="text-main-gold-solid">

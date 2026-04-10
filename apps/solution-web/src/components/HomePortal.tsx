@@ -2,7 +2,7 @@
 
 /*
   ─── HomePortal 규격 ────────────────────────────────
-  · CategoryTabs : sticky top-12 (헤더 48px 아래 고정)
+  · CategoryTabs : sticky top-16 (모바일 헤더 64px 아래)
                    h-10, 가로 스크롤
   · Content      : 탭에 따라 교체
   ─────────────────────────────────────────────────
@@ -10,12 +10,10 @@
 
 import Link from "next/link";
 import { SlotVendorCatalog } from "./SlotVendorCatalog";
-import { SportsOddsPreview } from "./SportsOddsPreview";
 
-export type PortalView = "sports" | "casino" | "slot" | "minigame" | "hub";
+export type PortalView = "casino" | "slot" | "minigame" | "hub";
 
 const TABS: { key: PortalView; label: string }[] = [
-  { key: "sports",   label: "스포츠"   },
   { key: "casino",   label: "카지노"   },
   { key: "slot",     label: "슬롯"     },
   { key: "minigame", label: "미니게임" },
@@ -27,14 +25,14 @@ export type HomePortalProps = {
 };
 
 export function HomePortal({ view, onViewChange }: HomePortalProps) {
-  const active = view === "hub" ? "sports" : view;
+  const active = view === "hub" ? "casino" : view;
 
   return (
     <div>
-      {/* ① 카테고리 탭 — sticky: 헤더(48px) 바로 아래 */}
+      {/* ① 카테고리 탭 — sticky: 헤더 바로 아래 */}
       <nav
         aria-label="게임 카테고리"
-        className="sticky top-12 z-40 flex h-10 overflow-x-auto border-b border-[rgba(218,174,87,0.2)] bg-[#0a0a0e] md:top-[6.5rem] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="sticky top-16 z-40 flex h-10 overflow-x-auto border-b border-[rgba(218,174,87,0.2)] bg-[#0a0a0e] md:top-[8.5rem] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((tab) => (
           <button
@@ -63,28 +61,10 @@ export function HomePortal({ view, onViewChange }: HomePortalProps) {
 
       {/* ② 탭 콘텐츠 */}
       <div className="p-3 sm:p-4">
-        {active === "sports"   && <SportsContent />}
         {active === "casino"   && <CasinoContent />}
         {active === "slot"     && <SlotContent />}
         {active === "minigame" && <MinigameContent />}
       </div>
-    </div>
-  );
-}
-
-/* ── 스포츠 ── */
-function SportsContent() {
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <Link href="/lobby/sports-kr" className="flex items-center justify-center rounded-lg border border-white/10 py-4 text-sm font-semibold text-white">
-          국내 스포츠
-        </Link>
-        <Link href="/lobby/sports-eu" className="flex items-center justify-center rounded-lg border border-white/10 py-4 text-sm font-semibold text-zinc-300">
-          유럽 스포츠
-        </Link>
-      </div>
-      <SportsOddsPreview />
     </div>
   );
 }

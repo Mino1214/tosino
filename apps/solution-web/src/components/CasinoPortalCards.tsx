@@ -109,13 +109,13 @@ export function CasinoPortalCards() {
   const bgUrl = publicAsset(CASINO_CARD_BG);
 
   return (
-    <div>
+    <div className="w-full min-w-0 overflow-x-hidden">
       {launchErr ? (
         <p className="mb-4 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
           {launchErr}
         </p>
       ) : null}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
         {casinoCards.map((c) => {
           const paused = c.paused === true;
           const assets = getCasinoCardAsset(c.slug);

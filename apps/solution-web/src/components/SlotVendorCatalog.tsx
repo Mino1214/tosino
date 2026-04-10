@@ -124,7 +124,11 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
     : "text-zinc-300 ring-1 ring-white/15 hover:bg-white/5";
 
   return (
-    <div className={className ?? "mt-1"}>
+    <div
+      className={["w-full min-w-0 max-w-full overflow-x-hidden", className ?? "mt-1"].join(
+        " ",
+      )}
+    >
       {err ? (
         <p className="mb-3 rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-200">
           {err}
@@ -132,7 +136,7 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
       ) : null}
 
       <div
-        className={`mb-4 flex gap-2 rounded-2xl p-1 ring-1 ${isLight ? "bg-zinc-100 ring-zinc-200" : "bg-black/40 ring-white/10"}`}
+        className={`mb-4 flex min-w-0 gap-2 rounded-2xl p-1 ring-1 ${isLight ? "bg-zinc-100 ring-zinc-200" : "bg-black/40 ring-white/10"}`}
         role="tablist"
         aria-label="슬롯 벤더"
       >
@@ -142,7 +146,7 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
             type="button"
             role="tab"
             aria-selected={vendorIdx === i}
-            className={`${tabBtn} ${vendorIdx === i ? `${tabActive} bg-gold-gradient` : tabInactive}`}
+            className={`min-w-0 shrink ${tabBtn} ${vendorIdx === i ? `${tabActive} bg-gold-gradient` : tabInactive}`}
             onClick={() => setVendorIdx(i)}
           >
             {v.label}
@@ -156,7 +160,9 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
         {vendor.label} · {games.length}종 · 스크롤 시 더 불러옵니다
       </p>
 
-      <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 ${gap}`}>
+      <div
+        className={`grid w-full min-w-0 grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 ${gap}`}
+      >
         {shown.map((g) => {
           const lk = `${g.vendor}:${g.game}`;
           const busy = launchingKey === lk;

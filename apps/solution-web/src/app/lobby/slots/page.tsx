@@ -6,8 +6,8 @@ import { SlotVendorCatalog } from "@/components/SlotVendorCatalog";
 
 export default function SlotsPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 pb-10">
-      <div className="content-pad-phi">
+    <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-10">
+      <div className="content-pad-phi mx-auto w-full max-w-[90rem]">
         {/* 헤더 */}
         <div className="border-b border-white/5 bg-zinc-900/60 py-5">
           <h1 className="text-xl font-bold text-white">슬롯 게임</h1>

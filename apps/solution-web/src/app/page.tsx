@@ -20,8 +20,8 @@ const HERO_SLIDES = [
     sub: "Evolution · Pragmatic · Vivo Gaming",
     cta1: { label: "카지노 입장", href: "/lobby/live-casino" },
     cta2: { label: "슬롯 게임", href: "/lobby/slots" },
-    desktopSrc: "/thumbnail/two.mp4",
-    mobileSrc: "/thumbnail/m_two.mp4",
+    desktopSrc: "/thumbnail/one.mp4",
+    mobileSrc: "/thumbnail/m_one.mp4",
   },
   {
     id: "slots",
@@ -70,7 +70,7 @@ function HeroVideos({
       </video>
       <video
         key={`m-${mobileSrc}`}
-        className="pointer-events-none h-full w-full bg-black object-contain md:hidden"
+        className="pointer-events-none h-full w-full bg-black object-cover md:hidden"
         autoPlay
         muted
         loop
@@ -164,10 +164,10 @@ export default function HomePage() {
 
       {/* 모바일 — 가로 캐러셀 */}
       <div
-        className="md:hidden h-[calc(100svh-var(--app-mobile-nav)-env(safe-area-inset-bottom,0px))] overflow-hidden"
+        className="md:hidden h-[calc(100svh-var(--app-mobile-nav)-env(safe-area-inset-bottom,0px))] overflow-hidden overscroll-none touch-pan-x"
       >
         <div
-          className="relative h-full overflow-hidden bg-black"
+          className="relative h-full overflow-hidden overscroll-none touch-pan-x bg-black"
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
@@ -187,8 +187,8 @@ export default function HomePage() {
                     preload={slide === i ? "auto" : "metadata"}
                   />
                 </div>
-                <div className="relative z-10 flex h-full flex-col justify-end bg-gradient-to-t from-black/95 via-black/40 to-transparent px-5 pb-14 pt-24">
-                  <div className="flex flex-col items-center gap-3 text-center">
+                <div className="relative z-10 flex h-full w-full flex-col justify-end bg-gradient-to-t from-black/95 via-black/40 to-transparent pb-14 pt-24">
+                  <div className="mx-auto flex w-full max-w-lg flex-col items-center gap-3 px-4 text-center">
                     <p className="text-[10px] uppercase tracking-widest text-main-gold">
                       {s.label}
                     </p>

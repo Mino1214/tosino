@@ -23,14 +23,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {/*
         ─── 헤더 높이 규격 ─────────────────────────────────────
         Desktop:
-          Row1: h-14 — 로고 + 유저(스포츠 페이지 스크롤 시 유저만 숨김)
+          Row1: min-h ~5.5rem — 로고 + 유저(스포츠 페이지 스크롤 시 유저만 숨김)
           Row2: h-12 — 메인 Nav
-          Total: h-[6.5rem] (104px) → pt-[6.5rem]
+          Total: ~8.5rem → pt-[8.5rem]
 
         홈(/)에서는 헤더 투명이므로 pt-0 (콘텐츠가 헤더 뒤부터)
 
         Mobile:
-          단일 row: h-12 (48px) → pt-12
+          단일 row: h-16 (64px) → pt-16
 
         BottomNav: h-14 (56px), mobile only → pb-14
         ─────────────────────────────────────────────────────
