@@ -23,9 +23,9 @@ const PLAY_ITEMS = [
   // { label: "프리매치",  href: "/lobby/prematch",    emoji: "📅" },
   // { label: "인플레이",  href: "/lobby/live",         emoji: "🔴" },
   // { label: "e스포츠",  href: "/lobby/esports",     emoji: "🎮" },
-  { label: "카지노",    href: "/lobby/live-casino", emoji: "🎰" },
-  { label: "슬롯",      href: "/lobby/slots",       emoji: "🎲" },
-  { label: "미니게임",  href: "/lobby/minigame",    emoji: "🕹️" },
+  { label: "카지노",    href: "/lobby/live-casino", emoji: "" },
+  { label: "슬롯",      href: "/lobby/slots",       emoji: "" },
+  { label: "미니게임",  href: "/lobby/minigame",    emoji: "" },
 ];
 
 type SpeedDialLinkItem = { label: string; href: string; emoji?: string };
