@@ -24,6 +24,7 @@ const BUBBLE_LOGO = "https://files-zx.asia-sportradar.com//img/frontend/minigame
 const MARIO_LOGO  = "https://files-zx.asia-sportradar.com//img/frontend/minigame/big_icon/super_mario_logo.svg";
 const ROULETTE_LOGO = "https://files-zx.asia-sportradar.com//img/frontend/minigame/big_icon/rock_paper_scissor_logo.svg";
 
+
 const GAMES: GameDef[] = [
   // 보글보글 ×3
   { id:"bubble-1", name:"보글보글 1분", type:"bubble", minutes:1, url:"https://retrototo.com/bubble/?GameTime=1",
