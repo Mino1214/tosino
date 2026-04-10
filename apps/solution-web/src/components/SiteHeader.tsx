@@ -24,6 +24,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useBootstrap } from "./BootstrapProvider";
 import { apiFetch, getAccessToken, clearSession } from "@/lib/api";
 import { useBettingCart } from "./BettingCartContext";
+import { useAppModals } from "@/contexts/AppModalsContext";
 
 const NAV_ITEMS = [
   { label: "스포츠",   href: "/lobby/sports-kr"  },
@@ -45,6 +46,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
   const { setHistoryOpen } = useBettingCart();
+  const { openLogin, openSignup, openWallet } = useAppModals();
   const [logged, setLogged] = useState(false);
   const [money, setMoney] = useState<number | null>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -115,7 +117,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
             row1Hidden ? "max-h-0 opacity-0" : "max-h-10 opacity-100"
           }`}
         >
-          <div className="flex h-10 items-center justify-end gap-3 px-6 text-xs text-zinc-400">
+          <div className="flex h-10 items-center justify-end gap-3 px-6 text-xs text-zinc-500">
             {/* 고객센터 */}
             <a href="https://t.me/nimo7788" target="_blank" rel="noopener noreferrer"
                className="flex items-center gap-1 hover:text-white">
@@ -146,7 +148,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
                 <div className="h-3 w-px bg-white/15" />
 
                 {/* 잔액 */}
-                <span>MONEY <span className="font-mono font-bold text-[var(--theme-primary,#c9a227)]">{money?.toLocaleString("ko-KR") ?? "—"}</span> ₩</span>
+                <span className="text-zinc-400">MONEY <span className="font-mono font-bold text-main-gold">{money?.toLocaleString("ko-KR") ?? "—"}</span> ₩</span>
 
                 {/* 포인트 */}
                 <span>POINT <span className="font-mono font-bold text-pink-400">0</span> ₱</span>
@@ -154,8 +156,8 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
                 <div className="h-3 w-px bg-white/15" />
 
                 <button type="button" className="hover:text-white">포인트전환</button>
-                <Link href="/wallet" className="rounded bg-[var(--theme-primary,#c9a227)] px-2 py-0.5 font-bold text-black hover:opacity-90">입금하기</Link>
-                <Link href="/wallet" className="rounded border border-white/20 px-2 py-0.5 text-zinc-300 hover:text-white">출금하기</Link>
+                <button type="button" onClick={() => openWallet({ fiatTab: "DEPOSIT" })} className="rounded bg-[var(--theme-primary)] px-2 py-0.5 font-bold text-black hover:opacity-90">입금하기</button>
+                <button type="button" onClick={() => openWallet({ fiatTab: "WITHDRAWAL" })} className="rounded border border-white/20 px-2 py-0.5 text-zinc-300 hover:text-white">출금하기</button>
                 <button type="button" onClick={logout} className="hover:text-white">로그아웃</button>
 
                 <div className="h-3 w-px bg-white/15" />
@@ -163,29 +165,29 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
                 {/* 마이페이지 · 배팅내역 — 시그니처 컬러 */}
                 <Link
                   href="/mypage"
-                  className="font-semibold text-[var(--theme-primary,#c9a227)] hover:opacity-80 transition-opacity"
+                  className="font-semibold text-main-gold hover:opacity-80 transition-opacity"
                 >
                   마이페이지
                 </Link>
                 <button
                   type="button"
                   onClick={() => setHistoryOpen(true)}
-                  className="font-semibold text-[var(--theme-primary,#c9a227)] hover:opacity-80 transition-opacity"
+                  className="font-semibold text-main-gold hover:opacity-80 transition-opacity"
                 >
                   배팅내역
                 </button>
               </>
             ) : (
               <>
-                <Link href="/login"  className="rounded bg-[var(--theme-primary,#c9a227)] px-2.5 py-0.5 font-bold text-black">로그인</Link>
-                <Link href="/signup" className="rounded border border-white/20 px-2.5 py-0.5 text-zinc-300">회원가입</Link>
+                <button type="button" onClick={() => openLogin()} className="rounded bg-[var(--theme-primary)] px-2.5 py-0.5 font-bold text-black">로그인</button>
+                <button type="button" onClick={() => openSignup()} className="rounded border border-white/20 px-2.5 py-0.5 text-zinc-300">회원가입</button>
 
                 <div className="h-3 w-px bg-white/15" />
 
                 <button
                   type="button"
                   onClick={() => setHistoryOpen(true)}
-                  className="font-semibold text-[var(--theme-primary,#c9a227)] hover:opacity-80 transition-opacity"
+                  className="font-semibold text-main-gold hover:opacity-80 transition-opacity"
                 >
                   배팅내역
                 </button>
@@ -194,27 +196,45 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
           </div>
         </div>
 
-        {/* Row 2: 메인 Nav */}
-        <div className="flex h-12 items-center justify-center gap-1 px-6">
+        {/* Row 2: 로고 + 메인 Nav */}
+        <div className="grid h-12 grid-cols-[auto_minmax(0,1fr)] items-center gap-4 px-6">
+          <Link href="/" className="shrink-0">
+            <Image
+              src="/main/logo.png"
+              alt={b.theme.siteName}
+              width={140}
+              height={40}
+              className="h-7 w-auto max-w-[140px] object-contain"
+              priority
+            />
+          </Link>
+          <div className="flex min-w-0 justify-center gap-0.5 overflow-x-auto sm:gap-1">
           {NAV_ITEMS.map((item) => {
             const active = pathname.startsWith(item.href) && item.href !== "/";
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`relative flex h-12 items-center px-4 text-sm transition-colors ${
+                className={`relative flex h-12 shrink-0 items-center px-3 text-sm transition-colors sm:px-4 ${
                   active
-                    ? "text-[var(--theme-primary,#c9a227)]"
-                    : "text-zinc-300 hover:text-white"
+                    ? "text-main-gold"
+                    : "text-zinc-300 hover:text-main-gold-solid"
                 }`}
               >
                 {item.label}
                 {active && (
-                  <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-[var(--theme-primary,#c9a227)]" />
+                  <span
+                    className="absolute inset-x-2 bottom-0 h-0.5 rounded-full"
+                    style={{
+                      background: "var(--gold-gradient)",
+                      boxShadow: "0 0 8px rgba(218,174,87,0.5)",
+                    }}
+                  />
                 )}
               </Link>
             );
           })}
+          </div>
         </div>
       </div>
 
@@ -236,11 +256,14 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
 
         {/* 중앙: 로고 */}
         <Link href="/" className="absolute left-1/2 -translate-x-1/2">
-          {b.theme.logoUrl ? (
-            <Image src={b.theme.logoUrl} alt={b.theme.siteName} width={80} height={22} unoptimized className="h-6 w-auto object-contain" />
-          ) : (
-            <span className="text-sm font-bold text-white">{b.theme.siteName}</span>
-          )}
+          <Image
+            src="/main/logo.png"
+            alt={b.theme.siteName}
+            width={120}
+            height={36}
+            className="h-7 w-auto max-w-[min(42vw,140px)] object-contain"
+            priority
+          />
         </Link>
 
         {/* 우: 알림 + 프로필 */}

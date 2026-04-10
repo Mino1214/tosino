@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useGameLaunch } from "./GameIframeModal";
 import { apiFetch, getAccessToken } from "@/lib/api";
+import { useAppModals } from "@/contexts/AppModalsContext";
 import { cardRadiusClass } from "@/lib/theme-ui";
 import { useBootstrap } from "./BootstrapProvider";
 import type { LaunchSurface } from "@/lib/vinus-home-cards";
@@ -28,7 +28,7 @@ const PAGE_SIZE = 24;
 
 export function SlotVendorCatalog({ className }: { className?: string }) {
   const b = useBootstrap();
-  const router = useRouter();
+  const { openLogin } = useAppModals();
   const { launch } = useGameLaunch();
   const [vendorIdx, setVendorIdx] = useState(0);
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -66,7 +66,7 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
     async (entry: VinusVerifiedCatalogEntry) => {
       setErr(null);
       if (!getAccessToken()) {
-        router.push("/login");
+        openLogin();
         return;
       }
       const key = `${entry.vendor}:${entry.game}`;
@@ -103,7 +103,7 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
         setLaunchingKey(null);
       }
     },
-    [launch, router],
+    [launch, openLogin],
   );
 
   if (!b) return null;

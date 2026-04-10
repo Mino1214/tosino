@@ -1,10 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useGameLaunch } from "./GameIframeModal";
 import { apiFetch, getAccessToken } from "@/lib/api";
+import { useAppModals } from "@/contexts/AppModalsContext";
 import {
   CASINO_CARD_BG,
   getCasinoCardAsset,
@@ -38,7 +38,7 @@ function LoadingSpinner() {
 
 export function CasinoPortalCards() {
   const { launch } = useGameLaunch();
-  const router = useRouter();
+  const { openLogin } = useAppModals();
   const isMobile = useIsMobile();
   const [launchingSlug, setLaunchingSlug] = useState<string | null>(null);
   const [launchErr, setLaunchErr] = useState<string | null>(null);
@@ -72,7 +72,7 @@ export function CasinoPortalCards() {
       setLaunchErr(null);
       if (c.paused) return;
       if (!getAccessToken()) {
-        router.push("/login");
+        openLogin();
         return;
       }
       setLaunchingSlug(c.slug);
@@ -103,7 +103,7 @@ export function CasinoPortalCards() {
         setLaunchingSlug(null);
       }
     },
-    [launch, router],
+    [launch, openLogin],
   );
 
   const bgUrl = publicAsset(CASINO_CARD_BG);
@@ -232,7 +232,7 @@ export function CasinoPortalCards() {
 
               {/* z-[15]: 회사명 — 인물·배경 위 (하단 밴드) */}
               <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-[15] bg-gradient-to-t from-black via-black/98 to-black/40 px-5 pb-5 pt-14 sm:px-6 sm:pb-6 sm:pt-16 md:px-8">
-                <h3 className="relative text-base font-bold leading-tight text-[var(--theme-primary,#c9a227)] drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-lg">
+                <h3 className="relative text-base font-bold leading-tight text-main-gold sm:text-lg">
                   {c.title}
                 </h3>
               </div>

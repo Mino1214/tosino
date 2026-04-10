@@ -17,6 +17,8 @@ import { BottomNav } from "./BottomNav";
 import { BettingCartProvider } from "./BettingCartContext";
 import { BettingCartDock } from "./BettingCartDock";
 import { BettingHistoryPanel } from "./BettingHistoryPanel";
+import { AppModalsProvider } from "@/contexts/AppModalsContext";
+import { AppModalsRoot } from "@/components/modals/AppModalsRoot";
 
 /* 배팅카트가 표시되는 스포츠 관련 경로들 */
 const SPORTS_PATHS = [
@@ -35,6 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <BettingCartProvider>
+      <AppModalsProvider>
       {/* 헤더 */}
       <SiteHeader onDrawerOpen={() => setDrawerOpen(true)} />
 
@@ -64,6 +67,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* 하단 탭바 */}
       <BottomNav />
+
+      <AppModalsRoot />
+      </AppModalsProvider>
     </BettingCartProvider>
   );
 }

@@ -44,13 +44,19 @@ export function HomePortal({ view, onViewChange }: HomePortalProps) {
             onClick={() => onViewChange(tab.key)}
             className={`relative flex h-full shrink-0 items-center px-5 text-sm font-medium transition-colors ${
               active === tab.key
-                ? "text-[var(--theme-primary,#c9a227)]"
-                : "text-zinc-500"
+                ? "text-main-gold"
+                : "text-zinc-500 hover:text-main-gold-solid"
             }`}
           >
             {tab.label}
             {active === tab.key && (
-              <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--theme-primary,#c9a227)]" />
+              <span
+                className="absolute inset-x-0 bottom-0 h-0.5 rounded-full"
+                style={{
+                  background: "var(--gold-gradient)",
+                  boxShadow: "0 0 8px rgba(218,174,87,0.5)",
+                }}
+              />
             )}
           </button>
         ))}
@@ -90,7 +96,7 @@ function CasinoContent() {
     <div className="space-y-3">
       <Link href="/lobby/live-casino" className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-4">
         <span className="text-sm font-semibold text-white">라이브 카지노</span>
-        <span className="text-xs text-[var(--theme-primary,#c9a227)]">입장 →</span>
+        <span className="text-xs text-main-gold">입장 →</span>
       </Link>
       <CasinoPortalCards />
     </div>

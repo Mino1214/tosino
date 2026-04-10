@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getAccessToken } from "@/lib/api";
 import { useGameLaunch } from "@/components/GameIframeModal";
+import { useAppModals } from "@/contexts/AppModalsContext";
 import type { LaunchSurface } from "@/lib/vinus-home-cards";
 
 type LiveCasinoLobbyProps = {
@@ -27,6 +28,7 @@ export function LiveCasinoLobby({
   description,
 }: LiveCasinoLobbyProps = {}) {
   const router = useRouter();
+  const { openLogin, openWallet } = useAppModals();
   const { launch: openGame } = useGameLaunch();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function LiveCasinoLobby({
   const launch = useCallback(async () => {
     setErr(null);
     if (!getAccessToken()) {
-      router.push("/login");
+      openLogin();
       return;
     }
     setLoading(true);
@@ -94,7 +96,7 @@ export function LiveCasinoLobby({
     } finally {
       setLoading(false);
     }
-  }, [router, vendor, game, title, openGame, launchSurface]);
+  }, [openLogin, router, vendor, game, title, openGame, launchSurface]);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -107,12 +109,13 @@ export function LiveCasinoLobby({
             {walletBalance}{" "}
             <span className="text-sm font-normal text-zinc-400">원</span>
           </p>
-          <Link
-            href="/wallet"
-            className="mt-2 inline-block text-xs text-zinc-400 underline decoration-zinc-600 underline-offset-2 hover:text-zinc-200"
+          <button
+            type="button"
+            onClick={() => openWallet({ fiatTab: "DEPOSIT" })}
+            className="mt-2 text-xs text-zinc-400 underline decoration-zinc-600 underline-offset-2 hover:text-zinc-200"
           >
             모바일 충전 · 입금 신청 →
-          </Link>
+          </button>
         </div>
       ) : null}
       <p className="mt-4 text-left text-sm leading-relaxed text-zinc-400">

@@ -11,11 +11,13 @@
   ─────────────────────────────────────────────────────────────────
 */
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useBettingCart } from "./BettingCartContext";
 import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
+import { useAppModals } from "@/contexts/AppModalsContext";
 
 const PLAY_ITEMS = [
   { label: "스포츠",    href: "/lobby/sports-kr",  emoji: "⚽" },
@@ -27,50 +29,62 @@ const PLAY_ITEMS = [
   { label: "미니게임",  href: "/lobby/minigame",    emoji: "🕹️" },
 ];
 
-const WALLET_ITEMS = [
-  { label: "입금신청",        href: "/wallet?tab=deposit"   },
-  { label: "출금신청",        href: "/wallet?tab=withdraw"  },
-  { label: "포인트전환",      href: "/wallet?tab=point"     },
-  { label: "추천인보너스전환", href: "/wallet?tab=referral"  },
-  { label: "콤프전환",        href: "/wallet?tab=comp"      },
-];
+type SpeedDialLinkItem = { label: string; href: string; emoji?: string };
+type SpeedDialActionItem = { label: string; onSelect: () => void; emoji?: string };
+type SpeedDialItem = SpeedDialLinkItem | SpeedDialActionItem;
 
 type SpeedDialProps = {
-  items: { label: string; href: string; emoji?: string }[];
+  items: SpeedDialItem[];
   onClose: () => void;
 };
 
 function SpeedDial({ items, onClose }: SpeedDialProps) {
+  const anim = (i: number) => ({
+    animationName: "slideUpCard",
+    animationDuration: "0.25s",
+    animationTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+    animationFillMode: "both" as const,
+    animationDelay: `${i * 40}ms`,
+  });
+
   return (
     <>
-      {/* 반투명 오버레이 — 탭바 위만 덮음, 탭 시 닫힘 */}
       <button
         type="button"
         aria-label="메뉴 닫기"
-        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/50"
+        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/50 md:inset-0 md:bottom-0"
         onClick={onClose}
         onTouchEnd={onClose}
       />
-      {/* 카드 스택 — 아래에서 위로 쌓임 */}
-      <div className="fixed inset-x-0 bottom-14 z-[60] flex flex-col-reverse items-center gap-2 pb-3">
-        {items.map((item, i) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onClose}
-            className="flex items-center gap-2 rounded-full border border-white/15 bg-[#0d0d14] px-5 py-2.5 text-sm font-medium text-white shadow-lg"
-            style={{
-              animationName: "slideUpCard",
-              animationDuration: "0.25s",
-              animationTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
-              animationFillMode: "both",
-              animationDelay: `${i * 40}ms`,
-            }}
-          >
-            {item.emoji && <span className="text-base">{item.emoji}</span>}
-            {item.label}
-          </Link>
-        ))}
+      <div className="fixed inset-x-0 bottom-14 z-[60] flex flex-col-reverse items-center gap-2 pb-3 md:bottom-28">
+        {items.map((item, i) =>
+          "href" in item ? (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onClose}
+              className="flex items-center gap-2 rounded-full border border-white/15 bg-[#0d0d14] px-5 py-2.5 text-sm font-medium text-white shadow-lg"
+              style={anim(i)}
+            >
+              {item.emoji && <span className="text-base">{item.emoji}</span>}
+              {item.label}
+            </Link>
+          ) : (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => {
+                item.onSelect();
+                onClose();
+              }}
+              className="flex items-center gap-2 rounded-full border border-white/15 bg-[#0d0d14] px-5 py-2.5 text-sm font-medium text-white shadow-lg"
+              style={anim(i)}
+            >
+              {item.emoji && <span className="text-base">{item.emoji}</span>}
+              {item.label}
+            </button>
+          ),
+        )}
       </div>
     </>
   );
@@ -79,29 +93,49 @@ function SpeedDial({ items, onClose }: SpeedDialProps) {
 export function BottomNav() {
   const pathname = usePathname();
   const [playOpen, setPlayOpen]     = useState(false);
-  const [walletOpen, setWalletOpen] = useState(false);
+  const [playSpinning, setPlaySpinning] = useState(false);
+  const [walletDialOpen, setWalletDialOpen] = useState(false);
   const { lines, setPanelOpen, setHistoryOpen } = useBettingCart();
+  const { openWallet: openWalletModal } = useAppModals();
+
+  const walletDialItems: SpeedDialActionItem[] = useMemo(
+    () => [
+      { label: "입금신청", onSelect: () => openWalletModal({ fiatTab: "DEPOSIT" }) },
+      { label: "출금신청", onSelect: () => openWalletModal({ fiatTab: "WITHDRAWAL" }) },
+      { label: "포인트전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
+      { label: "추천인보너스전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
+      { label: "콤프전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
+    ],
+    [openWalletModal],
+  );
 
   const isSportPage = ["/lobby/sports", "/lobby/prematch", "/lobby/live", "/lobby/esports"]
     .some((p) => pathname.startsWith(p));
 
   /* 스피드 다이얼 열림 시 배경 스크롤 잠금 (iOS 호환) */
   useEffect(() => {
-    if (playOpen || walletOpen) lockScroll();
+    if (playOpen || walletDialOpen) lockScroll();
     else unlockScroll();
     return () => { unlockScroll(); };
-  }, [playOpen, walletOpen]);
+  }, [playOpen, walletDialOpen]);
 
   function closeAll() {
     setPlayOpen(false);
-    setWalletOpen(false);
+    setWalletDialOpen(false);
   }
+
+  const togglePlayMenu = useCallback(() => {
+    setPlaySpinning(true);
+    window.setTimeout(() => setPlaySpinning(false), 700);
+    setWalletDialOpen(false);
+    setPlayOpen((o) => !o);
+  }, []);
 
   return (
     <>
       {/* Speed Dial 오버레이 */}
       {playOpen   && <SpeedDial items={PLAY_ITEMS}   onClose={closeAll} />}
-      {walletOpen && <SpeedDial items={WALLET_ITEMS} onClose={closeAll} />}
+      {walletDialOpen && <SpeedDial items={walletDialItems} onClose={closeAll} />}
 
       {/* 하단 탭바 */}
       <nav
@@ -115,14 +149,14 @@ export function BottomNav() {
             type="button"
             onClick={() => { closeAll(); setPanelOpen(true); }}
             className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${
-              isSportPage ? "text-zinc-400 active:text-[var(--theme-primary,#c9a227)]" : "text-zinc-600"
+              isSportPage ? "text-zinc-400 active:text-main-gold-solid" : "text-zinc-600"
             }`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
             </svg>
             {lines.length > 0 && (
-              <span className="absolute right-3 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--theme-primary,#c9a227)] text-[8px] font-bold text-black">
+              <span className="absolute right-3 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--theme-primary)] text-[8px] font-bold text-black">
                 {lines.length}
               </span>
             )}
@@ -133,7 +167,7 @@ export function BottomNav() {
           <button
             type="button"
             onClick={() => { closeAll(); setHistoryOpen(true); }}
-            className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-zinc-500 active:text-[var(--theme-primary,#c9a227)]"
+            className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-zinc-500 active:text-main-gold-solid"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
               <path strokeLinecap="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
@@ -144,21 +178,24 @@ export function BottomNav() {
           {/* PLAY 중앙 버튼 */}
           <button
             type="button"
-            onClick={() => { closeAll(); setPlayOpen((o) => !o); }}
+            onClick={togglePlayMenu}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-colors ${
-              playOpen ? "text-[var(--theme-primary,#c9a227)]" : "text-zinc-300"
+              playOpen ? "text-main-gold-solid" : "text-zinc-400"
             }`}
           >
-            <div className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-colors ${
-              playOpen
-                ? "border-[var(--theme-primary,#c9a227)] bg-[var(--theme-primary,#c9a227)]/10"
-                : "border-white/20 bg-white/5"
-            }`}>
-              <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-                <path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-              </svg>
+            <div
+              className={`flex h-11 w-11 items-center justify-center ${playSpinning ? "play-button-spin" : ""}`}
+            >
+              <Image
+                src="/icon/playbutton.png"
+                alt=""
+                width={88}
+                height={88}
+                className="h-11 w-11 object-contain"
+                priority
+              />
             </div>
-            PLAY
+            <span className={playOpen ? "text-main-gold" : ""}>PLAY</span>
           </button>
 
           {/* 고객센터 */}
@@ -177,9 +214,12 @@ export function BottomNav() {
           {/* 입출금 */}
           <button
             type="button"
-            onClick={() => { closeAll(); setWalletOpen((o) => !o); }}
+            onClick={() => {
+              setPlayOpen(false);
+              setWalletDialOpen((o) => !o);
+            }}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
-              walletOpen ? "text-[var(--theme-primary,#c9a227)]" : "text-zinc-500"
+              walletDialOpen ? "text-main-gold-solid" : "text-zinc-500"
             }`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
@@ -190,6 +230,28 @@ export function BottomNav() {
 
         </div>
       </nav>
+
+      {/* 데스크톱 웹: 하단 중앙 플로팅 PLAY (모바일 탭바와 동일 메뉴) */}
+      <button
+        type="button"
+        aria-label="게임 메뉴"
+        onClick={togglePlayMenu}
+        className={`fixed bottom-5 left-1/2 z-[45] hidden -translate-x-1/2 md:flex md:flex-col md:items-center md:gap-1 ${
+          playOpen ? "text-main-gold-solid" : "text-zinc-500"
+        }`}
+      >
+        <div className={`flex h-14 w-14 items-center justify-center ${playSpinning ? "play-button-spin" : ""}`}>
+          <Image
+            src="/icon/playbutton.png"
+            alt=""
+            width={112}
+            height={112}
+            className="h-14 w-14 object-contain drop-shadow-[0_0_14px_rgba(218,174,87,0.45)]"
+            priority
+          />
+        </div>
+        <span className={`text-[10px] font-bold ${playOpen ? "text-main-gold" : "text-zinc-500"}`}>PLAY</span>
+      </button>
 
       <style>{`
         @keyframes slideUpCard {

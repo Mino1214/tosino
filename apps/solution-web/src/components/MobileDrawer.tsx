@@ -8,9 +8,11 @@
   ─────────────────────────────────────────────────────────────────
 */
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { useBootstrap } from "./BootstrapProvider";
 
 const DRAWER_NAV = [
   { label: "스포츠",    href: "/lobby/sports-kr",   icon: "⚽" },
@@ -34,6 +36,7 @@ type Props = {
 
 export function MobileDrawer({ open, onClose }: Props) {
   const pathname = usePathname();
+  const b = useBootstrap();
 
   /* 열릴 때 스크롤 잠금 */
   useEffect(() => {
@@ -63,7 +66,15 @@ export function MobileDrawer({ open, onClose }: Props) {
       >
         {/* 상단 로고 영역 */}
         <div className="flex h-14 items-center justify-between border-b border-white/8 px-4">
-          <span className="text-base font-bold text-white">MENU</span>
+          <Link href="/" onClick={onClose} className="flex min-w-0 items-center">
+            <Image
+              src="/main/logo.png"
+              alt={b?.theme.siteName ?? "홈"}
+              width={120}
+              height={36}
+              className="h-7 w-auto max-w-[160px] object-contain"
+            />
+          </Link>
           <button type="button" onClick={onClose} className="text-zinc-400">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5">
               <path strokeLinecap="round" d="M6 18L18 6M6 6l12 12" />
@@ -82,7 +93,7 @@ export function MobileDrawer({ open, onClose }: Props) {
                 onClick={onClose}
                 className={`flex h-12 items-center gap-3 px-5 text-sm transition-colors ${
                   active
-                    ? "bg-white/5 text-[var(--theme-primary,#c9a227)]"
+                    ? "bg-white/5 text-main-gold"
                     : "text-zinc-300 hover:bg-white/5"
                 }`}
               >

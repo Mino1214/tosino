@@ -9,9 +9,45 @@
 }
 
 :root {
-  --theme-primary: #c9a227;
+  --theme-primary: #daae57;
+  --gold-gradient: linear-gradient(
+    180deg,
+    #fff1c2 0%,
+    #daae57 40%,
+    #b48037 100%
+  );
   --background: #0a0a0e;
-  --foreground: #f4f4f5;
+  /* 본문: 살짝 따뜻한 톤 (그라데이션 악센트와 조화) */
+  --foreground: #f2ead8;
+}
+
+/* 메인 골드 그라데이션 텍스트 + 글로우 */
+.text-main-gold {
+  background: var(--gold-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter: drop-shadow(0 0 6px rgba(218, 174, 87, 0.8));
+}
+
+/* 그라데이션을 쓰기 어려운 곳(배지 등)용 단색 + 글로우 */
+.text-main-gold-solid {
+  color: #daae57;
+  text-shadow: 0 0 8px rgba(218, 174, 87, 0.45);
+}
+
+/* 하단 플레이 버튼 탭 시 한 바퀴 */
+@keyframes play-button-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.play-button-spin {
+  animation: play-button-spin 0.65s ease-in-out;
 }
 
 @theme inline {
