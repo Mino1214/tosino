@@ -276,7 +276,7 @@ export function HomePageClient({ partnerLogoPaths }: { partnerLogoPaths: string[
       </div>
 
       <div
-        className="md:hidden h-[calc(100svh-var(--app-mobile-nav)-env(safe-area-inset-bottom,0px))] overflow-hidden overscroll-none touch-pan-x"
+        className="md:hidden h-[calc(100svh-var(--app-mobile-nav-total))] overflow-hidden overscroll-none touch-pan-x"
       >
         <div
           className="relative h-full overflow-hidden overscroll-none touch-pan-x bg-black"

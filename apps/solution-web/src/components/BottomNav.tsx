@@ -52,11 +52,11 @@ function WalletQuickDial({
       <button
         type="button"
         aria-label="메뉴 닫기"
-        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/55 md:hidden"
+        className="fixed inset-x-0 top-0 bottom-[var(--app-mobile-nav-total)] z-[55] w-full bg-black/55 md:hidden"
         onClick={onClose}
         onTouchEnd={onClose}
       />
-      <div className="fixed inset-x-0 bottom-14 z-[60] px-2 pb-1 md:hidden">
+      <div className="fixed inset-x-0 bottom-[var(--app-mobile-nav-total)] z-[60] px-2 pb-1 md:hidden">
         <div className="mx-auto grid w-full max-w-sm grid-cols-2 gap-1">
           {items.map((item, i) => {
             const lastOdd = i === items.length - 1 && items.length % 2 === 1;
@@ -104,11 +104,11 @@ function PlayGameDial({
       <button
         type="button"
         aria-label="메뉴 닫기"
-        className="fixed inset-x-0 top-0 bottom-14 z-[55] w-full bg-black/55 md:hidden"
+        className="fixed inset-x-0 top-0 bottom-[var(--app-mobile-nav-total)] z-[55] w-full bg-black/55 md:hidden"
         onClick={onClose}
         onTouchEnd={onClose}
       />
-      <div className="fixed inset-x-0 bottom-14 z-[60] px-2 pb-1 md:hidden">
+      <div className="fixed inset-x-0 bottom-[var(--app-mobile-nav-total)] z-[60] px-2 pb-1 md:hidden">
         <div className="mx-auto grid w-full max-w-sm grid-cols-2 gap-1">
           {items.map((item, i) => {
             const lastOdd = i === items.length - 1 && items.length % 2 === 1;
@@ -202,8 +202,7 @@ export function BottomNav() {
 
       {/* 하단 탭바 */}
         <nav
-            className="fixed bottom-0 left-0 right-0 z-50 h-14 shrink-0 transform-gpu border-t border-[rgba(218,174,87,0.35)] bg-[#0a0806] [backface-visibility:hidden] md:hidden overflow-visible"
-            style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}
+            className="fixed bottom-0 left-0 right-0 z-50 h-[var(--app-mobile-nav-total)] shrink-0 border-t border-[rgba(218,174,87,0.35)] bg-[#0a0806] pb-[var(--app-mobile-nav-safe)] md:hidden overflow-visible"
         >
             <div className="flex h-full">
                 {/* 홈 */}

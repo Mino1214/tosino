@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main
         className={[
           "max-md:box-border",
-          "max-md:pb-[calc(var(--app-mobile-nav)+env(safe-area-inset-bottom,0px))]",
+          "max-md:pb-[var(--app-mobile-nav-total)]",
           /* 홈 모바일: 히어로만 고정, 세로 스크롤 없음 */
           isHome
             ? "max-md:h-[100svh] max-md:max-h-[100svh] max-md:overflow-hidden max-md:overscroll-none"
