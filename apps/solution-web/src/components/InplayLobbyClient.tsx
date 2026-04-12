@@ -34,7 +34,9 @@ export function InplayLobbyClient() {
   const [listSource, setListSource] = useState<ListSource>("snapshot");
   const [sport, setSport] = useState("1");
   const [gameId, setGameId] = useState("");
-  const [oddshostSecret, setOddshostSecret] = useState("");
+  const [oddshostSecret, setOddshostSecret] = useState(
+    () => process.env.NEXT_PUBLIC_ODDSHOST_PROXY_SECRET?.trim() ?? "",
+  );
   const [pasteText, setPasteText] = useState("");
   const [games, setGames] = useState<SportsLiveGameDto[]>([]);
   const [gameDetail, setGameDetail] = useState<unknown>(null);
@@ -196,11 +198,21 @@ export function InplayLobbyClient() {
               type="password"
               value={oddshostSecret}
               onChange={(e) => setOddshostSecret(e.target.value)}
+              placeholder="API ODDSHOST_PROXY_SECRET 과 동일"
               className="rounded border border-white/10 bg-zinc-900 px-2 py-1 text-white"
               autoComplete="off"
             />
           </label>
         </div>
+        <p className="text-[10px] leading-relaxed text-zinc-500">
+          비워도 됨: <code className="text-zinc-400">?port=</code> 미리보기 요청이면{" "}
+          <code className="text-zinc-400">previewSecret</code> 이 API{" "}
+          <code className="text-zinc-400">PREVIEW_BOOTSTRAP_SECRET</code> 과 일치할 때
+          통과합니다. 아니면 위 값을 <code className="text-zinc-400">ODDSHOST_PROXY_SECRET</code> 과
+          동일하게 입력하거나, 빌드에{" "}
+          <code className="text-zinc-400">NEXT_PUBLIC_ODDSHOST_PROXY_SECRET</code> 를 넣어
+          기본 채움.
+        </p>
 
         {apiSub === "list" && (
           <div className="space-y-2">

@@ -12,20 +12,25 @@ import { ConfigService } from '@nestjs/config';
  * 2) ODDSHOST_BASE_URL + ODDSHOST_PATH_* — 호스트만 베이스로 두고 path+query 에 동일 플레이스홀더
  *
  * ODDSHOST_PROXY_SECRET 은 벤더가 주는 값이 아니라, 우리 공개 API(/public/oddshost/*) 남용 방지용 비밀번호입니다.
+ * 미리보기: 쿼리 `previewSecret` 이 PREVIEW_BOOTSTRAP_SECRET 과 같으면 oddshostSecret 생략 가능(bootstrap 과 동일 흐름).
  */
 @Injectable()
 export class OddsHostProxyService {
   constructor(private readonly config: ConfigService) {}
 
-  assertAccess(oddshostSecret?: string): void {
+  assertAccess(oddshostSecret?: string, previewSecret?: string): void {
     const required = (
       this.config.get<string>('ODDSHOST_PROXY_SECRET') || ''
     ).trim();
     if (required) {
-      if (oddshostSecret !== required) {
-        throw new ForbiddenException('invalid oddshostSecret');
-      }
-      return;
+      if (oddshostSecret === required) return;
+      const previewOk = (
+        this.config.get<string>('PREVIEW_BOOTSTRAP_SECRET') || ''
+      ).trim();
+      if (previewOk && previewSecret === previewOk) return;
+      throw new ForbiddenException(
+        'invalid oddshostSecret — 쿼리 oddshostSecret 을 서버 ODDSHOST_PROXY_SECRET 과 동일하게 넣거나, 미리보기 모드에서는 previewSecret(PREVIEW_BOOTSTRAP_SECRET) 을 사용하세요.',
+      );
     }
     if (process.env.NODE_ENV === 'production') {
       throw new ForbiddenException('OddsHost proxy disabled in production');
@@ -90,8 +95,12 @@ export class OddsHostProxyService {
     }
   }
 
-  async inplayList(sport: string, oddshostSecret?: string): Promise<unknown> {
-    this.assertAccess(oddshostSecret);
+  async inplayList(
+    sport: string,
+    oddshostSecret?: string,
+    previewSecret?: string,
+  ): Promise<unknown> {
+    this.assertAccess(oddshostSecret, previewSecret);
     const url = this.resolveUrl(
       'ODDSHOST_TEMPLATE_INPLAY_LIST',
       'ODDSHOST_PATH_INPLAY_LIST',
@@ -110,15 +119,16 @@ export class OddsHostProxyService {
    */
   fetchInplayListForIngest(sport: string): Promise<unknown> {
     const secret = (this.config.get<string>('ODDSHOST_PROXY_SECRET') || '').trim();
-    return this.inplayList(sport.trim() || '1', secret || undefined);
+    return this.inplayList(sport.trim() || '1', secret || undefined, undefined);
   }
 
   async inplayGame(
     sport: string,
     gameId: string,
     oddshostSecret?: string,
+    previewSecret?: string,
   ): Promise<unknown> {
-    this.assertAccess(oddshostSecret);
+    this.assertAccess(oddshostSecret, previewSecret);
     if (!gameId?.trim()) {
       throw new ForbiddenException('game_id is required');
     }
@@ -138,8 +148,9 @@ export class OddsHostProxyService {
     sport: string,
     oddshostSecret?: string,
     extra: Record<string, string> = {},
+    previewSecret?: string,
   ): Promise<unknown> {
-    this.assertAccess(oddshostSecret);
+    this.assertAccess(oddshostSecret, previewSecret);
     let url = this.resolveUrl('ODDSHOST_TEMPLATE_PREMATCH', 'ODDSHOST_PATH_PREMATCH', {
       key: this.key(),
       sport: sport || '1',

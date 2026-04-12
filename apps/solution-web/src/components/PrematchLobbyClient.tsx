@@ -25,7 +25,9 @@ export function PrematchLobbyClient() {
   /** 프리매치 카드 매핑 전이라 API 모드는 JSON 위주 — 기본은 데모로 카드 확인 */
   const [activeDataSource, setActiveDataSource] = useState("demo");
   const [sport, setSport] = useState("1");
-  const [oddshostSecret, setOddshostSecret] = useState("");
+  const [oddshostSecret, setOddshostSecret] = useState(
+    () => process.env.NEXT_PUBLIC_ODDSHOST_PROXY_SECRET?.trim() ?? "",
+  );
   const [rawJson, setRawJson] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export function PrematchLobbyClient() {
               type="password"
               value={oddshostSecret}
               onChange={(e) => setOddshostSecret(e.target.value)}
-              placeholder="비워두면 비프로덕션에서만 허용될 수 있음"
+              placeholder="API ODDSHOST_PROXY_SECRET 과 동일"
               className="rounded border border-white/10 bg-zinc-900 px-2 py-1 text-white"
               autoComplete="off"
             />

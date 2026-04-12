@@ -107,8 +107,9 @@ export class PublicController {
   oddshostInplayList(
     @Query('sport') sport?: string,
     @Query('oddshostSecret') oddshostSecret?: string,
+    @Query('previewSecret') previewSecret?: string,
   ) {
-    return this.oddshost.inplayList(sport ?? '1', oddshostSecret);
+    return this.oddshost.inplayList(sport ?? '1', oddshostSecret, previewSecret);
   }
 
   @Get('oddshost/inplay-game')
@@ -116,8 +117,14 @@ export class PublicController {
     @Query('sport') sport?: string,
     @Query('game_id') gameId?: string,
     @Query('oddshostSecret') oddshostSecret?: string,
+    @Query('previewSecret') previewSecret?: string,
   ) {
-    return this.oddshost.inplayGame(sport ?? '1', gameId ?? '', oddshostSecret);
+    return this.oddshost.inplayGame(
+      sport ?? '1',
+      gameId ?? '',
+      oddshostSecret,
+      previewSecret,
+    );
   }
 
   @Get('oddshost/prematch')
@@ -125,6 +132,7 @@ export class PublicController {
     @Req() req: Request,
     @Query('sport') sport?: string,
     @Query('oddshostSecret') oddshostSecret?: string,
+    @Query('previewSecret') previewSecret?: string,
   ) {
     const skip = new Set([
       'sport',
@@ -138,7 +146,7 @@ export class PublicController {
       if (skip.has(k)) continue;
       if (typeof v === 'string' && v !== '') extra[k] = v;
     }
-    return this.oddshost.prematch(sport ?? '1', oddshostSecret, extra);
+    return this.oddshost.prematch(sport ?? '1', oddshostSecret, extra, previewSecret);
   }
 
   @Get('referral')
