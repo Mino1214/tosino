@@ -7,6 +7,7 @@ import {
 } from "@/components/SportsLobbyLayout";
 import { SHARED_LEAGUES } from "@/data/sports-leagues";
 import {
+  defaultOddshostProxySecretFromEnv,
   fetchOddsHostPrematch,
   fetchSportsPrematchSnapshot,
 } from "@/lib/api";
@@ -25,7 +26,9 @@ export function PrematchLobbyClient() {
   /** 프리매치 카드 매핑 전이라 API 모드는 JSON 위주 — 기본은 데모로 카드 확인 */
   const [activeDataSource, setActiveDataSource] = useState("demo");
   const [sport, setSport] = useState("1");
-  const [oddshostSecret, setOddshostSecret] = useState("");
+  const [oddshostSecret, setOddshostSecret] = useState(
+    defaultOddshostProxySecretFromEnv,
+  );
   const [rawJson, setRawJson] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);

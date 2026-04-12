@@ -373,6 +373,11 @@ function appendOddsHostSecret(
   return next;
 }
 
+/** 스포츠 탭 OddsHost 입력란 기본값(빌드 시 인라인). API `ODDSHOST_PROXY_SECRET` 과 동일해야 함. */
+export function defaultOddshostProxySecretFromEnv(): string {
+  return (process.env.NEXT_PUBLIC_ODDSHOST_PROXY_SECRET || "").trim();
+}
+
 /** Nest OddsHost 프록시 (허용 IP·환경변수 설정 시). oddshostSecret 은 ODDSHOST_PROXY_SECRET 과 일치해야 함. */
 export async function fetchOddsHostInplayList(
   host: string,

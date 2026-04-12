@@ -7,6 +7,7 @@ import {
 } from "@/components/SportsLobbyLayout";
 import { SHARED_LEAGUES } from "@/data/sports-leagues";
 import {
+  defaultOddshostProxySecretFromEnv,
   fetchOddsHostInplayList,
   fetchSportsLive,
   type SportsLiveGameDto,
@@ -30,7 +31,9 @@ export function SportsKrLobbyClient() {
   const [activeDataSource, setActiveDataSource] = useState("api");
   const [listSource, setListSource] = useState<ListSource>("snapshot");
   const [sport, setSport] = useState("1");
-  const [oddshostSecret, setOddshostSecret] = useState("");
+  const [oddshostSecret, setOddshostSecret] = useState(
+    defaultOddshostProxySecretFromEnv,
+  );
   const [pasteText, setPasteText] = useState("");
   const [games, setGames] = useState<SportsLiveGameDto[]>([]);
   const [listErr, setListErr] = useState<string | null>(null);
