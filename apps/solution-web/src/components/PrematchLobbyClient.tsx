@@ -17,8 +17,12 @@ const DATA_TABS: DataSourceTabSpec[] = [
   { id: "api", label: "API 테스트" },
 ];
 
+const BET_TABS_NOTICE =
+  "예정경기·오늘·내일 탭은 UI만 있고, 아직 날짜별로 목록을 나누지 않습니다. 같은 데이터가 표시됩니다.";
+
 export function PrematchLobbyClient() {
   const requestHost = useBootstrapHost();
+  /** 프리매치 카드 매핑 전이라 API 모드는 JSON 위주 — 기본은 데모로 카드 확인 */
   const [activeDataSource, setActiveDataSource] = useState("demo");
   const [sport, setSport] = useState("1");
   const [oddshostSecret, setOddshostSecret] = useState("");
@@ -167,6 +171,7 @@ export function PrematchLobbyClient() {
       activeDataSource={activeDataSource}
       onDataSourceChange={setActiveDataSource}
       dataSourcePanel={panel}
+      betTabsNotice={BET_TABS_NOTICE}
     />
   );
 }

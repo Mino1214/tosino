@@ -13,6 +13,7 @@ import {
   type SportsLiveGameDto,
 } from "@/lib/api";
 import { liveGamesToLeagueGroups } from "@/lib/sports-live-mapper";
+import { extractSportsLiveGamesFromPayload } from "@/lib/sports-live-game-extract";
 import { useBootstrapHost } from "@/components/BootstrapProvider";
 
 const DATA_TABS: DataSourceTabSpec[] = [
@@ -23,21 +24,12 @@ const DATA_TABS: DataSourceTabSpec[] = [
 type InplayApiSub = "list" | "game";
 type ListSource = "snapshot" | "oddshost" | "paste";
 
-function extractGames(payload: unknown): SportsLiveGameDto[] {
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "game" in payload &&
-    Array.isArray((payload as { game: unknown }).game)
-  ) {
-    return (payload as { game: SportsLiveGameDto[] }).game;
-  }
-  return [];
-}
+const BET_TABS_NOTICE =
+  "전체·축구·농구·E스포츠 탭은 UI만 있고, 아직 종목별로 목록을 필터하지 않습니다. 같은 데이터가 표시됩니다.";
 
 export function InplayLobbyClient() {
   const requestHost = useBootstrapHost();
-  const [activeDataSource, setActiveDataSource] = useState("demo");
+  const [activeDataSource, setActiveDataSource] = useState("api");
   const [apiSub, setApiSub] = useState<InplayApiSub>("list");
   const [listSource, setListSource] = useState<ListSource>("snapshot");
   const [sport, setSport] = useState("1");
@@ -74,7 +66,7 @@ export function InplayLobbyClient() {
         sport.trim() || "1",
         oddshostSecret.trim() || undefined,
       );
-      const g = extractGames(data);
+      const g = extractSportsLiveGamesFromPayload(data);
       setGames(g);
       if (g.length === 0) setListErr("응답에 game 배열이 없습니다.");
     } catch (e) {
@@ -89,7 +81,7 @@ export function InplayLobbyClient() {
     setListErr(null);
     try {
       const parsed = JSON.parse(pasteText || "{}") as unknown;
-      const g = extractGames(parsed);
+      const g = extractSportsLiveGamesFromPayload(parsed);
       setGames(g);
       if (g.length === 0) setListErr("JSON에서 game[] 를 찾지 못했습니다.");
     } catch (e) {
@@ -336,6 +328,7 @@ export function InplayLobbyClient() {
       activeDataSource={activeDataSource}
       onDataSourceChange={setActiveDataSource}
       dataSourcePanel={panel}
+      betTabsNotice={BET_TABS_NOTICE}
     />
   );
 }

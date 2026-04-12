@@ -293,6 +293,8 @@ export interface SportsLobbyLayoutProps {
   onDataSourceChange?: (id: string) => void;
   /** API 테스트 패널(입력·Raw JSON 등). 데이터 탭 아래에 렌더 */
   dataSourcePanel?: ReactNode;
+  /** 배당/일자 탭이 아직 데이터와 연결되지 않았을 때 안내 (있으면 BetTypeNav 아래 표시) */
+  betTabsNotice?: string;
 }
 
 export function SportsLobbyLayout({
@@ -305,6 +307,7 @@ export function SportsLobbyLayout({
   activeDataSource,
   onDataSourceChange,
   dataSourcePanel,
+  betTabsNotice,
 }: SportsLobbyLayoutProps) {
   const [sportType, setSportType]   = useState("all");
   const [betTab, setBetTab]         = useState(betTabs[0]?.id ?? "cross");
@@ -348,6 +351,11 @@ export function SportsLobbyLayout({
       {/* 배팅 타입 + 검색 */}
       <div className="md:px-6 lg:px-10">
         <BetTypeNav tabs={betTabs} active={betTab} onSelect={setBetTab} />
+        {betTabsNotice ? (
+          <p className="border-b border-white/5 bg-zinc-950/80 px-2 py-1.5 text-center text-[10px] leading-snug text-zinc-500 md:px-0">
+            {betTabsNotice}
+          </p>
+        ) : null}
       </div>
 
       {/* 폴더 보너스 */}
