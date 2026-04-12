@@ -67,4 +67,32 @@ export class SyncService {
     });
     return { ok: true, total: games.length, fetchedAt: now.toISOString() };
   }
+
+  /** 프리매치 테스트 스냅샷 */
+  async upsertSportsPrematch(
+    platformId: string,
+    body: Record<string, unknown>,
+    actor: JwtPayload,
+  ) {
+    this.assertPlatform(actor, platformId);
+    const now = new Date();
+    await this.prisma.sportsOddsSnapshot.upsert({
+      where: {
+        platformId_sourceFeedId: { platformId, sourceFeedId: 'sports-prematch' },
+      },
+      create: {
+        platformId,
+        sourceFeedId: 'sports-prematch',
+        sportLabel: 'prematch-test',
+        market: null,
+        payloadJson: body as object,
+        fetchedAt: now,
+      },
+      update: {
+        payloadJson: body as object,
+        fetchedAt: now,
+      },
+    });
+    return { ok: true, fetchedAt: now.toISOString() };
+  }
 }

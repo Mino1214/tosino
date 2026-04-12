@@ -13,7 +13,7 @@
     [Pagination]
 */
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { SportsDomesticList, type LeagueGroupData } from "./SportsDomesticCard";
 
 /* ── 광고 배너 (공용) ─────────────────────────────────── */
@@ -101,6 +101,47 @@ function SportTypeNav({
             )}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── 데이터 소스 (데모 / API 테스트) ───────────────────── */
+export type DataSourceTabSpec = { id: string; label: string };
+
+function DataSourceNav({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: DataSourceTabSpec[];
+  active: string;
+  onSelect: (id: string) => void;
+}) {
+  if (tabs.length === 0) return null;
+  return (
+    <div className="border-b border-white/10 bg-zinc-900/90 px-2 py-2 md:px-6 lg:px-10">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+          데이터
+        </span>
+        <div className="flex gap-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onSelect(t.id)}
+              className={[
+                "rounded-md px-3 py-1.5 text-[11px] font-semibold transition-colors",
+                active === t.id
+                  ? "bg-[rgba(218,174,87,0.2)] text-main-gold ring-1 ring-[rgba(218,174,87,0.45)]"
+                  : "text-zinc-400 hover:text-zinc-200",
+              ].join(" ")}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -246,6 +287,12 @@ export interface SportsLobbyLayoutProps {
   bannerText?: string;
   /** 광고 배너 숨김 여부 */
   hideBanner?: boolean;
+  /** 데모 / API 테스트 등 상단 데이터 소스 탭 */
+  dataSourceTabs?: DataSourceTabSpec[];
+  activeDataSource?: string;
+  onDataSourceChange?: (id: string) => void;
+  /** API 테스트 패널(입력·Raw JSON 등). 데이터 탭 아래에 렌더 */
+  dataSourcePanel?: ReactNode;
 }
 
 export function SportsLobbyLayout({
@@ -254,10 +301,20 @@ export function SportsLobbyLayout({
   leagues,
   bannerText,
   hideBanner = false,
+  dataSourceTabs,
+  activeDataSource,
+  onDataSourceChange,
+  dataSourcePanel,
 }: SportsLobbyLayoutProps) {
   const [sportType, setSportType]   = useState("all");
   const [betTab, setBetTab]         = useState(betTabs[0]?.id ?? "cross");
   const [page, setPage]             = useState(1);
+
+  const hasDataTabs =
+    Array.isArray(dataSourceTabs) &&
+    dataSourceTabs.length > 0 &&
+    activeDataSource &&
+    onDataSourceChange;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-4">
@@ -269,6 +326,19 @@ export function SportsLobbyLayout({
       <div className="border-b border-[rgba(218,174,87,0.2)] bg-black px-4 py-2.5 md:px-6 lg:px-10">
         <h1 className="text-base font-bold text-main-gold sm:text-lg md:text-xl">{title}</h1>
       </div>
+
+      {hasDataTabs && (
+        <DataSourceNav
+          tabs={dataSourceTabs}
+          active={activeDataSource}
+          onSelect={onDataSourceChange}
+        />
+      )}
+      {dataSourcePanel != null && (
+        <div className="border-b border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
+          {dataSourcePanel}
+        </div>
+      )}
 
       {/* 종목 아이콘 Nav */}
       <div className="md:px-6 lg:px-10">

@@ -47,4 +47,17 @@ export class SyncController {
   ) {
     return this.sync.upsertSportsLive(platformId, body, user);
   }
+
+  /**
+   * 프리매치 테스트용 JSON 업로드 → SportsOddsSnapshot (sourceFeedId=sports-prematch)
+   */
+  @Post('sports-prematch')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  uploadSportsPrematch(
+    @Param('platformId') platformId: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.sync.upsertSportsPrematch(platformId, body, user);
+  }
 }

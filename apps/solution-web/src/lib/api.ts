@@ -308,3 +308,152 @@ export async function fetchSportsOdds(host: string) {
     feeds: PublicSportsOddsFeed[];
   }>;
 }
+
+export type SportsLiveGameDto = {
+  game_id: string;
+  status: string;
+  start_ts: string;
+  competition_id: string;
+  competition_name: string;
+  competition_name_kor: string;
+  competition_cc_name: string;
+  competition_cc_name_kor: string;
+  team: [
+    {
+      team1_id: string;
+      team1_name: string;
+      team1_name_kor: string;
+      team1_img?: string;
+    },
+    {
+      team2_id: string;
+      team2_name: string;
+      team2_name_kor: string;
+      team2_img?: string;
+    },
+  ];
+  location: string;
+  round: string;
+  series: string;
+  timer?: { time_mark: string; time_mark_kor: string };
+  score: string;
+  update_time: string;
+};
+
+export async function fetchSportsLive(host: string) {
+  const q = buildPublicApiQuery(host);
+  const res = await fetch(`${getApiBase()}/public/sports-live?${q}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let detail = res.statusText || `HTTP ${res.status}`;
+    try {
+      const j = (await res.json()) as { message?: string | string[] };
+      if (typeof j.message === "string") detail = j.message;
+      else if (Array.isArray(j.message)) detail = j.message.join(", ");
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`sports-live failed (${res.status}): ${detail}`);
+  }
+  return res.json() as Promise<{
+    success: number;
+    total: number;
+    fetchedAt: string | null;
+    game: SportsLiveGameDto[];
+  }>;
+}
+
+function appendOddsHostSecret(
+  q: URLSearchParams,
+  oddshostSecret?: string,
+): URLSearchParams {
+  const next = new URLSearchParams(q.toString());
+  if (oddshostSecret) next.set("oddshostSecret", oddshostSecret);
+  return next;
+}
+
+/** Nest OddsHost 프록시 (허용 IP·환경변수 설정 시). oddshostSecret 은 ODDSHOST_PROXY_SECRET 과 일치해야 함. */
+export async function fetchOddsHostInplayList(
+  host: string,
+  sport: string,
+  oddshostSecret?: string,
+) {
+  const q = appendOddsHostSecret(buildPublicApiQuery(host), oddshostSecret);
+  q.set("sport", sport);
+  const res = await fetch(
+    `${getApiBase()}/public/oddshost/inplay-list?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`oddshost inplay-list (${res.status}): ${t.slice(0, 200)}`);
+  }
+  return res.json() as Promise<unknown>;
+}
+
+export async function fetchOddsHostInplayGame(
+  host: string,
+  sport: string,
+  gameId: string,
+  oddshostSecret?: string,
+) {
+  const q = appendOddsHostSecret(buildPublicApiQuery(host), oddshostSecret);
+  q.set("sport", sport);
+  q.set("game_id", gameId);
+  const res = await fetch(
+    `${getApiBase()}/public/oddshost/inplay-game?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`oddshost inplay-game (${res.status}): ${t.slice(0, 200)}`);
+  }
+  return res.json() as Promise<unknown>;
+}
+
+export async function fetchOddsHostPrematch(
+  host: string,
+  sport: string,
+  oddshostSecret?: string,
+  extraQuery?: Record<string, string>,
+) {
+  const q = appendOddsHostSecret(buildPublicApiQuery(host), oddshostSecret);
+  q.set("sport", sport);
+  if (extraQuery) {
+    for (const [k, v] of Object.entries(extraQuery)) {
+      if (v !== undefined && v !== "") q.set(k, v);
+    }
+  }
+  const res = await fetch(
+    `${getApiBase()}/public/oddshost/prematch?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`oddshost prematch (${res.status}): ${t.slice(0, 200)}`);
+  }
+  return res.json() as Promise<unknown>;
+}
+
+export async function fetchSportsPrematchSnapshot(host: string) {
+  const q = buildPublicApiQuery(host);
+  const res = await fetch(`${getApiBase()}/public/sports-prematch?${q}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let detail = res.statusText || `HTTP ${res.status}`;
+    try {
+      const j = (await res.json()) as { message?: string | string[] };
+      if (typeof j.message === "string") detail = j.message;
+      else if (Array.isArray(j.message)) detail = j.message.join(", ");
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`sports-prematch failed (${res.status}): ${detail}`);
+  }
+  return res.json() as Promise<{
+    fetchedAt: string | null;
+    payload: unknown;
+  }>;
+}
