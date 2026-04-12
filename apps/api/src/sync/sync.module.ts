@@ -5,9 +5,10 @@ import { SyncService } from './sync.service';
 import { SyncController } from './sync.controller';
 import { OddsIngestService } from './odds-ingest.service';
 import { SyncSchedulerService } from './sync-scheduler.service';
+import { PublicModule } from '../public/public.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: 'sync' })],
+  imports: [BullModule.registerQueue({ name: 'sync' }), PublicModule],
   controllers: [SyncController],
   providers: [
     SyncService,

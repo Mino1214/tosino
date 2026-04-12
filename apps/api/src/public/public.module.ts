@@ -11,6 +11,6 @@ import { OddsHostProxyService } from './oddshost-proxy.service';
     PublicPlatformResolveService,
     OddsHostProxyService,
   ],
-  exports: [PublicPlatformResolveService],
+  exports: [PublicPlatformResolveService, OddsHostProxyService],
 })
 export class PublicModule {}

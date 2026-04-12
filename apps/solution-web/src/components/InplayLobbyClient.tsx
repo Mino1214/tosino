@@ -249,6 +249,21 @@ export function InplayLobbyClient() {
               <p className="text-red-400">{listErr}</p>
             )}
             {loadingList && <p className="text-zinc-500">불러오는 중…</p>}
+            {listSource === "snapshot" &&
+              !loadingList &&
+              !listErr &&
+              games.length === 0 && (
+                <p className="rounded border border-amber-900/40 bg-amber-950/30 px-2 py-2 text-[10px] leading-relaxed text-amber-200/90">
+                  <code className="text-amber-100/80">fetchedAt: null</code>,{" "}
+                  <code className="text-amber-100/80">game: []</code> 는 DB에
+                  sports-live 스냅샷이 없을 때의 정상 응답입니다.{" "}
+                  <code className="text-amber-100/80">
+                    POST …/sync/sports-live
+                  </code>{" "}
+                  업로드, <strong>JSON 붙여넣기</strong>, 또는{" "}
+                  <strong>OddsHost 프록시</strong>를 선택하세요.
+                </p>
+              )}
             {games.length > 0 && (
               <label className="flex flex-col gap-0.5 text-zinc-400">
                 상세 탭으로 보낼 game_id

@@ -171,6 +171,23 @@ export function SportsKrLobbyClient() {
         )}
         {listErr && <p className="text-red-400">{listErr}</p>}
         {loadingList && <p className="text-zinc-500">불러오는 중…</p>}
+        {listSource === "snapshot" &&
+          !loadingList &&
+          !listErr &&
+          games.length === 0 && (
+            <p className="rounded border border-amber-900/40 bg-amber-950/30 px-2 py-2 text-[10px] leading-relaxed text-amber-200/90">
+              <code className="text-amber-100/80">game: []</code> ·{" "}
+              <code className="text-amber-100/80">fetchedAt: null</code> 은 이
+              플랫폼에 <strong>sports-live</strong> 스냅샷이 아직 없다는 뜻입니다(오류 아님).
+              관리자 JWT로{" "}
+              <code className="text-amber-100/80">
+                POST /api/platforms/플랫폼ID/sync/sports-live
+              </code>{" "}
+              에 라이브 목록 JSON 본문을 올리거나, 여기서{" "}
+              <strong>JSON 붙여넣기</strong> / <strong>OddsHost 프록시</strong>를
+              쓰면 목록이 채워집니다.
+            </p>
+          )}
       </div>
     ) : null;
 

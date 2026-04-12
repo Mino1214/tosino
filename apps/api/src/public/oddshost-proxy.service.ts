@@ -104,20 +104,21 @@ export class OddsHostProxyService {
     return this.fetchJson(url);
   }
 
+  /**
+   * ODDS 동기화 등 서버 내부 전용. 공개 API와 달리 `oddshostSecret` 대신
+   * .env 의 ODDSHOST_PROXY_SECRET 으로 assertAccess 를 통과합니다.
+   */
+  fetchInplayListForIngest(sport: string): Promise<unknown> {
+    const secret = (this.config.get<string>('ODDSHOST_PROXY_SECRET') || '').trim();
+    return this.inplayList(sport.trim() || '1', secret || undefined);
+  }
+
   async inplayGame(
     sport: string,
     gameId: string,
     oddshostSecret?: string,
   ): Promise<unknown> {
     this.assertAccess(oddshostSecret);
-    const template = (
-      this.config.get<string>('ODDSHOST_TEMPLATE_INPLAY_GAME') || ''
-    ).trim();
-    if (!template) {
-      throw new ServiceUnavailableException(
-        'ODDSHOST_TEMPLATE_INPLAY_GAME is not set',
-      );
-    }
     if (!gameId?.trim()) {
       throw new ForbiddenException('game_id is required');
     }

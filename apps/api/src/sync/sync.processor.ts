@@ -101,7 +101,7 @@ export class SyncProcessor extends WorkerHost {
       sampleOdds: [{ market: 'stub', price: 1.95 }],
       ...(oddsIngestResult && {
         oddsIngest: oddsIngestResult,
-        note: '스냅샷은 SportsOddsSnapshot에 저장됨. 솔루션은 GET /public/sports-odds 로 조회.',
+        note: '스냅샷은 SportsOddsSnapshot에 저장됨. 솔루션은 GET /public/sports-odds·sports-live 로 조회. OddsHost 인플레이 목록은 ODDS 동기화 시 sports-live 에 반영(환경변수 참고).',
       }),
       ...(integrationsSummary && {
         integrationsSummary,
