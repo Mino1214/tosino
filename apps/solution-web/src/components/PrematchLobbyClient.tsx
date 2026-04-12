@@ -7,6 +7,7 @@ import {
 } from "@/components/SportsLobbyLayout";
 import { SHARED_LEAGUES } from "@/data/sports-leagues";
 import {
+  defaultOddshostProxySecretFromEnv,
   fetchOddsHostPrematch,
   fetchSportsPrematchSnapshot,
 } from "@/lib/api";
@@ -26,7 +27,7 @@ export function PrematchLobbyClient() {
   const [activeDataSource, setActiveDataSource] = useState("demo");
   const [sport, setSport] = useState("1");
   const [oddshostSecret, setOddshostSecret] = useState(
-    () => process.env.NEXT_PUBLIC_ODDSHOST_PROXY_SECRET?.trim() ?? "",
+    defaultOddshostProxySecretFromEnv,
   );
   const [rawJson, setRawJson] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -110,7 +111,7 @@ export function PrematchLobbyClient() {
               type="password"
               value={oddshostSecret}
               onChange={(e) => setOddshostSecret(e.target.value)}
-              placeholder="API ODDSHOST_PROXY_SECRET 과 동일"
+              placeholder="비워두면 비프로덕션에서만 허용될 수 있음"
               className="rounded border border-white/10 bg-zinc-900 px-2 py-1 text-white"
               autoComplete="off"
             />

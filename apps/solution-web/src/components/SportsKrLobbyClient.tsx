@@ -7,6 +7,7 @@ import {
 } from "@/components/SportsLobbyLayout";
 import { SHARED_LEAGUES } from "@/data/sports-leagues";
 import {
+  defaultOddshostProxySecretFromEnv,
   fetchOddsHostInplayList,
   fetchSportsLive,
   type SportsLiveGameDto,
@@ -31,7 +32,7 @@ export function SportsKrLobbyClient() {
   const [listSource, setListSource] = useState<ListSource>("snapshot");
   const [sport, setSport] = useState("1");
   const [oddshostSecret, setOddshostSecret] = useState(
-    () => process.env.NEXT_PUBLIC_ODDSHOST_PROXY_SECRET?.trim() ?? "",
+    defaultOddshostProxySecretFromEnv,
   );
   const [pasteText, setPasteText] = useState("");
   const [games, setGames] = useState<SportsLiveGameDto[]>([]);
@@ -127,15 +128,9 @@ export function SportsKrLobbyClient() {
               onChange={(e) => setOddshostSecret(e.target.value)}
               className="rounded border border-white/10 bg-zinc-900 px-2 py-1 text-white"
               autoComplete="off"
-              placeholder="API ODDSHOST_PROXY_SECRET 과 동일"
             />
           </label>
         </div>
-        <p className="text-[10px] leading-relaxed text-zinc-500">
-          미리보기 <code className="text-zinc-400">previewSecret</code> 일치 시 비워도
-          호출됩니다. <code className="text-zinc-400">NEXT_PUBLIC_ODDSHOST_PROXY_SECRET</code> 로
-          기본값 가능.
-        </p>
         <div className="flex flex-wrap gap-1">
           {(
             [
