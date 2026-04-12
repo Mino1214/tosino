@@ -30,12 +30,10 @@ import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { publicAsset } from "@/lib/public-asset";
 
 const NAV_ITEMS = [
-  // { label: "스포츠",   href: "/lobby/sports-kr"  },
-  // { label: "프리매치", href: "/lobby/prematch"    },
-  // { label: "인플레이", href: "/lobby/live"         },
-  // { label: "스포츠북", href: "/lobby/sportsbook"  },
-  // { label: "e스포츠",  href: "/lobby/esports"    },
-  { label: "카지노",   href: "/lobby/live-casino" },
+  { label: "스포츠", href: "/lobby/sports-kr" },
+  { label: "프리매치", href: "/lobby/prematch" },
+  { label: "인플레이", href: "/lobby/live" },
+  { label: "카지노", href: "/lobby/live-casino" },
   { label: "슬롯",     href: "/lobby/slots"       },
   { label: "미니게임", href: "/lobby/minigame"    },
   { label: "마이페이지", href: "/mypage"          },

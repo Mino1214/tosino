@@ -20,11 +20,11 @@ import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { publicAsset } from "@/lib/public-asset";
 
 const PLAY_ITEMS = [
-  // { label: "스포츠",    href: "/lobby/sports-kr",  emoji: "⚽" },
-  // { label: "프리매치",  href: "/lobby/prematch",    emoji: "📅" },
-  // { label: "인플레이",  href: "/lobby/live",         emoji: "🔴" },
-  // { label: "e스포츠",  href: "/lobby/esports",     emoji: "🎮" },
-  { label: "카지노",    href: "/lobby/live-casino", emoji: "" },
+  { label: "스포츠", href: "/lobby/sports-kr", emoji: "⚽" },
+  { label: "프리매치", href: "/lobby/prematch", emoji: "📅" },
+  { label: "인플레이", href: "/lobby/live", emoji: "🔴" },
+  { label: "e스포츠", href: "/lobby/esports", emoji: "🎮" },
+  { label: "카지노", href: "/lobby/live-casino", emoji: "" },
   { label: "슬롯",      href: "/lobby/slots",       emoji: "" },
   { label: "미니게임",  href: "/lobby/minigame",    emoji: "" },
 ];
