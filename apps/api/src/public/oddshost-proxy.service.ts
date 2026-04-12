@@ -6,8 +6,12 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 /**
- * OddsHost HTTP 프록시. URL은 가이드에 맞춰 .env 템플릿으로 주입합니다.
- * 플레이스홀더: {key} {sport} {game_id}
+ * OddsHost HTTP 프록시.
+ * URL 지정 방식 (우선순위):
+ * 1) ODDSHOST_TEMPLATE_* — 가이드의 호출 URL 전체 한 줄, 플레이스홀더 {key} {sport} {game_id}
+ * 2) ODDSHOST_BASE_URL + ODDSHOST_PATH_* — 호스트만 베이스로 두고 path+query 에 동일 플레이스홀더
+ *
+ * ODDSHOST_PROXY_SECRET 은 벤더가 주는 값이 아니라, 우리 공개 API(/public/oddshost/*) 남용 방지용 비밀번호입니다.
  */
 @Injectable()
 export class OddsHostProxyService {
@@ -38,6 +42,28 @@ export class OddsHostProxyService {
       .replaceAll('{game_id}', encodeURIComponent(vars.game_id));
   }
 
+  /** 전체 URL 템플릿이 없으면 BASE_URL + PATH 로 조합 */
+  private resolveUrl(
+    fullTemplateEnv: string,
+    pathEnv: string,
+    vars: { key: string; sport: string; game_id: string },
+  ): string {
+    const full = (this.config.get<string>(fullTemplateEnv) || '').trim();
+    if (full) return this.expandTemplate(full, vars);
+
+    const base = (
+      this.config.get<string>('ODDSHOST_BASE_URL') || ''
+    ).trim().replace(/\/+$/, '');
+    const pathTpl = (this.config.get<string>(pathEnv) || '').trim();
+    if (!base || !pathTpl) {
+      throw new ServiceUnavailableException(
+        `Set ${fullTemplateEnv} (full URL) or both ODDSHOST_BASE_URL and ${pathEnv}`,
+      );
+    }
+    const path = pathTpl.startsWith('/') ? pathTpl : `/${pathTpl}`;
+    return this.expandTemplate(`${base}${path}`, vars);
+  }
+
   private key(): string {
     const k = (this.config.get<string>('ODDSHOST_KEY') || '').trim();
     if (!k) {
@@ -66,19 +92,15 @@ export class OddsHostProxyService {
 
   async inplayList(sport: string, oddshostSecret?: string): Promise<unknown> {
     this.assertAccess(oddshostSecret);
-    const template = (
-      this.config.get<string>('ODDSHOST_TEMPLATE_INPLAY_LIST') || ''
-    ).trim();
-    if (!template) {
-      throw new ServiceUnavailableException(
-        'ODDSHOST_TEMPLATE_INPLAY_LIST is not set',
-      );
-    }
-    const url = this.expandTemplate(template, {
-      key: this.key(),
-      sport: sport || '1',
-      game_id: '',
-    });
+    const url = this.resolveUrl(
+      'ODDSHOST_TEMPLATE_INPLAY_LIST',
+      'ODDSHOST_PATH_INPLAY_LIST',
+      {
+        key: this.key(),
+        sport: sport || '1',
+        game_id: '',
+      },
+    );
     return this.fetchJson(url);
   }
 
@@ -99,11 +121,15 @@ export class OddsHostProxyService {
     if (!gameId?.trim()) {
       throw new ForbiddenException('game_id is required');
     }
-    const url = this.expandTemplate(template, {
-      key: this.key(),
-      sport: sport || '1',
-      game_id: gameId.trim(),
-    });
+    const url = this.resolveUrl(
+      'ODDSHOST_TEMPLATE_INPLAY_GAME',
+      'ODDSHOST_PATH_INPLAY_GAME',
+      {
+        key: this.key(),
+        sport: sport || '1',
+        game_id: gameId.trim(),
+      },
+    );
     return this.fetchJson(url);
   }
 
@@ -113,15 +139,7 @@ export class OddsHostProxyService {
     extra: Record<string, string> = {},
   ): Promise<unknown> {
     this.assertAccess(oddshostSecret);
-    const template = (
-      this.config.get<string>('ODDSHOST_TEMPLATE_PREMATCH') || ''
-    ).trim();
-    if (!template) {
-      throw new ServiceUnavailableException(
-        'ODDSHOST_TEMPLATE_PREMATCH is not set',
-      );
-    }
-    let url = this.expandTemplate(template, {
+    let url = this.resolveUrl('ODDSHOST_TEMPLATE_PREMATCH', 'ODDSHOST_PATH_PREMATCH', {
       key: this.key(),
       sport: sport || '1',
       game_id: '',
