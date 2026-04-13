@@ -77,8 +77,14 @@ export class PlatformsController {
   listBankSms(
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
+    @Query('status') status?: string,
+    @Query('deviceMatch') deviceMatch?: string,
   ) {
-    return this.platforms.listBankSmsIngests(platformId, user);
+    const dm = deviceMatch === '1' || deviceMatch === 'true';
+    return this.platforms.listBankSmsIngests(platformId, user, {
+      status,
+      deviceMatchOnly: dm,
+    });
   }
 
   @Get(':platformId')

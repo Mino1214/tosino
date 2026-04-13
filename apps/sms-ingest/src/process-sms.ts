@@ -193,6 +193,9 @@ export async function processSmsIngest(
         parsedJson: Prisma.JsonNull,
         status: BankSmsIngestStatus.PARSE_ERROR,
         failureReason: '웹발신([Web]/[Web발신] 등) 입금·출금 줄을 찾지 못함',
+        semiVirtualDeviceMatch: Boolean(
+          guessedPlatformId && recipientNorm,
+        ),
       },
     });
     return { ok: true, status: BankSmsIngestStatus.PARSE_ERROR };
@@ -212,7 +215,12 @@ export async function processSmsIngest(
         recipientPhoneSnapshot: recipientNorm || null,
         parsedJson: parsed as object,
         status: BankSmsIngestStatus.NO_PLATFORM,
-        failureReason: '반가상 설정과 번호/계좌힌트가 맞는 플랫폼 없음',
+        failureReason: guessedPlatformId
+          ? '등록 수신번호로는 수신됨 · 본문이 계좌 힌트(또는 번호)와 맞지 않아 플랫폼 확정 실패'
+          : '반가상 설정과 번호/계좌힌트가 맞는 플랫폼 없음(수신번호 미전달 또는 미등록)',
+        semiVirtualDeviceMatch: Boolean(
+          guessedPlatformId && recipientNorm,
+        ),
       },
     });
     return { ok: true, status: BankSmsIngestStatus.NO_PLATFORM };
@@ -237,6 +245,7 @@ export async function processSmsIngest(
         failureReason: ambiguous
           ? '복수 플랫폼 매칭 — 첫 플랫폼에만 기록'
           : null,
+        semiVirtualDeviceMatch: true,
       },
     });
     return {
@@ -325,7 +334,8 @@ async function tryAutoCreditDeposit(
           parsedJson,
           status: BankSmsIngestStatus.NO_MATCH,
           failureReason:
-            '금액·입금자명이 일치하는 대기 충전 신청 없음 (depositorName/메모 확인)',
+            '[기기 수신 완료] 대기 중인 입금 신청이 없거나 금액·입금자명이 일치하지 않음 (depositorName/메모 확인)',
+          semiVirtualDeviceMatch: true,
         },
       });
       return { ok: true, status: BankSmsIngestStatus.NO_MATCH, platformId };
@@ -345,7 +355,9 @@ async function tryAutoCreditDeposit(
           recipientPhoneSnapshot: meta.recipientPhoneSnapshot,
           parsedJson,
           status: BankSmsIngestStatus.NO_MATCH,
-          failureReason: '회원 지갑 없음',
+          failureReason:
+            '[기기 수신·신청 매칭됨] 해당 회원 지갑 없음 — 승인/지갑 생성 확인',
+          semiVirtualDeviceMatch: true,
         },
       });
       return { ok: true, status: BankSmsIngestStatus.NO_MATCH, platformId };
@@ -397,6 +409,7 @@ async function tryAutoCreditDeposit(
         parsedJson,
         status: BankSmsIngestStatus.AUTO_CREDITED,
         matchedWalletRequestId: req.id,
+        semiVirtualDeviceMatch: true,
       },
     });
     return { ok: true, status: BankSmsIngestStatus.AUTO_CREDITED, platformId };

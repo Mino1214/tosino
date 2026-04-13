@@ -6,7 +6,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { UpdateSemiVirtualDto } from './dto/update-semi-virtual.dto';
-import { Prisma, SyncJobType, UserRole } from '@prisma/client';
+import {
+  BankSmsIngestStatus,
+  Prisma,
+  SyncJobType,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlatformDto } from './dto/create-platform.dto';
 import { UpdateIntegrationsDto } from './dto/update-integrations.dto';
@@ -470,19 +475,78 @@ export class PlatformsService {
     return this.getSemiVirtual(platformId, actor);
   }
 
-  async listBankSmsIngests(platformId: string, actor: JwtPayload) {
+  private bankSmsStatusLabelKo(status: BankSmsIngestStatus): string {
+    const m: Record<BankSmsIngestStatus, string> = {
+      RECEIVED: '수신(미처리)',
+      PARSE_ERROR: '본문 파싱 실패',
+      NO_PLATFORM: '플랫폼·힌트 불일치',
+      NO_MATCH: '입금 신청 없음/불일치',
+      AUTO_CREDITED: '자동 입금 완료',
+      IGNORE_WITHDRAWAL: '출금 문자(무시)',
+      DUPLICATE: '중복 문자',
+    };
+    return m[status] ?? status;
+  }
+
+  /** 콘솔용: 기기(등록 수신번호) 귀속 여부와 처리 결과를 한눈에 */
+  private bankSmsOutcomeCategory(
+    status: BankSmsIngestStatus,
+    deviceMatch: boolean,
+  ): string {
+    if (status === BankSmsIngestStatus.AUTO_CREDITED) {
+      return '자동입금';
+    }
+    if (status === BankSmsIngestStatus.NO_MATCH) {
+      return deviceMatch ? '기기수신_신청없음' : '기타';
+    }
+    if (status === BankSmsIngestStatus.PARSE_ERROR) {
+      return deviceMatch ? '기기수신_파싱실패' : '파싱실패';
+    }
+    if (status === BankSmsIngestStatus.NO_PLATFORM) {
+      return deviceMatch ? '기기수신_힌트불일치' : '미등록번호_미전달';
+    }
+    if (status === BankSmsIngestStatus.IGNORE_WITHDRAWAL) {
+      return '출금알림';
+    }
+    if (status === BankSmsIngestStatus.DUPLICATE) {
+      return '중복';
+    }
+    return '기타';
+  }
+
+  async listBankSmsIngests(
+    platformId: string,
+    actor: JwtPayload,
+    query?: { status?: string; deviceMatchOnly?: boolean },
+  ) {
     this.assertPlatformScope(actor, platformId);
     /** 플랫폼 미할당(PARSE_ERROR 등) 행은 슈퍼관리자만 같이 조회 (플랫폼 관리자는 소속 플랫폼만) */
-    const where =
+    const base: Prisma.BankSmsIngestWhereInput =
       actor.role === UserRole.SUPER_ADMIN
         ? { OR: [{ platformId }, { platformId: null }] }
         : { platformId };
-    return this.prisma.bankSmsIngest.findMany({
+
+    const filters: Prisma.BankSmsIngestWhereInput[] = [];
+    if (query?.status?.trim()) {
+      const st = query.status.trim() as BankSmsIngestStatus;
+      if (Object.values(BankSmsIngestStatus).includes(st)) {
+        filters.push({ status: st });
+      }
+    }
+    if (query?.deviceMatchOnly) {
+      filters.push({ semiVirtualDeviceMatch: true });
+    }
+
+    const where: Prisma.BankSmsIngestWhereInput =
+      filters.length === 0 ? base : { AND: [base, ...filters] };
+
+    const rows = await this.prisma.bankSmsIngest.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: 150,
+      take: 200,
       select: {
         id: true,
+        platformId: true,
         status: true,
         failureReason: true,
         sender: true,
@@ -490,9 +554,42 @@ export class PlatformsService {
         parsedJson: true,
         rawBody: true,
         matchedWalletRequestId: true,
+        semiVirtualDeviceMatch: true,
         createdAt: true,
       },
     });
+
+    return rows.map((r) => {
+      const cat = this.bankSmsOutcomeCategory(
+        r.status,
+        r.semiVirtualDeviceMatch,
+      );
+      const outcomeCategoryKo = this.bankSmsOutcomeCategoryKo(cat);
+      return {
+        ...r,
+        statusLabelKo: this.bankSmsStatusLabelKo(r.status),
+        outcomeCategory: cat,
+        outcomeCategoryKo,
+      };
+    });
+  }
+
+  private bankSmsOutcomeCategoryKo(cat: string): string {
+    const map: Record<string, string> = {
+      자동입금: '자동 입금 처리됨',
+      기기수신_신청없음:
+        '등록 기기로 수신 · 대기 입금 신청 없음 또는 정보 불일치',
+      기기수신_파싱실패: '등록 기기로 수신 · 본문 형식을 읽지 못함',
+      기기수신_힌트불일치:
+        '등록 기기로 수신 · 계좌 힌트/번호 조합이 설정과 맞지 않음',
+      미등록번호_미전달:
+        '수신번호가 앱에 전달되지 않았거나 반가상 미등록 번호',
+      파싱실패: '본문 파싱 실패',
+      출금알림: '출금 알림(자동 입금 처리 안 함)',
+      중복: '이미 처리된 동일 문자',
+      기타: '기타',
+    };
+    return map[cat] ?? cat;
   }
 
   async updateIntegrations(

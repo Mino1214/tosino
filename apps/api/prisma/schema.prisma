@@ -545,9 +545,12 @@ model BankSmsIngest {
   failureReason           String?
   matchedWalletRequestId  String?
   matchedWalletRequest    WalletRequest?       @relation(fields: [matchedWalletRequestId], references: [id], onDelete: SetNull)
+  /** 수신 단말 번호가 반가상 등록 수신번호와 일치해 이 플랫폼(기기)에 귀속된 경우 */
+  semiVirtualDeviceMatch  Boolean              @default(false)
   createdAt               DateTime             @default(now())
 
   @@index([platformId, createdAt])
+  @@index([platformId, semiVirtualDeviceMatch, createdAt])
 }
 
 /// 총판(MASTER_AGENT) → 플랫폼 관리자 1:1 문의

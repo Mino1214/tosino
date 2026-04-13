@@ -159,6 +159,12 @@ export default function SemiVirtualSettingsPage() {
             <strong className="text-zinc-500">번호 또는 힌트 중 하나 이상</strong>{" "}
             필수. 둘 다 넣으면 문자가 모두 만족할 때만 이 플랫폼으로 매칭됩니다.
           </p>
+          <p className="text-xs text-amber-200/80">
+            전달 앱(sms_forwarder 등)은 수신 서버에{" "}
+            <code className="text-amber-100/90">recipientPhone</code>(이 단말
+            번호)을 꼭 넣어 주세요. 없으면 콘솔에 &quot;등록 기기&quot;로
+            묶이지 않을 수 있습니다.
+          </p>
 
           <button
             type="submit"
