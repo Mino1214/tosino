@@ -3,6 +3,31 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getAccessToken } from "@/lib/api";
 
+const numberCls = "font-mono tabular-nums";
+
+function toFiniteNumber(value: string | number | null | undefined) {
+  const n = typeof value === "number" ? value : Number(value ?? NaN);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatKrw(value: string | number | null | undefined) {
+  const n = toFiniteNumber(value);
+  if (n == null) return "—";
+  return n.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+}
+
+function formatPoints(value: string | number | null | undefined) {
+  const n = toFiniteNumber(value);
+  if (n == null) return "—";
+  return n.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+}
+
+function formatPercent(value: number | null | undefined) {
+  const n = toFiniteNumber(value);
+  if (n == null) return "0";
+  return n.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+}
+
 export function ProfileWalletSection() {
   const [balance, setBalance] = useState<string | null>(null);
   const [points, setPoints] = useState<string | null>(null);
@@ -21,8 +46,8 @@ export function ProfileWalletSection() {
     load();
   }, [load]);
 
-  const b = balance ?? "—";
-  const p = points ?? "—";
+  const b = formatKrw(balance);
+  const p = formatPoints(points);
 
   return (
     <section className="py-6">
@@ -39,7 +64,7 @@ export function ProfileWalletSection() {
             <span className="text-[10px] uppercase tracking-widest text-zinc-500">
               MONEY
             </span>
-            <span className="font-mono text-lg font-bold tabular-nums text-main-gold sm:text-xl">
+            <span className={`${numberCls} text-lg font-bold text-main-gold sm:text-xl`}>
               {b}
             </span>
             <span className="text-[10px] text-zinc-500">원</span>
@@ -48,7 +73,7 @@ export function ProfileWalletSection() {
             <span className="text-[10px] uppercase tracking-widest text-zinc-500">
               POINT
             </span>
-            <span className="font-mono text-lg font-bold tabular-nums text-pink-400 sm:text-xl">
+            <span className={`${numberCls} text-lg font-bold text-pink-400 sm:text-xl`}>
               {p}
             </span>
             <span className="text-[10px] text-zinc-500">P</span>
@@ -79,10 +104,10 @@ export function RollingLiveSection() {
     }>("/me/rolling-summary").then(setData);
   }, []);
 
-  const rolling = data?.achievementPct ?? 0;
-  const req = data?.requiredTurnover ?? "0.00";
-  const app = data?.appliedTurnover ?? "0.00";
-  const rem = data?.remainingTurnover ?? "0.00";
+  const rolling = formatPercent(data?.achievementPct ?? 0);
+  const req = formatKrw(data?.requiredTurnover);
+  const app = formatKrw(data?.appliedTurnover);
+  const rem = formatKrw(data?.remainingTurnover);
   const en = data?.rollingEnabled ?? false;
 
   return (
@@ -95,7 +120,7 @@ export function RollingLiveSection() {
         </p>
         <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
           <span className="shrink-0 text-zinc-400">롤링 달성</span>
-          <span className="truncate text-right font-mono tabular-nums text-zinc-200">
+          <span className={`truncate text-right ${numberCls} text-zinc-200`}>
             {app} / {req}원 ({rolling}%)
           </span>
         </div>
@@ -117,7 +142,7 @@ export function RollingLiveSection() {
               className="flex min-w-0 items-center justify-between gap-2 border-b border-white/5 px-3 py-3 last:border-b-0 sm:px-4"
             >
               <span className="shrink-0 text-xs text-zinc-500">{label}</span>
-              <span className="truncate text-right font-mono text-sm text-zinc-200">
+              <span className={`truncate text-right ${numberCls} text-sm text-zinc-200`}>
                 {value}
               </span>
             </div>

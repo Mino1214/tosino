@@ -184,10 +184,6 @@ export function WalletPanel({
   }, []);
 
   const isAnonymousUser = profile?.signupMode === "anonymous";
-  const pendingCount = useMemo(
-    () => (requests ?? []).filter((item) => item.status === "PENDING").length,
-    [requests],
-  );
   const hasPayoutAccount = Boolean(
     profile?.bankCode && profile?.bankAccountNumber && profile?.bankAccountHolder,
   );
@@ -481,8 +477,8 @@ export function WalletPanel({
 
       {profile?.role === "USER" && (
         <>
-          <div className={`grid gap-4 ${isPage ? "mt-6" : "mt-1"} lg:grid-cols-3`}>
-            <div className={`${shellCardClass} lg:col-span-1`}>
+          <div className={isPage ? "mt-6" : "mt-1"}>
+            <div className={shellCardClass}>
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
                 보유 머니
               </p>
@@ -494,40 +490,6 @@ export function WalletPanel({
                 {isAnonymousUser
                   ? "무기명 회원은 테더 환율 기준으로 입출금이 처리됩니다."
                   : "일반 회원은 원화 입금과 원화 출금 계좌를 사용합니다."}
-              </p>
-            </div>
-
-            <div className={shellCardClass}>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                출금 수단
-              </p>
-              <p className="mt-3 text-lg font-semibold text-white">
-                {isAnonymousUser
-                  ? hasUsdtWallet
-                    ? "테더 지갑 등록 완료"
-                    : "테더 지갑 미등록"
-                  : hasPayoutAccount
-                    ? "원화 계좌 등록 완료"
-                    : "원화 계좌 미등록"}
-              </p>
-              <p className="mt-2 text-sm text-zinc-400">
-                {isAnonymousUser
-                  ? hasUsdtWallet
-                    ? profile.usdtWalletAddress
-                    : "테더 출금을 위해 TRC20 지갑 주소를 저장해주세요."
-                  : hasPayoutAccount
-                    ? `${getBankLabel(profile.bankCode)} · ${profile.bankAccountHolder}`
-                    : "은행명, 예금주, 계좌번호를 저장하면 바로 출금 신청할 수 있습니다."}
-              </p>
-            </div>
-
-            <div className={shellCardClass}>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
-                처리 대기
-              </p>
-              <p className="mt-3 text-lg font-semibold text-white">{pendingCount}건</p>
-              <p className="mt-2 text-sm text-zinc-400">
-                최근 신청 내역과 현재 처리 상태를 아래에서 한 번에 확인할 수 있습니다.
               </p>
             </div>
           </div>

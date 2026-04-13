@@ -249,7 +249,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
     <div className="mx-auto max-w-md">
       <div className="mb-5 flex items-center justify-between">
         <p className="text-sm text-zinc-500">
-          가입코드 확인 후 회원 정보를 입력해 주세요
+          코드 확인 후 정보를 입력해 주세요
         </p>
         {onRequestLogin ? (
           <button
