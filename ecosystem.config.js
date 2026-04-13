@@ -3,6 +3,8 @@ const path = require('path');
 const ROOT = __dirname;
 const API_ROOT = path.join(ROOT, 'apps', 'api');
 const API_ENTRY = path.join(API_ROOT, 'dist', 'src', 'main.js');
+const SMS_INGEST_ROOT = path.join(ROOT, 'apps', 'sms-ingest');
+const SMS_INGEST_ENTRY = path.join(SMS_INGEST_ROOT, 'dist', 'index.js');
 /** pnpm PATH 없이도 동작하도록 node 로 직접 실행 (502 방지) */
 const SERVE_CLI = path.join(ROOT, 'node_modules', 'serve', 'build', 'main.js');
 
@@ -31,6 +33,17 @@ module.exports = {
       /** 확장자 없는 경로(dist/src/main)는 PM2/일부 환경에서 엔트리 인식 실패 가능 → main.js 고정 */
       script: API_ENTRY,
       cwd: API_ROOT,
+      interpreter: 'node',
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 3000,
+      env: { NODE_ENV: 'production' },
+    },
+    {
+      name: 'sms-ingest',
+      /** POST /webhook/sms — apps/sms-ingest/.env (DATABASE_URL, SMS_INGEST_PORT, SMS_INGEST_SECRET) */
+      script: SMS_INGEST_ENTRY,
+      cwd: SMS_INGEST_ROOT,
       interpreter: 'node',
       autorestart: true,
       max_restarts: 10,
