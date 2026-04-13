@@ -35,13 +35,13 @@ const NAV = [
   },
   {
     href: "/console/operational",
-    label: "운영·한도",
-    hint: "롤링·최소입출금·포인트 규칙",
+    label: "운영 설정",
+    hint: "입출금 한도 · 롤링 · 포인트",
   },
   {
     href: "/console/deposit-events",
-    label: "충전 이벤트",
-    hint: "첫충·기간 한정 JSON",
+    label: "입금 이벤트",
+    hint: "첫충 · 기간한정 · 보너스 구간",
   },
   {
     href: "/console/announcements",

@@ -303,17 +303,34 @@ async function tryAutoCreditDeposit(
             id: true,
             role: true,
             registrationStatus: true,
+            displayName: true,
+            bankAccountHolder: true,
           },
         },
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    const viable = candidates.filter(
+    const eligibleByUser = candidates.filter(
       (r) =>
         r.user.role === UserRole.USER &&
-        r.user.registrationStatus === RegistrationStatus.APPROVED &&
-        namesMatchSms(parsed.counterpartyName, r.depositorName, r.note),
+        r.user.registrationStatus === RegistrationStatus.APPROVED,
+    );
+
+    const viable = candidates.filter(
+      (r) =>
+        eligibleByUser.includes(r) &&
+        (
+          namesMatchSms(parsed.counterpartyName, r.depositorName, r.note) ||
+          (
+            !r.depositorName &&
+            !r.note &&
+            (
+              namesMatchSms(parsed.counterpartyName, r.user.bankAccountHolder, null) ||
+              namesMatchSms(parsed.counterpartyName, r.user.displayName, null)
+            )
+          )
+        ),
     );
 
     const parsedJson = {
@@ -324,6 +341,29 @@ async function tryAutoCreditDeposit(
     };
 
     if (viable.length === 0) {
+      const smsName = parsed.counterpartyName.trim();
+      const matchedAmount = eligibleByUser;
+      const expectedNames = Array.from(
+        new Set(
+          matchedAmount
+            .flatMap((r) => [
+              r.depositorName?.trim() || null,
+              r.note?.trim() || null,
+              r.user.bankAccountHolder?.trim() || null,
+              r.user.displayName?.trim() || null,
+            ])
+            .filter((v): v is string => !!v),
+        ),
+      ).slice(0, 5);
+      const parsedSummary = smsName
+        ? `문자 해석값: ${parsed.amount.toLocaleString('ko-KR')}원 / ${smsName}`
+        : `문자 해석값: ${parsed.amount.toLocaleString('ko-KR')}원`;
+      const failureReason =
+        matchedAmount.length === 0
+          ? `[기기 수신 완료] ${parsedSummary} · 같은 금액의 대기 충전 신청이 없습니다`
+          : expectedNames.length > 0
+            ? `[기기 수신 완료] ${parsedSummary} · 같은 금액 대기 신청 ${matchedAmount.length}건은 있으나 이름이 다릅니다 (기대값: ${expectedNames.join(', ')})`
+            : `[기기 수신 완료] ${parsedSummary} · 같은 금액 대기 신청 ${matchedAmount.length}건은 있으나 입금자명/메모가 비어 있어 이름 비교를 통과하지 못했습니다`;
       await tx.bankSmsIngest.create({
         data: {
           platformId,
@@ -333,8 +373,7 @@ async function tryAutoCreditDeposit(
           recipientPhoneSnapshot: meta.recipientPhoneSnapshot,
           parsedJson,
           status: BankSmsIngestStatus.NO_MATCH,
-          failureReason:
-            '[기기 수신 완료] 대기 중인 입금 신청이 없거나 금액·입금자명이 일치하지 않음 (depositorName/메모 확인)',
+          failureReason,
           semiVirtualDeviceMatch: true,
         },
       });

@@ -19,6 +19,17 @@ type Detail = {
   pointRulesJson: unknown;
 };
 
+const POINT_RULE_KEYS = [
+  "attendDailyPoints",
+  "attendStreakDays",
+  "attendStreakBonusPoints",
+  "loseBetPointsPerStake",
+  "referrerFirstBetFlat",
+  "referrerFirstBetPct",
+  "redeemKrwPerPoint",
+  "redeemUsdtPerPoint",
+] as const;
+
 export default function ConsoleOperationalPage() {
   const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
@@ -27,6 +38,10 @@ export default function ConsoleOperationalPage() {
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function patchRow<K extends keyof Detail>(key: K, value: Detail[K]) {
+    setRow((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
 
   const load = useCallback(() => {
     if (!selectedPlatformId) return Promise.resolve();
@@ -119,12 +134,12 @@ export default function ConsoleOperationalPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">운영 · 롤링 · 한도</h1>
+        <h1 className="text-2xl font-semibold text-zinc-100">운영 설정</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          최소 입출금(원/USDT), 포인트 교환, 롤링 출금 잠금, 총판 롤링 편집 권한,
-          포인트 규칙 JSON(attendDailyPoints, redeemKrwPerPoint 등).
+          입출금 한도, 롤링 정책, 포인트 전환 규칙을 각각 분리해서 관리합니다.
+          기존처럼 한 화면에 모여 있어도 역할이 겹치지 않도록 구역을 나눠 두었습니다.
         </p>
       </div>
       {err && (
@@ -138,15 +153,123 @@ export default function ConsoleOperationalPage() {
         </p>
       )}
 
-      <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <h2 className="text-sm font-semibold text-zinc-200">롤링 출금 잠금</h2>
+      <section className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-400/80">
+            입출금 한도
+          </p>
+          <p className="mt-3 text-sm text-zinc-300">
+            입금 최소 KRW {row.minDepositKrw ?? "제한 없음"}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            출금 최소 KRW {row.minWithdrawKrw ?? "제한 없음"}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            USDT 입/출금 {row.minDepositUsdt ?? "무제한"} /{" "}
+            {row.minWithdrawUsdt ?? "무제한"}
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+            롤링 정책
+          </p>
+          <p className="mt-3 text-sm text-zinc-300">
+            출금 잠금 {row.rollingLockWithdrawals ? "사용" : "사용 안 함"}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            턴오버 배수 {row.rollingTurnoverMultiplier}배
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            총판 편집 {row.agentCanEditMemberRolling ? "허용" : "차단"}
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+            포인트 전환
+          </p>
+          <p className="mt-3 text-sm text-zinc-300">
+            최소 포인트 {row.minPointRedeemPoints ?? "제한 없음"}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            KRW 지급 최소 {row.minPointRedeemKrw ?? "제한 없음"}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            USDT 지급 최소 {row.minPointRedeemUsdt ?? "제한 없음"}
+          </p>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-100">입출금 한도</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            회원 지갑에서 직접 쓰이는 최소 입금/출금 금액입니다. 포인트 전환, 롤링과는 별도입니다.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
+            <h3 className="text-sm font-medium text-zinc-200">입금 최소 금액</h3>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["minDepositKrw", "원화 입금", "비우면 제한 없음"],
+                  ["minDepositUsdt", "USDT 입금", "비우면 제한 없음"],
+                ] as const
+              ).map(([key, label, placeholder]) => (
+                <div key={key}>
+                  <label className="text-xs text-zinc-500">{label}</label>
+                  <input
+                    type="text"
+                    value={row[key] ?? ""}
+                    onChange={(e) =>
+                      patchRow(key, (e.target.value.trim() || null) as Detail[typeof key])
+                    }
+                    placeholder={placeholder}
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
+            <h3 className="text-sm font-medium text-zinc-200">출금 최소 금액</h3>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["minWithdrawKrw", "원화 출금", "비우면 제한 없음"],
+                  ["minWithdrawUsdt", "USDT 출금", "비우면 제한 없음"],
+                ] as const
+              ).map(([key, label, placeholder]) => (
+                <div key={key}>
+                  <label className="text-xs text-zinc-500">{label}</label>
+                  <input
+                    type="text"
+                    value={row[key] ?? ""}
+                    onChange={(e) =>
+                      patchRow(key, (e.target.value.trim() || null) as Detail[typeof key])
+                    }
+                    placeholder={placeholder}
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-100">롤링 정책</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            입금 후 턴오버 조건을 어떻게 적용할지 정하는 영역입니다. 운영 한도나 포인트 교환과는 별개로 동작합니다.
+          </p>
+        </div>
         <label className="flex items-center gap-2 text-sm text-zinc-400">
           <input
             type="checkbox"
             checked={row.rollingLockWithdrawals}
-            onChange={(e) =>
-              setRow({ ...row, rollingLockWithdrawals: e.target.checked })
-            }
+            onChange={(e) => patchRow("rollingLockWithdrawals", e.target.checked)}
           />
           rollingEnabled 회원 입금 시 롤링 의무 생성 · 미달 시 출금 차단
         </label>
@@ -154,9 +277,7 @@ export default function ConsoleOperationalPage() {
           <input
             type="checkbox"
             checked={row.agentCanEditMemberRolling}
-            onChange={(e) =>
-              setRow({ ...row, agentCanEditMemberRolling: e.target.checked })
-            }
+            onChange={(e) => patchRow("agentCanEditMemberRolling", e.target.checked)}
           />
           총판이 하위 회원 롤링 % 편집 허용
         </label>
@@ -165,93 +286,86 @@ export default function ConsoleOperationalPage() {
           <input
             type="text"
             value={row.rollingTurnoverMultiplier}
-            onChange={(e) =>
-              setRow({ ...row, rollingTurnoverMultiplier: e.target.value })
-            }
+            onChange={(e) => patchRow("rollingTurnoverMultiplier", e.target.value)}
             className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
           />
         </div>
       </section>
 
-      <section className="grid gap-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 sm:grid-cols-2">
-        {(
-          [
-            ["minDepositKrw", "최소 입금 KRW", "minDepositKrw"],
-            ["minDepositUsdt", "최소 입금 USDT", "minDepositUsdt"],
-            ["minWithdrawKrw", "최소 출금 KRW", "minWithdrawKrw"],
-            ["minWithdrawUsdt", "최소 출금 USDT", "minWithdrawUsdt"],
-          ] as const
-        ).map(([key, label, rk]) => (
-          <div key={key}>
-            <label className="text-xs text-zinc-500">{label}</label>
+      <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-100">포인트 전환 설정</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            포인트를 KRW/USDT로 바꿀 때 필요한 최소 조건입니다. 적립 규칙 JSON은 아래 고급 설정에서 별도로 관리합니다.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <label className="text-xs text-zinc-500">최소 교환 포인트</label>
             <input
-              type="text"
-              value={row[rk] ?? ""}
+              type="number"
+              value={row.minPointRedeemPoints ?? ""}
               onChange={(e) =>
-                setRow({
-                  ...row,
-                  [rk]: e.target.value.trim() || null,
-                })
+                patchRow(
+                  "minPointRedeemPoints",
+                  (e.target.value ? Number(e.target.value) : null) as Detail["minPointRedeemPoints"],
+                )
               }
               placeholder="비우면 제한 없음"
               className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
             />
           </div>
-        ))}
-        <div>
-          <label className="text-xs text-zinc-500">최소 교환 포인트</label>
-          <input
-            type="number"
-            value={row.minPointRedeemPoints ?? ""}
-            onChange={(e) =>
-              setRow({
-                ...row,
-                minPointRedeemPoints: e.target.value
-                  ? Number(e.target.value)
-                  : null,
-              })
-            }
-            placeholder="비우면 제한 없음"
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-zinc-500">최소 교환 금액 KRW (지급)</label>
-          <input
-            type="text"
-            value={row.minPointRedeemKrw ?? ""}
-            onChange={(e) =>
-              setRow({
-                ...row,
-                minPointRedeemKrw: e.target.value.trim() || null,
-              })
-            }
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-zinc-500">최소 교환 금액 USDT (지급)</label>
-          <input
-            type="text"
-            value={row.minPointRedeemUsdt ?? ""}
-            onChange={(e) =>
-              setRow({
-                ...row,
-                minPointRedeemUsdt: e.target.value.trim() || null,
-              })
-            }
-            className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-          />
+          <div>
+            <label className="text-xs text-zinc-500">최소 교환 금액 KRW (지급)</label>
+            <input
+              type="text"
+              value={row.minPointRedeemKrw ?? ""}
+              onChange={(e) =>
+                patchRow(
+                  "minPointRedeemKrw",
+                  (e.target.value.trim() || null) as Detail["minPointRedeemKrw"],
+                )
+              }
+              placeholder="비우면 제한 없음"
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-500">최소 교환 금액 USDT (지급)</label>
+            <input
+              type="text"
+              value={row.minPointRedeemUsdt ?? ""}
+              onChange={(e) =>
+                patchRow(
+                  "minPointRedeemUsdt",
+                  (e.target.value.trim() || null) as Detail["minPointRedeemUsdt"],
+                )
+              }
+              placeholder="비우면 제한 없음"
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            />
+          </div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <h2 className="text-sm font-semibold text-zinc-200">pointRulesJson</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          예: attendDailyPoints, attendStreakDays, attendStreakBonusPoints,
-          loseBetPointsPerStake, referrerFirstBetFlat, referrerFirstBetPct,
-          redeemKrwPerPoint, redeemUsdtPerPoint
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <h2 className="text-base font-semibold text-zinc-100">
+          포인트 적립 규칙 JSON
+          <span className="ml-2 text-xs font-normal text-zinc-500">고급 설정</span>
+        </h2>
+        <p className="mt-1 text-sm text-zinc-500">
+          출석, 낙첨, 추천인, 포인트 환율 같은 세부 규칙입니다. 위의 “포인트 전환 설정”과는 다르게 적립/환율 로직을 다룹니다.
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {POINT_RULE_KEYS.map((key) => (
+            <span
+              key={key}
+              className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-400"
+            >
+              {key}
+            </span>
+          ))}
+        </div>
         <textarea
           value={rulesText}
           onChange={(e) => setRulesText(e.target.value)}
