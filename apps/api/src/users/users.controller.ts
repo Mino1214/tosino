@@ -21,6 +21,7 @@ import { UpdateUserMemoDto } from './dto/update-user-memo.dto';
 import { UpdateAgentCommissionDto } from './dto/update-agent-commission.dto';
 import { UpdateMasterPrivateMemoDto } from './dto/update-master-private-memo.dto';
 import { UpdateUplinePrivateMemoDto } from './dto/update-upline-private-memo.dto';
+import { UpdateReferralCodeDto } from './dto/update-referral-code.dto';
 
 @Controller('platforms/:platformId/users')
 @UseGuards(AuthGuard('jwt'), RolesGuard, PlatformScopeGuard)
@@ -28,11 +29,7 @@ export class UsersController {
   constructor(private users: UsersService) {}
 
   @Get()
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.PLATFORM_ADMIN,
-    UserRole.MASTER_AGENT,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
   list(
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
@@ -41,23 +38,14 @@ export class UsersController {
   }
 
   @Patch(':userId/agent-memo')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.PLATFORM_ADMIN,
-    UserRole.MASTER_AGENT,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
   patchAgentMemo(
     @Param('platformId') platformId: string,
     @Param('userId') userId: string,
     @Body() dto: UpdateAgentMemoDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.users.updateAgentMemo(
-      platformId,
-      userId,
-      dto.agentMemo,
-      user,
-    );
+    return this.users.updateAgentMemo(platformId, userId, dto.agentMemo, user);
   }
 
   @Patch(':userId/master-private-memo')
@@ -77,11 +65,7 @@ export class UsersController {
   }
 
   @Patch(':userId/upline-private-memo')
-  @Roles(
-    UserRole.SUPER_ADMIN,
-    UserRole.PLATFORM_ADMIN,
-    UserRole.MASTER_AGENT,
-  )
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
   patchUplinePrivateMemo(
     @Param('platformId') platformId: string,
     @Param('userId') userId: string,
@@ -120,6 +104,32 @@ export class UsersController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.users.create(platformId, dto, user);
+  }
+
+  @Get(':userId/overview')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
+  overview(
+    @Param('platformId') platformId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.users.getUserOverview(platformId, userId, user);
+  }
+
+  @Patch(':userId/referral-code')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  patchReferralCode(
+    @Param('platformId') platformId: string,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateReferralCodeDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.users.updateReferralCode(
+      platformId,
+      userId,
+      dto.referralCode,
+      user,
+    );
   }
 
   @Patch(':userId/agent-commission')

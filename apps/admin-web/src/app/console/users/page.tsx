@@ -36,6 +36,97 @@ type Row = {
   effectiveAgentSharePct?: number | null;
 };
 
+type OverviewData = {
+  user: {
+    id: string;
+    loginId?: string | null;
+    email?: string | null;
+    role: string;
+    displayName: string | null;
+    signupMode?: string | null;
+    signupReferralInput?: string | null;
+    registrationStatus?: string | null;
+    createdAt: string;
+    referredBy?: {
+      id: string;
+      loginId?: string | null;
+      displayName?: string | null;
+      email?: string | null;
+    } | null;
+    parent?: {
+      id: string;
+      loginId?: string | null;
+      displayName?: string | null;
+      email?: string | null;
+      referralCode?: string | null;
+    } | null;
+    bankCode?: string | null;
+    bankAccountNumber?: string | null;
+    bankAccountHolder?: string | null;
+    usdtWalletAddress?: string | null;
+    rollingEnabled: boolean;
+    rollingSportsDomesticPct?: string | null;
+    rollingSportsOverseasPct?: string | null;
+    rollingCasinoPct?: string | null;
+    rollingSlotPct?: string | null;
+    rollingMinigamePct?: string | null;
+  };
+  wallet: {
+    balance: string;
+    pointBalance: string;
+    withdrawCurrency: "KRW" | "USDT";
+    withdrawBlocked: boolean;
+    withdrawableKrw: string;
+    withdrawableUsdt: string;
+  };
+  rolling: {
+    lockWithdrawals: boolean;
+    turnoverMultiplier: string;
+    requiredTurnover: string;
+    appliedTurnover: string;
+    remainingTurnover: string;
+    achievementPct: number;
+    openCount: number;
+    obligations: {
+      id: string;
+      sourceRef: string;
+      principalAmount: string;
+      requiredTurnover: string;
+      appliedTurnover: string;
+      createdAt: string;
+    }[];
+  };
+  pointExchange: {
+    minPointRedeemPoints: number | null;
+    minPointRedeemKrw: string | null;
+    minPointRedeemUsdt: string | null;
+    redeemKrwPerPoint: string | null;
+    redeemUsdtPerPoint: string | null;
+    redeemableKrw: string | null;
+    redeemableUsdt: string | null;
+  };
+  recentWalletRequests: {
+    id: string;
+    type: string;
+    amount: string;
+    currency: string;
+    status: string;
+    depositorName: string | null;
+    note: string | null;
+    resolverNote: string | null;
+    createdAt: string;
+    resolvedAt: string | null;
+  }[];
+  recentSemiVirtualLogs: {
+    id: string;
+    status: string;
+    failureReason: string | null;
+    recipientPhoneSnapshot: string | null;
+    rawBody: string;
+    createdAt: string;
+  }[];
+};
+
 type Tab = "masters" | "users";
 
 function rowLoginLabel(r: Pick<Row, "loginId" | "email">): string {
@@ -45,6 +136,35 @@ function rowLoginLabel(r: Pick<Row, "loginId" | "email">): string {
 
 function signupModeLabel(mode: string | null | undefined): string {
   return mode === "anonymous" ? "무기명" : "일반";
+}
+
+function formatKrw(v: string | number | null | undefined): string {
+  const num = Number(v ?? 0);
+  return Number.isFinite(num) ? num.toLocaleString("ko-KR") : "0";
+}
+
+function formatUsdt(v: string | number | null | undefined): string {
+  const num = Number(v ?? 0);
+  return Number.isFinite(num)
+    ? num.toLocaleString("en-US", { maximumFractionDigits: 6 })
+    : "0";
+}
+
+function walletRequestLabel(type: string, currency: string): string {
+  if (type === "DEPOSIT") return currency === "USDT" ? "테더 입금" : "원화 입금";
+  return currency === "USDT" ? "테더 출금" : "원화 출금";
+}
+
+function walletRequestStatusLabel(status: string): string {
+  if (status === "APPROVED") return "승인";
+  if (status === "REJECTED") return "거절";
+  return "대기";
+}
+
+function walletRequestStatusTone(status: string): string {
+  if (status === "APPROVED") return "text-emerald-300";
+  if (status === "REJECTED") return "text-rose-300";
+  return "text-amber-300";
 }
 
 function canEditAgentMemo(
@@ -106,6 +226,14 @@ export default function ConsoleUsersPage() {
   const [commissionSplitDraft, setCommissionSplitDraft] = useState("");
   const [commissionSaving, setCommissionSaving] = useState(false);
   const [commissionErr, setCommissionErr] = useState<string | null>(null);
+  const [overviewUser, setOverviewUser] = useState<Row | null>(null);
+  const [overviewData, setOverviewData] = useState<OverviewData | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewErr, setOverviewErr] = useState<string | null>(null);
+  const [referralCodeUser, setReferralCodeUser] = useState<Row | null>(null);
+  const [referralCodeDraft, setReferralCodeDraft] = useState("");
+  const [referralCodeSaving, setReferralCodeSaving] = useState(false);
+  const [referralCodeErr, setReferralCodeErr] = useState<string | null>(null);
   const [rateHist, setRateHist] = useState<{
     kind: "commission" | "rolling";
     row: Row;
@@ -209,6 +337,24 @@ export default function ConsoleUsersPage() {
       .finally(() => setRateHistLoading(false));
   }, [rateHist, selectedPlatformId]);
 
+  useEffect(() => {
+    if (!overviewUser || !selectedPlatformId) {
+      setOverviewData(null);
+      setOverviewErr(null);
+      return;
+    }
+    setOverviewLoading(true);
+    setOverviewErr(null);
+    apiFetch<OverviewData>(
+      `/platforms/${selectedPlatformId}/users/${overviewUser.id}/overview`,
+    )
+      .then(setOverviewData)
+      .catch((e) =>
+        setOverviewErr(e instanceof Error ? e.message : "상세 조회 실패"),
+      )
+      .finally(() => setOverviewLoading(false));
+  }, [overviewUser, selectedPlatformId]);
+
   const byId = useMemo(() => {
     const m = new Map<string, Row>();
     if (!rows) return m;
@@ -262,6 +408,18 @@ export default function ConsoleUsersPage() {
     setMemoErr(null);
   }
 
+  function openOverview(u: Row) {
+    setOverviewUser(u);
+    setOverviewData(null);
+    setOverviewErr(null);
+  }
+
+  function openReferralCodeEditor(u: Row) {
+    setReferralCodeUser(u);
+    setReferralCodeDraft(u.referralCode ?? "");
+    setReferralCodeErr(null);
+  }
+
   async function saveMemos() {
     if (!memoUser || !selectedPlatformId) return;
     const viewer = getStoredUser();
@@ -301,6 +459,31 @@ export default function ConsoleUsersPage() {
       setMemoErr(e instanceof Error ? e.message : "저장 실패");
     } finally {
       setMemoSaving(false);
+    }
+  }
+
+  async function saveReferralCode() {
+    if (!referralCodeUser || !selectedPlatformId) return;
+    setReferralCodeSaving(true);
+    setReferralCodeErr(null);
+    try {
+      await apiFetch(
+        `/platforms/${selectedPlatformId}/users/${referralCodeUser.id}/referral-code`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            referralCode: referralCodeDraft,
+          }),
+        },
+      );
+      setReferralCodeUser(null);
+      await load();
+    } catch (e) {
+      setReferralCodeErr(
+        e instanceof Error ? e.message : "마스터 코드 저장에 실패했습니다.",
+      );
+    } finally {
+      setReferralCodeSaving(false);
     }
   }
 
@@ -588,7 +771,7 @@ export default function ConsoleUsersPage() {
           {role === "MASTER_AGENT" && (
             <>
               <label className="text-xs text-zinc-400">
-                추천코드(선택)
+                마스터 코드(선택)
                 <input
                   value={referralCode}
                   onChange={(e) =>
@@ -650,6 +833,10 @@ export default function ConsoleUsersPage() {
           >
             추가
           </button>
+          <p className="w-full text-xs text-zinc-500">
+            공통 가입코드는 운영설정에서, 마스터 코드는 여기서, 추천인 아이디는
+            해당 회원의 로그인 아이디 그대로 회원가입 화면에서 사용됩니다.
+          </p>
         </form>
       )}
 
@@ -665,7 +852,7 @@ export default function ConsoleUsersPage() {
                   <th className="px-4 py-2">플랫폼%</th>
                   <th className="px-4 py-2">분배%</th>
                   <th className="px-4 py-2">실효%</th>
-                  <th className="px-4 py-2">추천코드</th>
+                  <th className="px-4 py-2">마스터 코드</th>
                   <th className="px-4 py-2">하위</th>
                   <th className="px-4 py-2">가입일</th>
                   <th className="px-4 py-2">메모</th>
@@ -731,8 +918,22 @@ export default function ConsoleUsersPage() {
                             ? r.effectiveAgentSharePct
                             : "—"}
                         </td>
-                        <td className="px-4 py-2 font-mono text-xs text-amber-200/80">
-                          {r.referralCode ?? "—"}
+                        <td
+                          className="px-4 py-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <p className="font-mono text-xs text-amber-200/80">
+                            {r.referralCode ?? "—"}
+                          </p>
+                          {canCreate && (
+                            <button
+                              type="button"
+                              onClick={() => openReferralCodeEditor(r)}
+                              className="mt-1 text-[11px] text-amber-400/90 hover:text-amber-300 hover:underline"
+                            >
+                              코드 수정
+                            </button>
+                          )}
                         </td>
                         <td className="px-4 py-2 text-zinc-300">
                           <span className="font-mono">{n}</span>명
@@ -799,6 +1000,10 @@ export default function ConsoleUsersPage() {
             행을 누르면 해당 총판 소속 일반 유저만 아래에 표시합니다. 다시 누르면
             닫힙니다. 메모는 본인·총판·플랫폼 권한에 따라 다릅니다.
           </p>
+          <p className="text-xs text-zinc-500">
+            공통 가입코드는 운영 설정에서 연결하고, 각 총판의 개별 마스터 코드는
+            이 표의 코드 수정 버튼으로 관리합니다.
+          </p>
           <p className="text-xs text-zinc-600">
             다단계 요율: 최상위는 플랫폼 부여 %, 하위 총판은 상위 대비 분배 %만
             저장합니다. 실효 % = (상위 실효) × (분배) ÷ 100. 예) A-1 실효 40%,
@@ -844,7 +1049,8 @@ export default function ConsoleUsersPage() {
                       {childrenOfSelected.map((u) => (
                         <tr
                           key={u.id}
-                          className="border-b border-zinc-800/80"
+                          className="cursor-pointer border-b border-zinc-800/80 hover:bg-zinc-900/40"
+                          onClick={() => openOverview(u)}
                         >
                           <td className="px-3 py-2 text-zinc-200">
                             {rowLoginLabel(u)}
@@ -864,7 +1070,10 @@ export default function ConsoleUsersPage() {
                           <td className="px-3 py-2 text-xs text-zinc-500">
                             {new Date(u.createdAt).toLocaleDateString()}
                           </td>
-                          <td className="px-3 py-2">
+                          <td
+                            className="px-3 py-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <button
                               type="button"
                               onClick={() => openMemo(u)}
@@ -875,7 +1084,10 @@ export default function ConsoleUsersPage() {
                             </button>
                           </td>
                           {canCreate && (
-                            <td className="px-3 py-2">
+                            <td
+                              className="px-3 py-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <button
                                 type="button"
                                 onClick={() =>
@@ -937,7 +1149,8 @@ export default function ConsoleUsersPage() {
                     return (
                       <tr
                         key={r.id}
-                        className="border-b border-zinc-800/80 hover:bg-zinc-900/40"
+                        className="cursor-pointer border-b border-zinc-800/80 hover:bg-zinc-900/40"
+                        onClick={() => openOverview(r)}
                       >
                         <td className="px-4 py-2 text-zinc-200">
                           {rowLoginLabel(r)}
@@ -966,7 +1179,10 @@ export default function ConsoleUsersPage() {
                         <td className="max-w-[220px] truncate px-4 py-2 text-xs text-emerald-300/80">
                           {r.signupMode === "anonymous" ? r.usdtWalletAddress ?? "—" : "—"}
                         </td>
-                        <td className="px-4 py-2 text-zinc-400">
+                        <td
+                          className="px-4 py-2 text-zinc-400"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {parent ? (
                             <button
                               type="button"
@@ -985,7 +1201,10 @@ export default function ConsoleUsersPage() {
                         <td className="px-4 py-2 text-xs text-zinc-500">
                           {new Date(r.createdAt).toLocaleDateString()}
                         </td>
-                        <td className="px-4 py-2">
+                        <td
+                          className="px-4 py-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <button
                             type="button"
                             onClick={() => openMemo(r)}
@@ -996,7 +1215,10 @@ export default function ConsoleUsersPage() {
                           </button>
                         </td>
                         {canCreate && (
-                          <td className="px-4 py-2">
+                          <td
+                            className="px-4 py-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <button
                               type="button"
                               onClick={() =>
@@ -1017,6 +1239,10 @@ export default function ConsoleUsersPage() {
           </div>
           <p className="text-xs text-zinc-500">
             소속 총판 이름을 누르면 총판 탭으로 이동해 해당 총판·하위 목록을 엽니다.
+          </p>
+          <p className="text-xs text-zinc-500">
+            일반 유저 행을 누르면 현재 출금 가능액, 롤링 진행률, 포인트 환산,
+            최근 입출금까지 상세하게 볼 수 있습니다.
           </p>
         </div>
       )}
@@ -1049,6 +1275,424 @@ export default function ConsoleUsersPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {overviewUser && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-100">
+                  유저 상세 상황판
+                </h2>
+                <p className="mt-1 font-mono text-xs text-zinc-500">
+                  {rowLoginLabel(overviewUser)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOverviewUser(null)}
+                className="rounded p-1 text-zinc-500 hover:bg-zinc-800"
+                aria-label="닫기"
+              >
+                ✕
+              </button>
+            </div>
+
+            {overviewErr && (
+              <p className="mt-4 rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+                {overviewErr}
+              </p>
+            )}
+
+            {overviewLoading ? (
+              <p className="mt-4 text-sm text-zinc-500">불러오는 중…</p>
+            ) : overviewData ? (
+              <>
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      현재 잔액
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-main-gold">
+                      {formatKrw(overviewData.wallet.balance)}
+                      <span className="ml-1 text-sm text-zinc-500">KRW</span>
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      현재 출금 가능
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-zinc-100">
+                      {overviewData.wallet.withdrawCurrency === "USDT"
+                        ? `${formatUsdt(overviewData.wallet.withdrawableUsdt)} USDT`
+                        : `${formatKrw(overviewData.wallet.withdrawableKrw)}원`}
+                    </p>
+                    <p
+                      className={`mt-2 text-xs ${
+                        overviewData.wallet.withdrawBlocked
+                          ? "text-rose-300"
+                          : "text-emerald-300"
+                      }`}
+                    >
+                      {overviewData.wallet.withdrawBlocked
+                        ? "미충족 롤링이 있어 지금은 출금이 잠겨 있습니다."
+                        : "현재 로직 기준으로 바로 출금 신청 가능한 상태입니다."}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      롤링 진행률
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-cyan-200">
+                      {overviewData.rolling.achievementPct}%
+                    </p>
+                    <p className="mt-2 text-xs text-zinc-500">
+                      적용 {formatKrw(overviewData.rolling.appliedTurnover)} / 요구{" "}
+                      {formatKrw(overviewData.rolling.requiredTurnover)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      포인트 잔액
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-emerald-200">
+                      {formatKrw(overviewData.wallet.pointBalance)} P
+                    </p>
+                    <p className="mt-2 text-xs text-zinc-500">
+                      KRW 환산 {overviewData.pointExchange.redeemableKrw
+                        ? `${formatKrw(overviewData.pointExchange.redeemableKrw)}원`
+                        : "미설정"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <h3 className="text-sm font-semibold text-zinc-100">
+                      가입 · 출금 정보
+                    </h3>
+                    <div className="mt-3 grid gap-3 text-sm text-zinc-400 sm:grid-cols-2">
+                      <div>
+                        <p className="text-zinc-500">가입유형</p>
+                        <p className="mt-1 text-zinc-200">
+                          {signupModeLabel(overviewData.user.signupMode)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">가입상태</p>
+                        <p className="mt-1 text-zinc-200">
+                          {registrationStatusLabelKo(
+                            overviewData.user.registrationStatus,
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">가입 입력값</p>
+                        <p className="mt-1 font-mono text-zinc-200">
+                          {overviewData.user.signupReferralInput ?? "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">추천인</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.user.referredBy?.displayName ||
+                            overviewData.user.referredBy?.loginId ||
+                            "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">소속 마스터</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.user.parent?.displayName ||
+                            overviewData.user.parent?.loginId ||
+                            "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">마스터 코드</p>
+                        <p className="mt-1 font-mono text-zinc-200">
+                          {overviewData.user.parent?.referralCode ?? "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-zinc-800 bg-black/20 p-4 text-sm">
+                      <p className="text-zinc-500">현재 출금 수단</p>
+                      {overviewData.user.signupMode === "anonymous" ? (
+                        <p className="mt-1 break-all font-mono text-emerald-200">
+                          {overviewData.user.usdtWalletAddress ?? "지갑 미등록"}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.user.bankAccountHolder &&
+                          overviewData.user.bankAccountNumber
+                            ? `${overviewData.user.bankAccountHolder} · ${overviewData.user.bankAccountNumber}`
+                            : "원화 계좌 미등록"}
+                        </p>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <h3 className="text-sm font-semibold text-zinc-100">
+                      롤링 상태
+                    </h3>
+                    <div className="mt-3 rounded-full bg-zinc-800">
+                      <div
+                        className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-teal-400"
+                        style={{
+                          width: `${Math.max(
+                            0,
+                            Math.min(100, overviewData.rolling.achievementPct),
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="mt-3 grid gap-3 text-sm text-zinc-400 sm:grid-cols-2">
+                      <div>
+                        <p className="text-zinc-500">출금 잠금</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.rolling.lockWithdrawals ? "사용" : "사용 안 함"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">턴오버 배수</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.rolling.turnoverMultiplier}배
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">남은 롤링</p>
+                        <p className="mt-1 text-zinc-200">
+                          {formatKrw(overviewData.rolling.remainingTurnover)}원
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">열린 의무</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.rolling.openCount}건
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-2 text-xs text-zinc-400 sm:grid-cols-5">
+                      {[
+                        ["국내", overviewData.user.rollingSportsDomesticPct],
+                        ["해외", overviewData.user.rollingSportsOverseasPct],
+                        ["카지노", overviewData.user.rollingCasinoPct],
+                        ["슬롯", overviewData.user.rollingSlotPct],
+                        ["미니", overviewData.user.rollingMinigamePct],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"
+                        >
+                          <p className="text-zinc-500">{label}</p>
+                          <p className="mt-1 font-mono text-zinc-200">
+                            {overviewData.user.rollingEnabled
+                              ? value ?? "—"
+                              : "OFF"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <h3 className="text-sm font-semibold text-zinc-100">
+                      포인트 전환 정보
+                    </h3>
+                    <div className="mt-3 grid gap-3 text-sm text-zinc-400 sm:grid-cols-2">
+                      <div>
+                        <p className="text-zinc-500">최소 전환 포인트</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.pointExchange.minPointRedeemPoints ?? "제한 없음"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">KRW 환율</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.pointExchange.redeemKrwPerPoint
+                            ? `1P = ${overviewData.pointExchange.redeemKrwPerPoint} KRW`
+                            : "미설정"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">USDT 환율</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.pointExchange.redeemUsdtPerPoint
+                            ? `1P = ${overviewData.pointExchange.redeemUsdtPerPoint} USDT`
+                            : "미설정"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">현재 환산 가능</p>
+                        <p className="mt-1 text-zinc-200">
+                          {overviewData.pointExchange.redeemableKrw
+                            ? `${formatKrw(overviewData.pointExchange.redeemableKrw)}원`
+                            : "KRW 미설정"}
+                          {" / "}
+                          {overviewData.pointExchange.redeemableUsdt
+                            ? `${formatUsdt(overviewData.pointExchange.redeemableUsdt)} USDT`
+                            : "USDT 미설정"}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <h3 className="text-sm font-semibold text-zinc-100">
+                      최근 입출금 신청
+                    </h3>
+                    <div className="mt-3 space-y-3">
+                      {overviewData.recentWalletRequests.length === 0 ? (
+                        <p className="text-sm text-zinc-500">최근 신청이 없습니다.</p>
+                      ) : (
+                        overviewData.recentWalletRequests.map((row) => (
+                          <div
+                            key={row.id}
+                            className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-medium text-zinc-200">
+                                {walletRequestLabel(row.type, row.currency)}
+                              </p>
+                              <p
+                                className={`text-xs ${walletRequestStatusTone(
+                                  row.status,
+                                )}`}
+                              >
+                                {walletRequestStatusLabel(row.status)}
+                              </p>
+                            </div>
+                            <p className="mt-1 font-mono text-sm text-main-gold">
+                              {row.currency === "USDT"
+                                ? `${formatUsdt(row.amount)} USDT`
+                                : `${formatKrw(row.amount)}원`}
+                            </p>
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {new Date(row.createdAt).toLocaleString()}
+                              {row.depositorName ? ` · 입금자 ${row.depositorName}` : ""}
+                            </p>
+                            {row.note ? (
+                              <p className="mt-1 text-xs text-zinc-500">메모: {row.note}</p>
+                            ) : null}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <h3 className="text-sm font-semibold text-zinc-100">
+                    최근 반가상 연동 로그
+                  </h3>
+                  <div className="mt-3 space-y-3">
+                    {overviewData.recentSemiVirtualLogs.length === 0 ? (
+                      <p className="text-sm text-zinc-500">
+                        이 회원과 연결된 반가상 자동입금 로그가 아직 없습니다.
+                      </p>
+                    ) : (
+                      overviewData.recentSemiVirtualLogs.map((row) => (
+                        <div
+                          key={row.id}
+                          className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-zinc-200">
+                              {row.status}
+                            </p>
+                            <p className="text-xs text-zinc-500">
+                              {new Date(row.createdAt).toLocaleString()}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-xs text-zinc-500">
+                            수신번호: {row.recipientPhoneSnapshot ?? "—"}
+                          </p>
+                          {row.failureReason ? (
+                            <p className="mt-1 text-xs text-amber-300">
+                              {row.failureReason}
+                            </p>
+                          ) : null}
+                          <pre className="mt-2 whitespace-pre-wrap break-all rounded bg-zinc-950/80 p-2 font-mono text-[10px] text-zinc-500">
+                            {row.rawBody.length > 240
+                              ? `${row.rawBody.slice(0, 240)}…`
+                              : row.rawBody}
+                          </pre>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setOverviewUser(null)}
+              className="mt-5 w-full rounded-lg border border-zinc-600 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {referralCodeUser && canCreate && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-zinc-100">
+              마스터 코드 설정
+            </h2>
+            <p className="mt-1 font-mono text-xs text-zinc-500">
+              {rowLoginLabel(referralCodeUser)}
+            </p>
+            <p className="mt-3 text-sm text-zinc-400">
+              회원가입에서 사용하는 관리자(마스터) 코드입니다. 비워두면 자동으로
+              새 코드가 재발급됩니다.
+            </p>
+            {referralCodeErr && (
+              <p className="mt-3 text-sm text-red-400">{referralCodeErr}</p>
+            )}
+            <label className="mt-4 block text-sm text-zinc-400">
+              마스터 코드
+              <input
+                value={referralCodeDraft}
+                onChange={(e) => setReferralCodeDraft(e.target.value.toUpperCase())}
+                placeholder="예: ION001"
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100"
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setReferralCodeUser(null)}
+                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                disabled={referralCodeSaving}
+                onClick={() => void saveReferralCode()}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+              >
+                {referralCodeSaving ? "저장 중…" : "저장"}
+              </button>
+            </div>
           </div>
         </div>
       )}

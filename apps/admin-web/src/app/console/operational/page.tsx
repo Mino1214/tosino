@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, getAccessToken } from "@/lib/api";
@@ -281,6 +282,14 @@ export default function ConsoleOperationalPage() {
           <h2 className="text-base font-semibold text-zinc-100">회원가입 연결</h2>
           <p className="mt-1 text-sm text-zinc-500">
             공통 가입코드와 그 코드를 사용할 때 연결할 마스터를 설정합니다. 추천인 로그인 아이디 입력은 회원가입 화면에서 별도로 함께 지원됩니다.
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            추천인 아이디는 별도 설정 없이 기존 회원의 `loginId`를 그대로 씁니다.
+            각 총판의 개별 마스터 코드는{" "}
+            <Link href="/console/users" className="text-amber-300 hover:text-amber-200">
+              유저 관리
+            </Link>
+            에서 수정할 수 있습니다.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">

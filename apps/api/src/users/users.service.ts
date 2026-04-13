@@ -41,6 +41,21 @@ export class UsersService {
     throw new ConflictException('추천 코드를 발급할 수 없습니다');
   }
 
+  private readPointRules(json: unknown): Record<string, unknown> {
+    return json && typeof json === 'object' && !Array.isArray(json)
+      ? (json as Record<string, unknown>)
+      : {};
+  }
+
+  private getUsdtKrwRate(): Prisma.Decimal {
+    const raw =
+      process.env.USDT_KRW_RATE ??
+      process.env.NEXT_PUBLIC_USDT_KRW_RATE ??
+      '1488';
+    const num = Number(raw);
+    return new Prisma.Decimal(Number.isFinite(num) && num > 0 ? num : 1488);
+  }
+
   private assertCanManageRole(actor: JwtPayload, targetRole: UserRole) {
     if (actor.role === UserRole.SUPER_ADMIN) {
       if (targetRole === UserRole.SUPER_ADMIN) {
@@ -150,6 +165,270 @@ export class UsersService {
           ? Math.round((effectiveMap.get(r.id) ?? 0) * 1e4) / 1e4
           : null,
     }));
+  }
+
+  async getUserOverview(
+    platformId: string,
+    targetUserId: string,
+    actor: JwtPayload,
+  ) {
+    this.assertPlatformAccess(actor, platformId);
+
+    const target = await this.prisma.user.findFirst({
+      where: { id: targetUserId, platformId },
+      select: {
+        id: true,
+        loginId: true,
+        email: true,
+        role: true,
+        displayName: true,
+        parentUserId: true,
+        signupMode: true,
+        signupReferralInput: true,
+        registrationStatus: true,
+        createdAt: true,
+        referredBy: {
+          select: {
+            id: true,
+            loginId: true,
+            displayName: true,
+            email: true,
+          },
+        },
+        parent: {
+          select: {
+            id: true,
+            loginId: true,
+            displayName: true,
+            email: true,
+            referralCode: true,
+          },
+        },
+        bankCode: true,
+        bankAccountNumber: true,
+        bankAccountHolder: true,
+        usdtWalletAddress: true,
+        rollingEnabled: true,
+        rollingSportsDomesticPct: true,
+        rollingSportsOverseasPct: true,
+        rollingCasinoPct: true,
+        rollingSlotPct: true,
+        rollingMinigamePct: true,
+      },
+    });
+    if (!target) throw new NotFoundException();
+
+    if (actor.role === UserRole.MASTER_AGENT) {
+      const canView =
+        target.id === actor.sub ||
+        (target.role === UserRole.USER && target.parentUserId === actor.sub);
+      if (!canView) {
+        throw new ForbiddenException(
+          '총판은 본인 또는 직속 회원만 상세 조회할 수 있습니다',
+        );
+      }
+    }
+
+    const [wallet, platform, openRolling, recentWalletRequests, recentSms] =
+      await Promise.all([
+        this.prisma.wallet.findUnique({
+          where: { userId: target.id },
+          select: {
+            balance: true,
+            pointBalance: true,
+          },
+        }),
+        this.prisma.platform.findUnique({
+          where: { id: platformId },
+          select: {
+            rollingLockWithdrawals: true,
+            rollingTurnoverMultiplier: true,
+            minPointRedeemPoints: true,
+            minPointRedeemKrw: true,
+            minPointRedeemUsdt: true,
+            pointRulesJson: true,
+          },
+        }),
+        this.prisma.rollingObligation.findMany({
+          where: {
+            userId: target.id,
+            satisfiedAt: null,
+          },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            sourceRef: true,
+            principalAmount: true,
+            requiredTurnover: true,
+            appliedTurnover: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.walletRequest.findMany({
+          where: {
+            userId: target.id,
+            platformId,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 12,
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            currency: true,
+            status: true,
+            depositorName: true,
+            note: true,
+            resolverNote: true,
+            createdAt: true,
+            resolvedAt: true,
+          },
+        }),
+        this.prisma.bankSmsIngest.findMany({
+          where: {
+            platformId,
+            matchedWalletRequest: {
+              is: {
+                userId: target.id,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+          select: {
+            id: true,
+            status: true,
+            failureReason: true,
+            recipientPhoneSnapshot: true,
+            rawBody: true,
+            createdAt: true,
+          },
+        }),
+      ]);
+
+    let required = new Prisma.Decimal(0);
+    let applied = new Prisma.Decimal(0);
+    for (const row of openRolling) {
+      required = required.plus(row.requiredTurnover);
+      applied = applied.plus(row.appliedTurnover);
+    }
+    const remaining = required.minus(applied);
+    const rawAchievementPct = required.gt(0)
+      ? applied.div(required).times(100).toNumber()
+      : 100;
+    const achievementPct = Math.min(
+      100,
+      Math.max(0, Math.round(rawAchievementPct * 100) / 100),
+    );
+
+    const balance = wallet?.balance ?? new Prisma.Decimal(0);
+    const pointBalance = wallet?.pointBalance ?? new Prisma.Decimal(0);
+    const withdrawBlocked = remaining.gt(0);
+    const usdtRate = this.getUsdtKrwRate();
+    const withdrawableKrw = withdrawBlocked ? new Prisma.Decimal(0) : balance;
+    const withdrawableUsdt = withdrawBlocked
+      ? new Prisma.Decimal(0)
+      : balance.div(usdtRate);
+
+    const rules = this.readPointRules(platform?.pointRulesJson);
+    const redeemKrwPerPoint =
+      rules.redeemKrwPerPoint !== undefined && rules.redeemKrwPerPoint !== null
+        ? new Prisma.Decimal(String(rules.redeemKrwPerPoint))
+        : null;
+    const redeemUsdtPerPoint =
+      rules.redeemUsdtPerPoint !== undefined &&
+      rules.redeemUsdtPerPoint !== null
+        ? new Prisma.Decimal(String(rules.redeemUsdtPerPoint))
+        : null;
+    const redeemableKrw = redeemKrwPerPoint
+      ? pointBalance.times(redeemKrwPerPoint)
+      : null;
+    const redeemableUsdt = redeemUsdtPerPoint
+      ? pointBalance.times(redeemUsdtPerPoint)
+      : null;
+
+    return {
+      user: {
+        id: target.id,
+        loginId: target.loginId,
+        email: target.email,
+        role: target.role,
+        displayName: target.displayName,
+        signupMode: target.signupMode,
+        signupReferralInput: target.signupReferralInput,
+        registrationStatus: target.registrationStatus,
+        createdAt: target.createdAt,
+        referredBy: target.referredBy,
+        parent: target.parent,
+        bankCode: target.bankCode,
+        bankAccountNumber: target.bankAccountNumber,
+        bankAccountHolder: target.bankAccountHolder,
+        usdtWalletAddress: target.usdtWalletAddress,
+        rollingEnabled: target.rollingEnabled,
+        rollingSportsDomesticPct:
+          target.rollingSportsDomesticPct?.toString() ?? null,
+        rollingSportsOverseasPct:
+          target.rollingSportsOverseasPct?.toString() ?? null,
+        rollingCasinoPct: target.rollingCasinoPct?.toString() ?? null,
+        rollingSlotPct: target.rollingSlotPct?.toString() ?? null,
+        rollingMinigamePct: target.rollingMinigamePct?.toString() ?? null,
+      },
+      wallet: {
+        balance: balance.toFixed(2),
+        pointBalance: pointBalance.toFixed(2),
+        withdrawCurrency: target.signupMode === 'anonymous' ? 'USDT' : 'KRW',
+        withdrawBlocked,
+        withdrawableKrw: withdrawableKrw.toFixed(2),
+        withdrawableUsdt: withdrawableUsdt.toFixed(6),
+      },
+      rolling: {
+        lockWithdrawals: platform?.rollingLockWithdrawals ?? false,
+        turnoverMultiplier:
+          platform?.rollingTurnoverMultiplier?.toString() ?? '1',
+        requiredTurnover: required.toFixed(2),
+        appliedTurnover: applied.toFixed(2),
+        remainingTurnover: remaining.gt(0) ? remaining.toFixed(2) : '0.00',
+        achievementPct,
+        openCount: openRolling.length,
+        obligations: openRolling.map((row) => ({
+          id: row.id,
+          sourceRef: row.sourceRef,
+          principalAmount: row.principalAmount.toFixed(2),
+          requiredTurnover: row.requiredTurnover.toFixed(2),
+          appliedTurnover: row.appliedTurnover.toFixed(2),
+          createdAt: row.createdAt,
+        })),
+      },
+      pointExchange: {
+        minPointRedeemPoints: platform?.minPointRedeemPoints ?? null,
+        minPointRedeemKrw: platform?.minPointRedeemKrw?.toFixed(2) ?? null,
+        minPointRedeemUsdt: platform?.minPointRedeemUsdt?.toFixed(6) ?? null,
+        redeemKrwPerPoint: redeemKrwPerPoint?.toString() ?? null,
+        redeemUsdtPerPoint: redeemUsdtPerPoint?.toString() ?? null,
+        redeemableKrw: redeemableKrw?.toFixed(2) ?? null,
+        redeemableUsdt: redeemableUsdt?.toFixed(6) ?? null,
+      },
+      recentWalletRequests: recentWalletRequests.map((row) => ({
+        id: row.id,
+        type: row.type,
+        amount: row.amount.toFixed(2),
+        currency: row.currency,
+        status: row.status,
+        depositorName: row.depositorName,
+        note: row.note,
+        resolverNote: row.resolverNote,
+        createdAt: row.createdAt,
+        resolvedAt: row.resolvedAt,
+      })),
+      recentSemiVirtualLogs: recentSms.map((row) => ({
+        id: row.id,
+        status: row.status,
+        failureReason: row.failureReason,
+        recipientPhoneSnapshot: row.recipientPhoneSnapshot,
+        rawBody: row.rawBody,
+        createdAt: row.createdAt,
+      })),
+    };
   }
 
   async updateAgentMemo(
@@ -420,6 +699,58 @@ export class UsersService {
       );
     });
     return { ok: true, effectiveFrom };
+  }
+
+  async updateReferralCode(
+    platformId: string,
+    targetUserId: string,
+    referralCode: string,
+    actor: JwtPayload,
+  ) {
+    this.assertPlatformAccess(actor, platformId);
+    if (
+      actor.role !== UserRole.SUPER_ADMIN &&
+      actor.role !== UserRole.PLATFORM_ADMIN
+    ) {
+      throw new ForbiddenException();
+    }
+
+    const target = await this.prisma.user.findFirst({
+      where: { id: targetUserId, platformId },
+      select: { id: true, role: true },
+    });
+    if (!target) throw new NotFoundException();
+    if (target.role !== UserRole.MASTER_AGENT) {
+      throw new BadRequestException(
+        '마스터 코드(추천코드)는 총판 계정만 설정할 수 있습니다',
+      );
+    }
+
+    const sanitized =
+      referralCode
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '') || null;
+    const nextCode =
+      sanitized || (await this.generateUniqueReferralCode(platformId));
+
+    const taken = await this.prisma.user.findFirst({
+      where: {
+        platformId,
+        referralCode: nextCode,
+        NOT: { id: targetUserId },
+      },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new ConflictException('이미 사용 중인 마스터 코드입니다');
+    }
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { referralCode: nextCode },
+    });
+    return { ok: true, referralCode: nextCode };
   }
 
   async listRollingRevisionsAdmin(

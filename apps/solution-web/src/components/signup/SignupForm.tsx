@@ -248,7 +248,9 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
   return (
     <div className="mx-auto max-w-md">
       <div className="mb-5 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-white">회원가입</h1>
+        <p className="text-sm text-zinc-500">
+          가입코드 확인 후 회원 정보를 입력해 주세요
+        </p>
         {onRequestLogin ? (
           <button
             type="button"
@@ -279,7 +281,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            {m === "full" ? "일반 회원가입" : "무기명 회원가입"}
+            {m === "full" ? "일반" : "무기명"}
           </button>
         ))}
       </div>
