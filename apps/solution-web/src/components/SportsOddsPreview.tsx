@@ -172,7 +172,7 @@ function GameRow({ g }: { g: SportsLiveGame }) {
       {/* 베팅 버튼 */}
       <td className="px-3 py-3 text-right">
         <Link
-          href="/lobby/sports-kr"
+          href="/lobby/sports"
           className="inline-block rounded-lg bg-[rgba(218,174,87,0.1)] px-3 py-1.5 text-xs font-medium text-main-gold ring-1 ring-[rgba(218,174,87,0.3)] transition hover:bg-[rgba(218,174,87,0.2)]"
         >
           베팅
@@ -260,7 +260,7 @@ export function SportsOddsPreview() {
         <p className="text-center text-xs text-zinc-600">
           외 {displayGames.length - 8}경기 더 보기 →{" "}
           <Link
-            href="/lobby/sports-kr"
+            href="/lobby/sports"
             className="text-zinc-400 underline underline-offset-2"
           >
             스포츠 로비

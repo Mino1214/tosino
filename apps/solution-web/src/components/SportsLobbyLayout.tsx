@@ -13,7 +13,7 @@
     [Pagination]
 */
 
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { SportsDomesticList, type LeagueGroupData } from "./SportsDomesticCard";
 
 /* ── 광고 배너 (공용) ─────────────────────────────────── */
@@ -154,16 +154,18 @@ function BetTypeNav({
   tabs,
   active,
   onSelect,
+  hideSearch = false,
 }: {
   tabs: BetTab[];
   active: string;
   onSelect: (id: string) => void;
+  hideSearch?: boolean;
 }) {
   const [search, setSearch] = useState("");
   return (
     <div className="flex items-center gap-1 border-b border-white/5 bg-zinc-950 px-2 py-1.5">
       {/* 탭들 */}
-      <div className="flex gap-1">
+      <div className="flex flex-1 flex-wrap gap-1">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -182,17 +184,18 @@ function BetTypeNav({
         ))}
       </div>
 
-      {/* 검색 */}
-      <div className="ml-auto flex items-center gap-1 rounded border border-white/10 bg-zinc-900 px-2 py-1">
-        <span className="text-zinc-600 text-xs">🔍</span>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="팀명 검색"
-          className="w-28 bg-transparent text-[11px] text-white placeholder:text-zinc-600 outline-none"
-        />
-      </div>
+      {!hideSearch ? (
+        <div className="ml-auto flex shrink-0 items-center gap-1 rounded border border-white/10 bg-zinc-900 px-2 py-1">
+          <span className="text-zinc-600 text-xs">🔍</span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="팀명 검색"
+            className="w-28 bg-transparent text-[11px] text-white placeholder:text-zinc-600 outline-none"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -295,6 +298,12 @@ export interface SportsLobbyLayoutProps {
   dataSourcePanel?: ReactNode;
   /** 배당/일자 탭이 아직 데이터와 연결되지 않았을 때 안내 (있으면 BetTypeNav 아래 표시) */
   betTabsNotice?: string;
+  /** full: 기존 데코(종목줄·폴더·페이지네이션). feed: 데이터·상단 탭만(운영 스포츠 허브) */
+  layoutChrome?: "full" | "feed";
+  /** leagues 가 비어 있을 때 문구 */
+  emptyStateMessage?: string;
+  /** feed 모드에서 목록 아래에 붙는 블록(원문 JSON 등) */
+  feedAppend?: ReactNode;
 }
 
 export function SportsLobbyLayout({
@@ -308,10 +317,20 @@ export function SportsLobbyLayout({
   onDataSourceChange,
   dataSourcePanel,
   betTabsNotice,
+  layoutChrome = "full",
+  emptyStateMessage,
+  feedAppend,
 }: SportsLobbyLayoutProps) {
   const [sportType, setSportType]   = useState("all");
   const [betTab, setBetTab]         = useState(betTabs[0]?.id ?? "cross");
   const [page, setPage]             = useState(1);
+  const feed = layoutChrome === "feed";
+
+  useEffect(() => {
+    setBetTab((prev) =>
+      betTabs.some((t) => t.id === prev) ? prev : (betTabs[0]?.id ?? "cross"),
+    );
+  }, [betTabs]);
 
   const hasDataTabs =
     Array.isArray(dataSourceTabs) &&
@@ -344,13 +363,20 @@ export function SportsLobbyLayout({
       )}
 
       {/* 종목 아이콘 Nav */}
-      <div className="md:px-6 lg:px-10">
-        <SportTypeNav active={sportType} onSelect={setSportType} />
-      </div>
+      {!feed ? (
+        <div className="md:px-6 lg:px-10">
+          <SportTypeNav active={sportType} onSelect={setSportType} />
+        </div>
+      ) : null}
 
       {/* 배팅 타입 + 검색 */}
       <div className="md:px-6 lg:px-10">
-        <BetTypeNav tabs={betTabs} active={betTab} onSelect={setBetTab} />
+        <BetTypeNav
+          tabs={betTabs}
+          active={betTab}
+          onSelect={setBetTab}
+          hideSearch={feed}
+        />
         {betTabsNotice ? (
           <p className="border-b border-white/5 bg-zinc-950/80 px-2 py-1.5 text-center text-[10px] leading-snug text-zinc-500 md:px-0">
             {betTabsNotice}
@@ -359,9 +385,11 @@ export function SportsLobbyLayout({
       </div>
 
       {/* 폴더 보너스 */}
-      <div className="md:px-6 lg:px-10">
-        <FolderBonus />
-      </div>
+      {!feed ? (
+        <div className="md:px-6 lg:px-10">
+          <FolderBonus />
+        </div>
+      ) : null}
 
       {/* 매치 리스트 */}
       <div className="px-2 pt-2 md:px-6 lg:px-10">
@@ -369,13 +397,18 @@ export function SportsLobbyLayout({
           <SportsDomesticList leagues={leagues} />
         ) : (
           <div className="py-20 text-center text-sm text-zinc-600">
-            현재 진행 중인 경기가 없습니다.
+            {emptyStateMessage ?? "현재 진행 중인 경기가 없습니다."}
           </div>
         )}
+        {feed && feedAppend != null ? (
+          <div className="mt-3 border-t border-white/5 pt-3">{feedAppend}</div>
+        ) : null}
       </div>
 
       {/* 페이지네이션 */}
-      <Pagination total={5} current={page} onChange={setPage} />
+      {!feed ? (
+        <Pagination total={5} current={page} onChange={setPage} />
+      ) : null}
     </div>
   );
 }

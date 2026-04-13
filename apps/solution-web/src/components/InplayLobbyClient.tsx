@@ -7,15 +7,17 @@ import {
 } from "@/components/SportsLobbyLayout";
 import { SHARED_LEAGUES } from "@/data/sports-leagues";
 import {
-  defaultOddshostProxySecretFromEnv,
   fetchOddsHostInplayGame,
   fetchOddsHostInplayList,
   fetchSportsLive,
   type SportsLiveGameDto,
 } from "@/lib/api";
+import { useOddsHostProxySecret } from "@/lib/useOddsHostProxySecret";
 import { liveGamesToLeagueGroups } from "@/lib/sports-live-mapper";
 import { extractSportsLiveGamesFromPayload } from "@/lib/sports-live-game-extract";
 import { useBootstrapHost } from "@/components/BootstrapProvider";
+import { OddsHostDiagnosticPanel } from "@/components/OddsHostDiagnosticPanel";
+import { sportsLobbyShowOperatorTools } from "@/lib/sports-lobby-mode";
 
 const DATA_TABS: DataSourceTabSpec[] = [
   { id: "demo", label: "데모" },
@@ -30,14 +32,16 @@ const BET_TABS_NOTICE =
 
 export function InplayLobbyClient() {
   const requestHost = useBootstrapHost();
-  const [activeDataSource, setActiveDataSource] = useState("api");
+  const showOperatorTools = sportsLobbyShowOperatorTools();
+  const [activeDataSource, setActiveDataSource] = useState(
+    showOperatorTools ? "api" : "live",
+  );
   const [apiSub, setApiSub] = useState<InplayApiSub>("list");
   const [listSource, setListSource] = useState<ListSource>("snapshot");
   const [sport, setSport] = useState("1");
   const [gameId, setGameId] = useState("");
-  const [oddshostSecret, setOddshostSecret] = useState(
-    defaultOddshostProxySecretFromEnv,
-  );
+  const { effectiveSecret, autoSecret, manualOverride, setManualOverride } =
+    useOddsHostProxySecret({ allowManualOverride: true });
   const [pasteText, setPasteText] = useState("");
   const [games, setGames] = useState<SportsLiveGameDto[]>([]);
   const [gameDetail, setGameDetail] = useState<unknown>(null);
@@ -67,7 +71,7 @@ export function InplayLobbyClient() {
       const data = await fetchOddsHostInplayList(
         requestHost,
         sport.trim() || "1",
-        oddshostSecret.trim() || undefined,
+        effectiveSecret.trim() || undefined,
       );
       const g = extractSportsLiveGamesFromPayload(data);
       setGames(g);
@@ -78,7 +82,7 @@ export function InplayLobbyClient() {
     } finally {
       setLoadingList(false);
     }
-  }, [oddshostSecret, requestHost, sport]);
+  }, [effectiveSecret, requestHost, sport]);
 
   const applyPasteList = useCallback(() => {
     setListErr(null);
@@ -94,6 +98,16 @@ export function InplayLobbyClient() {
   }, [pasteText]);
 
   useEffect(() => {
+    if (!showOperatorTools) setApiSub("list");
+  }, [showOperatorTools]);
+
+  useEffect(() => {
+    if (!showOperatorTools) {
+      const tick = () => void loadListSnapshot();
+      tick();
+      const id = window.setInterval(tick, 10_000);
+      return () => clearInterval(id);
+    }
     if (activeDataSource !== "api" || apiSub !== "list") return;
     if (listSource !== "snapshot" && listSource !== "oddshost") return;
 
@@ -104,8 +118,15 @@ export function InplayLobbyClient() {
     tick();
     const ms = listSource === "snapshot" ? 10_000 : 10_000;
     const id = window.setInterval(tick, ms);
-    return () => window.clearInterval(id);
-  }, [activeDataSource, apiSub, listSource, loadListOddshost, loadListSnapshot]);
+    return () => clearInterval(id);
+  }, [
+    showOperatorTools,
+    activeDataSource,
+    apiSub,
+    listSource,
+    loadListOddshost,
+    loadListSnapshot,
+  ]);
 
   const loadGameDetail = useCallback(async () => {
     const gid = gameId.trim();
@@ -120,7 +141,7 @@ export function InplayLobbyClient() {
         requestHost,
         sport.trim() || "1",
         gid,
-        oddshostSecret.trim() || undefined,
+        effectiveSecret.trim() || undefined,
       );
       setGameDetail(data);
     } catch (e) {
@@ -129,9 +150,10 @@ export function InplayLobbyClient() {
     } finally {
       setLoadingGame(false);
     }
-  }, [gameId, oddshostSecret, requestHost, sport]);
+  }, [gameId, effectiveSecret, requestHost, sport]);
 
   useEffect(() => {
+    if (!showOperatorTools) return;
     if (activeDataSource !== "api" || apiSub !== "game") return;
     const gid = gameId.trim();
     if (!gid) {
@@ -142,20 +164,20 @@ export function InplayLobbyClient() {
     const id = window.setInterval(() => {
       void loadGameDetail();
     }, 2000);
-    return () => window.clearInterval(id);
-  }, [activeDataSource, apiSub, gameId, loadGameDetail]);
+    return () => clearInterval(id);
+  }, [showOperatorTools, activeDataSource, apiSub, gameId, loadGameDetail]);
 
   const apiLeagues = useMemo(() => liveGamesToLeagueGroups(games), [games]);
 
   const leagues =
-    activeDataSource === "demo"
+    showOperatorTools && activeDataSource === "demo"
       ? SHARED_LEAGUES
-      : apiSub === "list"
-        ? apiLeagues
-        : [];
+      : showOperatorTools && apiSub === "game"
+        ? []
+        : apiLeagues;
 
   const panel =
-    activeDataSource === "api" ? (
+    showOperatorTools && activeDataSource === "api" ? (
       <div className="space-y-3 text-[11px] text-zinc-300">
         <p className="text-zinc-500">
           라이브 목록 권장 주기 약 10초, 라이브 게임 상세 약 1~2초. OddsHost는 허용 IP의
@@ -194,16 +216,27 @@ export function InplayLobbyClient() {
             />
           </label>
           <label className="flex min-w-[140px] flex-1 flex-col gap-0.5">
-            <span className="text-zinc-500">oddshostSecret</span>
+            <span className="text-zinc-500">oddshostSecret (수동 덮어쓰기)</span>
             <input
               type="password"
-              value={oddshostSecret}
-              onChange={(e) => setOddshostSecret(e.target.value)}
+              value={manualOverride}
+              onChange={(e) => setManualOverride(e.target.value)}
+              placeholder={
+                autoSecret
+                  ? "비우면 부트스트랩·환경값 사용"
+                  : "API ODDSHOST_PROXY_SECRET 필요"
+              }
               className="rounded border border-white/10 bg-zinc-900 px-2 py-1 text-white"
               autoComplete="off"
             />
           </label>
         </div>
+
+        <OddsHostDiagnosticPanel
+          requestHost={requestHost}
+          sport={sport}
+          oddshostSecret={effectiveSecret}
+        />
 
         {apiSub === "list" && (
           <div className="space-y-2">
@@ -328,12 +361,28 @@ export function InplayLobbyClient() {
 
   const betTabs = useMemo(
     () => [
-      { id: "all", label: "전체", count: activeDataSource === "demo" ? 34 : games.length },
-      { id: "soccer", label: "축구", count: activeDataSource === "demo" ? 12 : 0 },
-      { id: "basketball", label: "농구", count: activeDataSource === "demo" ? 8 : 0 },
-      { id: "esports", label: "E스포츠", count: activeDataSource === "demo" ? 6 : 0 },
+      {
+        id: "all",
+        label: "전체",
+        count: showOperatorTools && activeDataSource === "demo" ? 34 : games.length,
+      },
+      {
+        id: "soccer",
+        label: "축구",
+        count: showOperatorTools && activeDataSource === "demo" ? 12 : 0,
+      },
+      {
+        id: "basketball",
+        label: "농구",
+        count: showOperatorTools && activeDataSource === "demo" ? 8 : 0,
+      },
+      {
+        id: "esports",
+        label: "E스포츠",
+        count: showOperatorTools && activeDataSource === "demo" ? 6 : 0,
+      },
     ],
-    [activeDataSource, games.length],
+    [activeDataSource, games.length, showOperatorTools],
   );
 
   return (
@@ -342,11 +391,13 @@ export function InplayLobbyClient() {
       betTabs={betTabs}
       leagues={leagues}
       bannerText="인플레이 이벤트 — 실시간으로 경기를 보며 배팅하세요!"
-      dataSourceTabs={DATA_TABS}
-      activeDataSource={activeDataSource}
-      onDataSourceChange={setActiveDataSource}
-      dataSourcePanel={panel}
-      betTabsNotice={BET_TABS_NOTICE}
+      dataSourceTabs={showOperatorTools ? DATA_TABS : undefined}
+      activeDataSource={showOperatorTools ? activeDataSource : undefined}
+      onDataSourceChange={
+        showOperatorTools ? setActiveDataSource : undefined
+      }
+      dataSourcePanel={showOperatorTools ? panel : undefined}
+      betTabsNotice={showOperatorTools ? BET_TABS_NOTICE : undefined}
     />
   );
 }

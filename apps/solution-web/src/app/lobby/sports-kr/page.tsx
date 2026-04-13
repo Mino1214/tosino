@@ -1,5 +1,5 @@
-import { SportsKrLobbyClient } from "@/components/SportsKrLobbyClient";
+import { SportsLegacyRedirect } from "@/components/SportsLegacyRedirect";
 
 export default function SportsKrPage() {
-  return <SportsKrLobbyClient />;
+  return <SportsLegacyRedirect tab="live" />;
 }

@@ -45,9 +45,14 @@ export type MatchData = {
   eventId: string;
   status: "LIVE" | "UPCOMING";
   eventAt: string;
+  /** 스코어·진행 시각 또는 개막 안내 한 줄 */
+  scoreLine?: string;
   homeTeam: { name: string; imgSrc?: string };
   awayTeam: { name: string; imgSrc?: string };
   markets: MarketRow[];
+  /** 라이브·배당 UI 등 (시드/API optional) */
+  detailHref?: string;
+  detailLabel?: string;
 };
 
 export type LeagueGroupData = {
@@ -263,6 +268,25 @@ function SportsDomesticMatch({ match }: { match: MatchData; leagueName: string }
           )}
         </div>
       </div>
+
+      {match.scoreLine ? (
+        <p className="px-3 pb-1 text-[11px] leading-snug text-zinc-400">
+          {match.scoreLine}
+        </p>
+      ) : null}
+
+      {match.detailHref ? (
+        <div className="px-3 pb-1">
+          <a
+            href={match.detailHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex text-[11px] font-medium text-main-gold underline decoration-main-gold/40 underline-offset-2 hover:text-main-gold-solid"
+          >
+            {match.detailLabel ?? "라이브·배당 화면"}
+          </a>
+        </div>
+      ) : null}
 
       {/* 마켓 배당 rows */}
       <div className="space-y-1 px-3 pb-3">

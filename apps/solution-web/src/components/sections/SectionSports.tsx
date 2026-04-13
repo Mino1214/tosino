@@ -24,7 +24,7 @@ export function SectionSports() {
           <h2 className="text-sm font-bold text-white">실시간 스포츠</h2>
         </div>
         <Link
-          href="/lobby/sports-kr"
+          href="/lobby/sports"
           className="text-xs text-main-gold"
         >
           전체 보기 →
@@ -54,7 +54,7 @@ export function SectionSports() {
       {/* 스포츠 로비 진입 */}
       <div className="mt-4 flex gap-2">
         <Link
-          href="/lobby/sports-kr"
+          href="/lobby/sports"
           className="flex-1 rounded border border-white/10 py-3 text-center text-sm font-semibold text-white"
         >
           국내 스포츠 입장

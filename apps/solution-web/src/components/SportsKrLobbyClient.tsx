@@ -7,14 +7,16 @@ import {
 } from "@/components/SportsLobbyLayout";
 import { SHARED_LEAGUES } from "@/data/sports-leagues";
 import {
-  defaultOddshostProxySecretFromEnv,
   fetchOddsHostInplayList,
   fetchSportsLive,
   type SportsLiveGameDto,
 } from "@/lib/api";
+import { useOddsHostProxySecret } from "@/lib/useOddsHostProxySecret";
 import { extractSportsLiveGamesFromPayload } from "@/lib/sports-live-game-extract";
 import { liveGamesToLeagueGroups } from "@/lib/sports-live-mapper";
 import { useBootstrapHost } from "@/components/BootstrapProvider";
+import { OddsHostDiagnosticPanel } from "@/components/OddsHostDiagnosticPanel";
+import { sportsLobbyShowOperatorTools } from "@/lib/sports-lobby-mode";
 
 const DATA_TABS: DataSourceTabSpec[] = [
   { id: "demo", label: "데모" },
@@ -28,12 +30,14 @@ const BET_TABS_NOTICE =
 
 export function SportsKrLobbyClient() {
   const requestHost = useBootstrapHost();
-  const [activeDataSource, setActiveDataSource] = useState("api");
+  const showOperatorTools = sportsLobbyShowOperatorTools();
+  const [activeDataSource, setActiveDataSource] = useState(
+    showOperatorTools ? "api" : "live",
+  );
   const [listSource, setListSource] = useState<ListSource>("snapshot");
   const [sport, setSport] = useState("1");
-  const [oddshostSecret, setOddshostSecret] = useState(
-    defaultOddshostProxySecretFromEnv,
-  );
+  const { effectiveSecret, autoSecret, manualOverride, setManualOverride } =
+    useOddsHostProxySecret({ allowManualOverride: true });
   const [pasteText, setPasteText] = useState("");
   const [games, setGames] = useState<SportsLiveGameDto[]>([]);
   const [listErr, setListErr] = useState<string | null>(null);
@@ -60,7 +64,7 @@ export function SportsKrLobbyClient() {
       const data = await fetchOddsHostInplayList(
         requestHost,
         sport.trim() || "1",
-        oddshostSecret.trim() || undefined,
+        effectiveSecret.trim() || undefined,
       );
       const g = extractSportsLiveGamesFromPayload(data);
       setGames(g);
@@ -71,7 +75,7 @@ export function SportsKrLobbyClient() {
     } finally {
       setLoadingList(false);
     }
-  }, [oddshostSecret, requestHost, sport]);
+  }, [effectiveSecret, requestHost, sport]);
 
   const applyPasteList = useCallback(() => {
     setListErr(null);
@@ -87,6 +91,12 @@ export function SportsKrLobbyClient() {
   }, [pasteText]);
 
   useEffect(() => {
+    if (!showOperatorTools) {
+      const tick = () => void loadListSnapshot();
+      tick();
+      const id = window.setInterval(tick, 10_000);
+      return () => clearInterval(id);
+    }
     if (activeDataSource !== "api") return;
     if (listSource !== "snapshot" && listSource !== "oddshost") return;
 
@@ -96,16 +106,24 @@ export function SportsKrLobbyClient() {
     };
     tick();
     const id = window.setInterval(tick, 10_000);
-    return () => window.clearInterval(id);
-  }, [activeDataSource, listSource, loadListOddshost, loadListSnapshot]);
+    return () => clearInterval(id);
+  }, [
+    showOperatorTools,
+    activeDataSource,
+    listSource,
+    loadListOddshost,
+    loadListSnapshot,
+  ]);
 
   const apiLeagues = useMemo(() => liveGamesToLeagueGroups(games), [games]);
 
   const leagues =
-    activeDataSource === "demo" ? SHARED_LEAGUES : apiLeagues;
+    showOperatorTools && activeDataSource === "demo"
+      ? SHARED_LEAGUES
+      : apiLeagues;
 
   const panel =
-    activeDataSource === "api" ? (
+    showOperatorTools && activeDataSource === "api" ? (
       <div className="space-y-3 text-[11px] text-zinc-300">
         <p className="text-zinc-500">
           인플레이 라이브 목록과 동일 소스(DB 스냅샷 / OddsHost / JSON)입니다. 스냅샷이 비어 있으면
@@ -121,16 +139,26 @@ export function SportsKrLobbyClient() {
             />
           </label>
           <label className="flex min-w-[140px] flex-1 flex-col gap-0.5">
-            <span className="text-zinc-500">oddshostSecret</span>
+            <span className="text-zinc-500">oddshostSecret (수동 덮어쓰기)</span>
             <input
               type="password"
-              value={oddshostSecret}
-              onChange={(e) => setOddshostSecret(e.target.value)}
+              value={manualOverride}
+              onChange={(e) => setManualOverride(e.target.value)}
+              placeholder={
+                autoSecret
+                  ? "비우면 부트스트랩·환경값 사용"
+                  : "API ODDSHOST_PROXY_SECRET 필요"
+              }
               className="rounded border border-white/10 bg-zinc-900 px-2 py-1 text-white"
               autoComplete="off"
             />
           </label>
         </div>
+        <OddsHostDiagnosticPanel
+          requestHost={requestHost}
+          sport={sport}
+          oddshostSecret={effectiveSecret}
+        />
         <div className="flex flex-wrap gap-1">
           {(
             [
@@ -199,20 +227,23 @@ export function SportsKrLobbyClient() {
       {
         id: "cross",
         label: "크로스",
-        count: activeDataSource === "demo" ? 83 : games.length,
+        count:
+          showOperatorTools && activeDataSource === "demo" ? 83 : games.length,
       },
       {
         id: "special",
         label: "스페셜",
-        count: activeDataSource === "demo" ? 22 : games.length,
+        count:
+          showOperatorTools && activeDataSource === "demo" ? 22 : games.length,
       },
       {
         id: "realtime",
         label: "실시간",
-        count: activeDataSource === "demo" ? 88 : games.length,
+        count:
+          showOperatorTools && activeDataSource === "demo" ? 88 : games.length,
       },
     ],
-    [activeDataSource, games.length],
+    [activeDataSource, games.length, showOperatorTools],
   );
 
   return (
@@ -221,11 +252,13 @@ export function SportsKrLobbyClient() {
       betTabs={betTabs}
       leagues={leagues}
       bannerText="스포츠 이벤트 진행 중 — 첫충/매충 보너스 혜택을 받아가세요!"
-      dataSourceTabs={DATA_TABS}
-      activeDataSource={activeDataSource}
-      onDataSourceChange={setActiveDataSource}
-      dataSourcePanel={panel}
-      betTabsNotice={BET_TABS_NOTICE}
+      dataSourceTabs={showOperatorTools ? DATA_TABS : undefined}
+      activeDataSource={showOperatorTools ? activeDataSource : undefined}
+      onDataSourceChange={
+        showOperatorTools ? setActiveDataSource : undefined
+      }
+      dataSourcePanel={showOperatorTools ? panel : undefined}
+      betTabsNotice={showOperatorTools ? BET_TABS_NOTICE : undefined}
     />
   );
 }

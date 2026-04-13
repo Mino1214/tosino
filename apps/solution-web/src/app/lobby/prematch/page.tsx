@@ -1,5 +1,5 @@
-import { PrematchLobbyClient } from "@/components/PrematchLobbyClient";
+import { SportsLegacyRedirect } from "@/components/SportsLegacyRedirect";
 
 export default function PrematchPage() {
-  return <PrematchLobbyClient />;
+  return <SportsLegacyRedirect tab="prematch" />;
 }

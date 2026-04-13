@@ -122,6 +122,497 @@ function needsDemoSportsFeeds(integrationsJson: unknown): boolean {
 }
 
 /** SEED_PLATFORM_HOSTS / SEED_DEMO_PLATFORM_HOSTS — 쉼표·공백 구분, demo 플랫폼에 platform_domains 행 추가 */
+/**
+ * 운영 시드 스케줄 기준 시각(한국 2026-04-13 02:05).
+ * sports-live / sports-prematch 의 start_ts·update_time·DB fetchedAt 를 이 순간에 맞춤.
+ */
+const SEED_SPORTS_SCHEDULE_ANCHOR = new Date('2026-04-13T02:05:00+09:00');
+
+/** OddsHost 인플레이 목록·sync upsert 와 동일: DB payloadJson = { games: [...] } */
+function demoSportsLiveGames(anchor: Date): Prisma.InputJsonValue {
+  const iso = anchor.toISOString();
+  return [
+    {
+      game_id: 'seed-live-1',
+      status: '1',
+      start_ts: '2026-04-13 00:30:00',
+      competition_id: 'seed-kr',
+      competition_name: 'K League · Demo',
+      competition_name_kor: 'K리그 (시드)',
+      competition_cc_name: 'KR',
+      competition_cc_name_kor: '한국',
+      team: [
+        {
+          team1_id: 's1',
+          team1_name: 'Seoul FC',
+          team1_name_kor: '서울 FC',
+        },
+        {
+          team2_id: 's2',
+          team2_name: 'Busan United',
+          team2_name_kor: '부산 유나이티드',
+        },
+      ],
+      location: 'KR',
+      round: 'R12',
+      series: '',
+      timer: { time_mark: '1H', time_mark_kor: '전반 35′' },
+      score: '1-0',
+      update_time: iso,
+      odds_1x2: { home: '2.18', draw: '3.15', away: '3.05' },
+      live_ui_url: 'https://example.com/inplay/seed-live-1',
+    },
+    {
+      game_id: 'seed-live-2',
+      status: '1',
+      start_ts: '2026-04-13 01:15:00',
+      competition_id: 'seed-epl',
+      competition_name: 'Premier Demo',
+      competition_name_kor: '프리미어 (시드)',
+      competition_cc_name: 'GB',
+      competition_cc_name_kor: '영국',
+      team: [
+        {
+          team1_id: 'e1',
+          team1_name: 'North City',
+          team1_name_kor: '노스 시티',
+        },
+        {
+          team2_id: 'e2',
+          team2_name: 'South Town',
+          team2_name_kor: '사우스 타운',
+        },
+      ],
+      location: 'UK',
+      round: 'MD32',
+      series: '',
+      timer: { time_mark: '2H', time_mark_kor: '후반 8′' },
+      score: '2-2',
+      update_time: iso,
+      odds_1x2: { home: '2.45', draw: '3.40', away: '2.62' },
+      live_ui_url: 'https://example.com/inplay/seed-live-2',
+    },
+  ];
+}
+
+type PmSlot = {
+  start_ts: string;
+  competition_id: string;
+  competition_name: string;
+  competition_name_kor: string;
+  cc: string;
+  cc_kor: string;
+  loc: string;
+  round: string;
+  t1: { id: string; en: string; ko: string };
+  t2: { id: string; en: string; ko: string };
+};
+
+/** 2026-04-13 오전~ 이후 일정 위주 다건 (스냅샷은 { games } — sports-live 와 동일 키) */
+function demoPrematchSlots(): PmSlot[] {
+  return [
+    {
+      start_ts: '2026-04-13 10:00:00',
+      competition_id: 'seed-k1',
+      competition_name: 'K League 1',
+      competition_name_kor: 'K리그1',
+      cc: 'KR',
+      cc_kor: '한국',
+      loc: 'KR',
+      round: 'R8',
+      t1: { id: 'pm-a1', en: 'Ulsan HD', ko: '울산 HD' },
+      t2: { id: 'pm-a2', en: 'Pohang Steelers', ko: '포항 스틸러스' },
+    },
+    {
+      start_ts: '2026-04-13 12:00:00',
+      competition_id: 'seed-k1',
+      competition_name: 'K League 1',
+      competition_name_kor: 'K리그1',
+      cc: 'KR',
+      cc_kor: '한국',
+      loc: 'KR',
+      round: 'R8',
+      t1: { id: 'pm-b1', en: 'Jeonbuk Hyundai', ko: '전북 현대' },
+      t2: { id: 'pm-b2', en: 'Suwon FC', ko: '수원 FC' },
+    },
+    {
+      start_ts: '2026-04-13 14:00:00',
+      competition_id: 'seed-k2',
+      competition_name: 'K League 2',
+      competition_name_kor: 'K리그2',
+      cc: 'KR',
+      cc_kor: '한국',
+      loc: 'KR',
+      round: 'R9',
+      t1: { id: 'pm-c1', en: 'Seoul E-Land', ko: '서울 이랜드' },
+      t2: { id: 'pm-c2', en: 'Ansan Greeners', ko: '안산 그리너스' },
+    },
+    {
+      start_ts: '2026-04-13 15:30:00',
+      competition_id: 'seed-epl',
+      competition_name: 'Premier League',
+      competition_name_kor: '프리미어리그',
+      cc: 'GB',
+      cc_kor: '영국',
+      loc: 'UK',
+      round: 'MD33',
+      t1: { id: 'pm-d1', en: 'Arsenal FC', ko: '아스널' },
+      t2: { id: 'pm-d2', en: 'Chelsea FC', ko: '첼시' },
+    },
+    {
+      start_ts: '2026-04-13 17:00:00',
+      competition_id: 'seed-laliga',
+      competition_name: 'La Liga',
+      competition_name_kor: '라리가',
+      cc: 'ES',
+      cc_kor: '스페인',
+      loc: 'ES',
+      round: 'R31',
+      t1: { id: 'pm-e1', en: 'Real Madrid', ko: '레알 마드리드' },
+      t2: { id: 'pm-e2', en: 'Barcelona', ko: '바르셀로나' },
+    },
+    {
+      start_ts: '2026-04-13 18:30:00',
+      competition_id: 'seed-seriea',
+      competition_name: 'Serie A',
+      competition_name_kor: '세리에 A',
+      cc: 'IT',
+      cc_kor: '이탈리아',
+      loc: 'IT',
+      round: 'R32',
+      t1: { id: 'pm-f1', en: 'Inter Milan', ko: '인테르' },
+      t2: { id: 'pm-f2', en: 'AC Milan', ko: 'AC 밀란' },
+    },
+    {
+      start_ts: '2026-04-13 19:30:00',
+      competition_id: 'seed-bundes',
+      competition_name: 'Bundesliga',
+      competition_name_kor: '분데스리가',
+      cc: 'DE',
+      cc_kor: '독일',
+      loc: 'DE',
+      round: 'R29',
+      t1: { id: 'pm-g1', en: 'Bayern Munich', ko: '바이에른 뮌헨' },
+      t2: { id: 'pm-g2', en: 'Borussia Dortmund', ko: '도르트문트' },
+    },
+    {
+      start_ts: '2026-04-13 21:00:00',
+      competition_id: 'seed-ligue1',
+      competition_name: 'Ligue 1',
+      competition_name_kor: '리그1',
+      cc: 'FR',
+      cc_kor: '프랑스',
+      loc: 'FR',
+      round: 'R30',
+      t1: { id: 'pm-h1', en: 'PSG', ko: 'PSG' },
+      t2: { id: 'pm-h2', en: 'Marseille', ko: '마르세유' },
+    },
+    {
+      start_ts: '2026-04-14 01:00:00',
+      competition_id: 'seed-ucl',
+      competition_name: 'Champions League',
+      competition_name_kor: '챔피언스리그',
+      cc: 'EU',
+      cc_kor: '유럽',
+      loc: 'EU',
+      round: 'QF-L1',
+      t1: { id: 'pm-i1', en: 'Man City', ko: '맨시티' },
+      t2: { id: 'pm-i2', en: 'Bayern Munich', ko: '바이에른' },
+    },
+    {
+      start_ts: '2026-04-14 03:00:00',
+      competition_id: 'seed-ucl',
+      competition_name: 'Champions League',
+      competition_name_kor: '챔피언스리그',
+      cc: 'EU',
+      cc_kor: '유럽',
+      loc: 'EU',
+      round: 'QF-L1',
+      t1: { id: 'pm-j1', en: 'Real Madrid', ko: '레알 마드리드' },
+      t2: { id: 'pm-j2', en: 'Arsenal', ko: '아스널' },
+    },
+    {
+      start_ts: '2026-04-14 14:00:00',
+      competition_id: 'seed-k1',
+      competition_name: 'K League 1',
+      competition_name_kor: 'K리그1',
+      cc: 'KR',
+      cc_kor: '한국',
+      loc: 'KR',
+      round: 'R8',
+      t1: { id: 'pm-k1', en: 'Gangwon FC', ko: '강원 FC' },
+      t2: { id: 'pm-k2', en: 'Daegu FC', ko: '대구 FC' },
+    },
+    {
+      start_ts: '2026-04-14 16:00:00',
+      competition_id: 'seed-j1',
+      competition_name: 'J1 League',
+      competition_name_kor: 'J1리그',
+      cc: 'JP',
+      cc_kor: '일본',
+      loc: 'JP',
+      round: 'R10',
+      t1: { id: 'pm-l1', en: 'Kashima Antlers', ko: '가시마' },
+      t2: { id: 'pm-l2', en: 'Yokohama F·Marinos', ko: '요코하마 F·마리노스' },
+    },
+    {
+      start_ts: '2026-04-14 18:00:00',
+      competition_id: 'seed-mls',
+      competition_name: 'MLS',
+      competition_name_kor: 'MLS',
+      cc: 'US',
+      cc_kor: '미국',
+      loc: 'US',
+      round: 'R7',
+      t1: { id: 'pm-m1', en: 'LA Galaxy', ko: 'LA 갤럭시' },
+      t2: { id: 'pm-m2', en: 'Seattle Sounders', ko: '시애틀' },
+    },
+    {
+      start_ts: '2026-04-15 10:00:00',
+      competition_id: 'seed-kfa',
+      competition_name: 'KFA Cup',
+      competition_name_kor: 'FA컵',
+      cc: 'KR',
+      cc_kor: '한국',
+      loc: 'KR',
+      round: 'R16',
+      t1: { id: 'pm-n1', en: 'Daejeon Hana', ko: '대전 하나' },
+      t2: { id: 'pm-n2', en: 'Gimcheon Sangmu', ko: '김천 상무' },
+    },
+    {
+      start_ts: '2026-04-15 13:00:00',
+      competition_id: 'seed-epl',
+      competition_name: 'Premier League',
+      competition_name_kor: '프리미어리그',
+      cc: 'GB',
+      cc_kor: '영국',
+      loc: 'UK',
+      round: 'MD33',
+      t1: { id: 'pm-o1', en: 'Liverpool FC', ko: '리버풀' },
+      t2: { id: 'pm-o2', en: 'Tottenham', ko: '토트넘' },
+    },
+    {
+      start_ts: '2026-04-15 16:00:00',
+      competition_id: 'seed-laliga',
+      competition_name: 'La Liga',
+      competition_name_kor: '라리가',
+      cc: 'ES',
+      cc_kor: '스페인',
+      loc: 'ES',
+      round: 'R31',
+      t1: { id: 'pm-p1', en: 'Atletico Madrid', ko: 'AT마드리드' },
+      t2: { id: 'pm-p2', en: 'Sevilla FC', ko: '세비야' },
+    },
+    {
+      start_ts: '2026-04-15 19:00:00',
+      competition_id: 'seed-bundes',
+      competition_name: 'Bundesliga',
+      competition_name_kor: '분데스리가',
+      cc: 'DE',
+      cc_kor: '독일',
+      loc: 'DE',
+      round: 'R29',
+      t1: { id: 'pm-q1', en: 'RB Leipzig', ko: '라이프치히' },
+      t2: { id: 'pm-q2', en: 'Leverkusen', ko: '레버쿠젠' },
+    },
+    {
+      start_ts: '2026-04-16 11:00:00',
+      competition_id: 'seed-k2',
+      competition_name: 'K League 2',
+      competition_name_kor: 'K리그2',
+      cc: 'KR',
+      cc_kor: '한국',
+      loc: 'KR',
+      round: 'R9',
+      t1: { id: 'pm-r1', en: 'Gyeongnam FC', ko: '경남 FC' },
+      t2: { id: 'pm-r2', en: 'Chungbuk Cheongju', ko: '충북 청주' },
+    },
+    {
+      start_ts: '2026-04-16 14:30:00',
+      competition_id: 'seed-k1',
+      competition_name: 'K League 1',
+      competition_name_kor: 'K리그1',
+      cc: 'KR',
+      cc_kor: '한국',
+      loc: 'KR',
+      round: 'R9',
+      t1: { id: 'pm-s1', en: 'Incheon United', ko: '인천 유나이티드' },
+      t2: { id: 'pm-s2', en: 'Gwangju FC', ko: '광주 FC' },
+    },
+    {
+      start_ts: '2026-04-16 19:00:00',
+      competition_id: 'seed-epl',
+      competition_name: 'Premier League',
+      competition_name_kor: '프리미어리그',
+      cc: 'GB',
+      cc_kor: '영국',
+      loc: 'UK',
+      round: 'MD34',
+      t1: { id: 'pm-t1', en: 'Newcastle Utd', ko: '뉴캐슬' },
+      t2: { id: 'pm-t2', en: 'Brighton', ko: '브라이턴' },
+    },
+    {
+      start_ts: '2026-04-17 20:00:00',
+      competition_id: 'seed-friendly',
+      competition_name: 'International Friendly',
+      competition_name_kor: '친선경기',
+      cc: 'INT',
+      cc_kor: '국제',
+      loc: 'INT',
+      round: 'Ex',
+      t1: { id: 'pm-u1', en: 'Korea Rep.', ko: '대한민국' },
+      t2: { id: 'pm-u2', en: 'Japan', ko: '일본' },
+    },
+  ];
+}
+
+function demoPrematchPayload(anchor: Date): Prisma.InputJsonValue {
+  const iso = anchor.toISOString();
+  const games = demoPrematchSlots().map((row, idx) => ({
+    game_id: `seed-pm-${idx + 1}`,
+    status: '0',
+    start_ts: row.start_ts,
+    competition_id: row.competition_id,
+    competition_name: row.competition_name,
+    competition_name_kor: row.competition_name_kor,
+    competition_cc_name: row.cc,
+    competition_cc_name_kor: row.cc_kor,
+    team: [
+      {
+        team1_id: row.t1.id,
+        team1_name: row.t1.en,
+        team1_name_kor: row.t1.ko,
+      },
+      {
+        team2_id: row.t2.id,
+        team2_name: row.t2.en,
+        team2_name_kor: row.t2.ko,
+      },
+    ],
+    location: row.loc,
+    round: row.round,
+    series: '',
+    score: '0-0',
+    update_time: iso,
+    odds_1x2: {
+      home: (1.68 + (idx % 7) * 0.05).toFixed(2),
+      draw: (3.0 + (idx % 5) * 0.08).toFixed(2),
+      away: (2.12 + (idx % 6) * 0.06).toFixed(2),
+    },
+    live_ui_url: `https://example.com/prematch/seed-pm-${idx + 1}`,
+  }));
+  return { games };
+}
+
+/**
+ * 데모 플랫폼에 sports-live / sports-prematch 스냅샷이 비어 있으면 시드.
+ * 기존 경기를 덮어쓰려면 SEED_FORCE_SPORTS_SNAPSHOTS=1
+ */
+async function ensureDemoSportsBroadcastSnapshots(
+  platformId: string,
+): Promise<void> {
+  const force = ['1', 'true', 'yes', 'on'].includes(
+    (process.env.SEED_FORCE_SPORTS_SNAPSHOTS || '').trim().toLowerCase(),
+  );
+
+  const liveRow = await prisma.sportsOddsSnapshot.findUnique({
+    where: {
+      platformId_sourceFeedId: {
+        platformId,
+        sourceFeedId: 'sports-live',
+      },
+    },
+  });
+  let gamesLen = 0;
+  if (liveRow?.payloadJson && typeof liveRow.payloadJson === 'object') {
+    const p = liveRow.payloadJson as { games?: unknown; game?: unknown };
+    if (Array.isArray(p.games)) gamesLen = p.games.length;
+    else if (Array.isArray(p.game)) gamesLen = p.game.length;
+  }
+
+  /** 스포츠 시드 일정·fetchedAt 은 고정 앵커(2026-04-13 02:05 KST)와 맞춤 */
+  const anchor = SEED_SPORTS_SCHEDULE_ANCHOR;
+
+  if (force || gamesLen === 0) {
+    const games = demoSportsLiveGames(anchor);
+    await prisma.sportsOddsSnapshot.upsert({
+      where: {
+        platformId_sourceFeedId: { platformId, sourceFeedId: 'sports-live' },
+      },
+      create: {
+        platformId,
+        sourceFeedId: 'sports-live',
+        sportLabel: 'sports',
+        market: null,
+        payloadJson: { games } as Prisma.InputJsonValue,
+        fetchedAt: anchor,
+      },
+      update: {
+        payloadJson: { games } as Prisma.InputJsonValue,
+        fetchedAt: anchor,
+      },
+    });
+    console.log(
+      `Seeded sports-live (${(games as unknown[]).length} games) for platform ${platformId}`,
+    );
+  } else {
+    console.log(
+      `sports-live already has ${gamesLen} games (set SEED_FORCE_SPORTS_SNAPSHOTS=1 to replace)`,
+    );
+  }
+
+  const pmRow = await prisma.sportsOddsSnapshot.findUnique({
+    where: {
+      platformId_sourceFeedId: {
+        platformId,
+        sourceFeedId: 'sports-prematch',
+      },
+    },
+  });
+  let pmLen = 0;
+  if (pmRow?.payloadJson && typeof pmRow.payloadJson === 'object') {
+    const p = pmRow.payloadJson as { games?: unknown; game?: unknown };
+    if (Array.isArray(p.games)) pmLen = p.games.length;
+    else if (Array.isArray(p.game)) pmLen = p.game.length;
+  }
+
+  if (force || pmLen === 0) {
+    const pmPayload = demoPrematchPayload(anchor);
+    const pmGameCount = Array.isArray(
+      (pmPayload as { games?: unknown }).games,
+    )
+      ? ((pmPayload as { games: unknown[] }).games as unknown[]).length
+      : 0;
+    await prisma.sportsOddsSnapshot.upsert({
+      where: {
+        platformId_sourceFeedId: {
+          platformId,
+          sourceFeedId: 'sports-prematch',
+        },
+      },
+      create: {
+        platformId,
+        sourceFeedId: 'sports-prematch',
+        sportLabel: 'prematch-seed',
+        market: null,
+        payloadJson: pmPayload as Prisma.InputJsonValue,
+        fetchedAt: anchor,
+      },
+      update: {
+        payloadJson: pmPayload as Prisma.InputJsonValue,
+        fetchedAt: anchor,
+      },
+    });
+    console.log(
+      `Seeded sports-prematch (${pmGameCount} games) for platform ${platformId}`,
+    );
+  } else {
+    console.log(
+      `sports-prematch already has ${pmLen} games (set SEED_FORCE_SPORTS_SNAPSHOTS=1 to replace)`,
+    );
+  }
+}
+
 async function ensureHostsOnPlatform(
   platformId: string,
   rawEnv: string | undefined,
@@ -219,6 +710,8 @@ async function main() {
   const extraHosts =
     process.env.SEED_PLATFORM_HOSTS || process.env.SEED_DEMO_PLATFORM_HOSTS;
   await ensureHostsOnPlatform(platform.id, extraHosts);
+
+  await ensureDemoSportsBroadcastSnapshots(platform.id);
 
   const paEmail = 'platform@tosino.local';
   const paLid = loginIdOf(paEmail);

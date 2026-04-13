@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LiveCasinoLobby } from "./LiveCasinoLobby";
 
 /* 전용 page.tsx가 없는 slug만 여기서 처리
-   (live-casino / slots / minigame / sports-kr / esports / prematch / live 는 각자 페이지 있음) */
+   (live-casino / slots / minigame / sports / sports-kr / esports / prematch / live 등) */
 const TITLES: Record<string, string> = {
   "cq9-casino": "CQ9 카지노",
   "sports-eu":  "유럽 스포츠",

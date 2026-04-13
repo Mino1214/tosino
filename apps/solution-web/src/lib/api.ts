@@ -276,6 +276,13 @@ export async function fetchBootstrap(host: string) {
       modalEnabled: boolean;
       items: { imageUrl: string; width: number | null; height: number | null }[];
     };
+    oddshostProxySecret: string | null;
+    /** 구 API에는 없을 수 있음 */
+    oddshost?: {
+      keyConfigured: boolean;
+      prematchConfigured: boolean;
+      marketsConfigured: boolean;
+    };
   }>;
 }
 
@@ -338,6 +345,10 @@ export type SportsLiveGameDto = {
   timer?: { time_mark: string; time_mark_kor: string };
   score: string;
   update_time: string;
+  /** 북메이커·OddsHost 라이브/상세 페이지 (있으면 카드에 외부 링크) */
+  live_ui_url?: string;
+  /** 스냅샷에 실린 승무패 배당 (없으면 UI에서 안내용 플레이스홀더) */
+  odds_1x2?: { home: string; draw?: string; away: string };
 };
 
 export async function fetchSportsLive(host: string) {
@@ -373,7 +384,9 @@ function appendOddsHostSecret(
   return next;
 }
 
-/** 스포츠 탭 OddsHost 입력란 기본값(빌드 시 인라인). API `ODDSHOST_PROXY_SECRET` 과 동일해야 함. */
+/**
+ * (선택) 빌드에만 박는 폴백. 우선순위는 `GET /public/bootstrap` 의 `oddshostProxySecret` 입니다.
+ */
 export function defaultOddshostProxySecretFromEnv(): string {
   return (process.env.NEXT_PUBLIC_ODDSHOST_PROXY_SECRET || "").trim();
 }
@@ -417,6 +430,27 @@ export async function fetchOddsHostInplayGame(
   return res.json() as Promise<unknown>;
 }
 
+/** GET /public/oddshost/diagnostic — API 서버에서 URL 조합·(선택) 업스트림 GET 결과 */
+export async function fetchOddsHostDiagnostic(
+  host: string,
+  sport: string,
+  oddshostSecret?: string,
+  probe = false,
+) {
+  const q = appendOddsHostSecret(buildPublicApiQuery(host), oddshostSecret);
+  q.set("sport", sport);
+  if (probe) q.set("probe", "1");
+  const res = await fetch(
+    `${getApiBase()}/public/oddshost/diagnostic?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`oddshost diagnostic (${res.status}): ${t.slice(0, 400)}`);
+  }
+  return res.json() as Promise<Record<string, unknown>>;
+}
+
 export async function fetchOddsHostPrematch(
   host: string,
   sport: string,
@@ -437,6 +471,31 @@ export async function fetchOddsHostPrematch(
   if (!res.ok) {
     const t = await res.text();
     throw new Error(`oddshost prematch (${res.status}): ${t.slice(0, 200)}`);
+  }
+  return res.json() as Promise<unknown>;
+}
+
+/** OddsHost 마켓 피드(오즈마켓). API에 ODDSHOST_TEMPLATE_MARKETS 또는 PATH 필요 */
+export async function fetchOddsHostMarkets(
+  host: string,
+  sport: string,
+  oddshostSecret?: string,
+  extraQuery?: Record<string, string>,
+) {
+  const q = appendOddsHostSecret(buildPublicApiQuery(host), oddshostSecret);
+  q.set("sport", sport);
+  if (extraQuery) {
+    for (const [k, v] of Object.entries(extraQuery)) {
+      if (v !== undefined && v !== "") q.set(k, v);
+    }
+  }
+  const res = await fetch(
+    `${getApiBase()}/public/oddshost/markets?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`oddshost markets (${res.status}): ${t.slice(0, 400)}`);
   }
   return res.json() as Promise<unknown>;
 }

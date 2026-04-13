@@ -73,7 +73,11 @@ export class PublicController {
       orderBy: { fetchedAt: 'desc' },
     });
     const payload = snap?.payloadJson as Record<string, unknown> | null;
-    const games = Array.isArray(payload?.games) ? payload.games : [];
+    const games = Array.isArray(payload?.games)
+      ? payload.games
+      : Array.isArray(payload?.game)
+        ? payload.game
+        : [];
     return {
       success: 1,
       total: (games as unknown[]).length,
@@ -101,6 +105,22 @@ export class PublicController {
       fetchedAt: snap?.fetchedAt?.toISOString() ?? null,
       payload: snap?.payloadJson ?? null,
     };
+  }
+
+  @Get('oddshost/diagnostic')
+  oddshostDiagnostic(
+    @Query('sport') sport?: string,
+    @Query('oddshostSecret') oddshostSecret?: string,
+    @Query('previewSecret') previewSecret?: string,
+    @Query('probe') probe?: string,
+  ) {
+    const doProbe = probe === '1' || probe === 'true';
+    return this.oddshost.diagnostic(
+      sport ?? '1',
+      oddshostSecret,
+      previewSecret,
+      doProbe,
+    );
   }
 
   @Get('oddshost/inplay-list')
@@ -147,6 +167,34 @@ export class PublicController {
       if (typeof v === 'string' && v !== '') extra[k] = v;
     }
     return this.oddshost.prematch(sport ?? '1', oddshostSecret, extra, previewSecret);
+  }
+
+  /** 오즈마켓 형식 피드(가이드의 MARKETS URL). 쿼리 파라미터는 업스트림으로 그대로 전달 */
+  @Get('oddshost/markets')
+  oddshostMarkets(
+    @Req() req: Request,
+    @Query('sport') sport?: string,
+    @Query('oddshostSecret') oddshostSecret?: string,
+    @Query('previewSecret') previewSecret?: string,
+  ) {
+    const skip = new Set([
+      'sport',
+      'oddshostSecret',
+      'host',
+      'port',
+      'previewSecret',
+    ]);
+    const extra: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.query ?? {})) {
+      if (skip.has(k)) continue;
+      if (typeof v === 'string' && v !== '') extra[k] = v;
+    }
+    return this.oddshost.markets(
+      sport ?? '1',
+      oddshostSecret,
+      extra,
+      previewSecret,
+    );
   }
 
   @Get('referral')

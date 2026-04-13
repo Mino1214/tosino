@@ -46,7 +46,11 @@ export class SyncService {
     actor: JwtPayload,
   ) {
     this.assertPlatform(actor, platformId);
-    const games = Array.isArray(body.game) ? body.game : [];
+    const games = Array.isArray(body.game)
+      ? body.game
+      : Array.isArray(body.games)
+        ? body.games
+        : [];
     const now = new Date();
     await this.prisma.sportsOddsSnapshot.upsert({
       where: {

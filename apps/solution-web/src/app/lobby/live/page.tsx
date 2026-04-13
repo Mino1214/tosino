@@ -1,5 +1,5 @@
-import { InplayLobbyClient } from "@/components/InplayLobbyClient";
+import { SportsLegacyRedirect } from "@/components/SportsLegacyRedirect";
 
 export default function InplayPage() {
-  return <InplayLobbyClient />;
+  return <SportsLegacyRedirect tab="live" />;
 }

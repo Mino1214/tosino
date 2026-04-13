@@ -1,17 +1,22 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   SportsLobbyLayout,
   type DataSourceTabSpec,
 } from "@/components/SportsLobbyLayout";
 import { SHARED_LEAGUES } from "@/data/sports-leagues";
 import {
-  defaultOddshostProxySecretFromEnv,
   fetchOddsHostPrematch,
   fetchSportsPrematchSnapshot,
+  type SportsLiveGameDto,
 } from "@/lib/api";
+import { useOddsHostProxySecret } from "@/lib/useOddsHostProxySecret";
+import { extractSportsLiveGamesFromPayload } from "@/lib/sports-live-game-extract";
+import { liveGamesToLeagueGroups } from "@/lib/sports-live-mapper";
+import { sportsLobbyShowOperatorTools } from "@/lib/sports-lobby-mode";
 import { useBootstrapHost } from "@/components/BootstrapProvider";
+import { OddsHostDiagnosticPanel } from "@/components/OddsHostDiagnosticPanel";
 
 const DATA_TABS: DataSourceTabSpec[] = [
   { id: "demo", label: "데모" },
@@ -23,13 +28,16 @@ const BET_TABS_NOTICE =
 
 export function PrematchLobbyClient() {
   const requestHost = useBootstrapHost();
-  /** 프리매치 카드 매핑 전이라 API 모드는 JSON 위주 — 기본은 데모로 카드 확인 */
-  const [activeDataSource, setActiveDataSource] = useState("demo");
-  const [sport, setSport] = useState("1");
-  const [oddshostSecret, setOddshostSecret] = useState(
-    defaultOddshostProxySecretFromEnv,
+  const showOperatorTools = sportsLobbyShowOperatorTools();
+  /** 운영 모드에선 스냅샷만 카드에 반영. 개발에선 데모/API 테스트 전환 */
+  const [activeDataSource, setActiveDataSource] = useState(
+    showOperatorTools ? "demo" : "live",
   );
+  const [sport, setSport] = useState("1");
+  const { effectiveSecret, autoSecret, manualOverride, setManualOverride } =
+    useOddsHostProxySecret({ allowManualOverride: true });
   const [rawJson, setRawJson] = useState<string>("");
+  const [snapshotGames, setSnapshotGames] = useState<SportsLiveGameDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -47,13 +55,29 @@ export function PrematchLobbyClient() {
     setErr(null);
     try {
       const r = await fetchSportsPrematchSnapshot(requestHost);
-      applyPayload(r.payload ?? { fetchedAt: r.fetchedAt, note: "payload 비어 있음" });
+      const payload = r.payload ?? null;
+      setSnapshotGames(extractSportsLiveGamesFromPayload(payload));
+      if (showOperatorTools) {
+        applyPayload(
+          payload ?? { fetchedAt: r.fetchedAt, note: "payload 비어 있음" },
+        );
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "스냅샷 로드 실패");
+      setSnapshotGames([]);
     } finally {
       setLoading(false);
     }
-  }, [applyPayload, requestHost]);
+  }, [applyPayload, requestHost, showOperatorTools]);
+
+  useEffect(() => {
+    if (!showOperatorTools) {
+      const tick = () => void loadSnapshot();
+      tick();
+      const id = window.setInterval(tick, 120_000);
+      return () => clearInterval(id);
+    }
+  }, [showOperatorTools, loadSnapshot]);
 
   const fetchProxyPrematch = useCallback(async () => {
     setLoading(true);
@@ -62,33 +86,45 @@ export function PrematchLobbyClient() {
       const data = await fetchOddsHostPrematch(
         requestHost,
         sport.trim() || "1",
-        oddshostSecret.trim() || undefined,
+        effectiveSecret.trim() || undefined,
       );
+      setSnapshotGames(extractSportsLiveGamesFromPayload(data));
       applyPayload(data);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "프리매치 프록시 실패");
     } finally {
       setLoading(false);
     }
-  }, [applyPayload, oddshostSecret, requestHost, sport]);
+  }, [applyPayload, effectiveSecret, requestHost, sport]);
 
   const onPasteApply = useCallback(() => {
     setErr(null);
     try {
       const parsed = JSON.parse(rawJson || "{}") as unknown;
+      setSnapshotGames(extractSportsLiveGamesFromPayload(parsed));
       applyPayload(parsed);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "JSON 파싱 실패");
     }
   }, [applyPayload, rawJson]);
 
-  const leagues = useMemo(
-    () => (activeDataSource === "demo" ? SHARED_LEAGUES : []),
-    [activeDataSource],
+  const snapshotLeagues = useMemo(
+    () => liveGamesToLeagueGroups(snapshotGames),
+    [snapshotGames],
   );
 
+  const leagues = useMemo(() => {
+    if (showOperatorTools && activeDataSource === "demo") {
+      return SHARED_LEAGUES;
+    }
+    if (!showOperatorTools) {
+      return snapshotLeagues;
+    }
+    return activeDataSource === "demo" ? SHARED_LEAGUES : snapshotLeagues;
+  }, [activeDataSource, showOperatorTools, snapshotLeagues]);
+
   const panel =
-    activeDataSource === "api" ? (
+    showOperatorTools && activeDataSource === "api" ? (
       <div className="space-y-3 text-[11px] text-zinc-300">
         <p className="text-zinc-500">
           프리매치 카드 매핑 전 단계입니다. OddsHost 프록시(
@@ -106,12 +142,16 @@ export function PrematchLobbyClient() {
             />
           </label>
           <label className="flex min-w-[140px] flex-1 flex-col gap-0.5">
-            <span className="text-zinc-500">oddshostSecret (ODDSHOST_PROXY_SECRET)</span>
+            <span className="text-zinc-500">oddshostSecret (수동 덮어쓰기)</span>
             <input
               type="password"
-              value={oddshostSecret}
-              onChange={(e) => setOddshostSecret(e.target.value)}
-              placeholder="비워두면 비프로덕션에서만 허용될 수 있음"
+              value={manualOverride}
+              onChange={(e) => setManualOverride(e.target.value)}
+              placeholder={
+                autoSecret
+                  ? "비우면 부트스트랩·환경값 사용"
+                  : "API ODDSHOST_PROXY_SECRET 필요"
+              }
               className="rounded border border-white/10 bg-zinc-900 px-2 py-1 text-white"
               autoComplete="off"
             />
@@ -140,6 +180,11 @@ export function PrematchLobbyClient() {
             아래 JSON 적용
           </button>
         </div>
+        <OddsHostDiagnosticPanel
+          requestHost={requestHost}
+          sport={sport}
+          oddshostSecret={effectiveSecret}
+        />
         {err && (
           <p className="rounded border border-red-900/50 bg-red-950/40 px-2 py-1 text-red-300">
             {err}
@@ -155,13 +200,28 @@ export function PrematchLobbyClient() {
       </div>
     ) : null;
 
+  const nPrematch = snapshotGames.length;
+
   const betTabs = useMemo(
     () => [
-      { id: "upcoming", label: "예정경기", count: activeDataSource === "demo" ? 134 : 0 },
-      { id: "today", label: "오늘", count: activeDataSource === "demo" ? 58 : 0 },
-      { id: "tomorrow", label: "내일", count: activeDataSource === "demo" ? 76 : 0 },
+      {
+        id: "upcoming",
+        label: "예정경기",
+        count:
+          showOperatorTools && activeDataSource === "demo" ? 134 : nPrematch,
+      },
+      {
+        id: "today",
+        label: "오늘",
+        count: showOperatorTools && activeDataSource === "demo" ? 58 : 0,
+      },
+      {
+        id: "tomorrow",
+        label: "내일",
+        count: showOperatorTools && activeDataSource === "demo" ? 76 : 0,
+      },
     ],
-    [activeDataSource],
+    [activeDataSource, nPrematch, showOperatorTools],
   );
 
   return (
@@ -170,11 +230,13 @@ export function PrematchLobbyClient() {
       betTabs={betTabs}
       leagues={leagues}
       bannerText="프리매치 이벤트 — 경기 시작 전 미리 배팅하세요!"
-      dataSourceTabs={DATA_TABS}
-      activeDataSource={activeDataSource}
-      onDataSourceChange={setActiveDataSource}
-      dataSourcePanel={panel}
-      betTabsNotice={BET_TABS_NOTICE}
+      dataSourceTabs={showOperatorTools ? DATA_TABS : undefined}
+      activeDataSource={showOperatorTools ? activeDataSource : undefined}
+      onDataSourceChange={
+        showOperatorTools ? setActiveDataSource : undefined
+      }
+      dataSourcePanel={showOperatorTools ? panel : undefined}
+      betTabsNotice={showOperatorTools ? BET_TABS_NOTICE : undefined}
     />
   );
 }

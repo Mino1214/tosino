@@ -20,6 +20,25 @@ function readAnnouncementModalPublish(): boolean {
 
 export const ANNOUNCEMENT_MODAL_PUBLISH = readAnnouncementModalPublish();
 
+/** 솔루션에서 OddsHost 탭 503 안내용(비밀값 노출 없음) */
+function oddshostEndpointFlags(): {
+  keyConfigured: boolean;
+  prematchConfigured: boolean;
+  marketsConfigured: boolean;
+} {
+  const e = (k: string) => !!(process.env[k] || '').trim();
+  const base = (process.env.ODDSHOST_BASE_URL || '').trim();
+  return {
+    keyConfigured: e('ODDSHOST_KEY'),
+    prematchConfigured:
+      e('ODDSHOST_TEMPLATE_PREMATCH') ||
+      (!!base && e('ODDSHOST_PATH_PREMATCH')),
+    marketsConfigured:
+      e('ODDSHOST_TEMPLATE_MARKETS') ||
+      (!!base && e('ODDSHOST_PATH_MARKETS')),
+  };
+}
+
 export type PlatformBootstrapSource = {
   id: string;
   slug: string;
@@ -49,6 +68,9 @@ export async function buildBootstrapPayload(
   const bannerUrlsRaw = Array.isArray(theme.bannerUrls)
     ? (theme.bannerUrls as string[])
     : [];
+  /** 솔루션에서 OddsHost 프록시 호출 시 쿼리 oddshostSecret 으로 씀. API `ODDSHOST_PROXY_SECRET` 과 동일. */
+  const oddshostProxySecret =
+    (process.env.ODDSHOST_PROXY_SECRET || '').trim() || null;
   return {
     platformId: p.id,
     slug: p.slug,
@@ -79,5 +101,7 @@ export async function buildBootstrapPayload(
         height: r.imageHeight,
       })),
     },
+    oddshost: oddshostEndpointFlags(),
+    oddshostProxySecret,
   };
 }

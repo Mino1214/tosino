@@ -66,6 +66,12 @@ export const platformIntegrationsSchema = z.object({
 export type PlatformIntegrations = z.infer<typeof platformIntegrationsSchema>;
 export type SportsFeedConfig = z.infer<typeof sportsFeedConfigSchema>;
 
+export {
+  ODDSHOST_SPORT_ID_NAME_KR,
+  ODDSHOST_SPORT_IDS_WITH_KO_LABEL,
+  oddshostSportNameKr,
+} from "./oddshost-sport-id-ko";
+
 /** 솔루션 UI에서 국내/유럽 탭으로 나눌 때 사용 */
 export function partitionSportsFeedsByMarket(
   integrations: PlatformIntegrations | null | undefined,
