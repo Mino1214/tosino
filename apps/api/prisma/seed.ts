@@ -839,6 +839,49 @@ async function main() {
     );
   }
 
+  /** E2E·문서용: BT1과 동일 지갑 규모의 별도 로그인 계정 */
+  const stevId = 'user-stev';
+  if (maForVinus) {
+    const stevBal = new Prisma.Decimal(
+      Number(process.env.VINUS_STUB_SEED_BALANCE ?? '100000') || 100000,
+    );
+    await prisma.user.upsert({
+      where: { id: stevId },
+      create: {
+        id: stevId,
+        loginId: stevId,
+        email: 'user-stev@tosino.local',
+        passwordHash,
+        role: UserRole.USER,
+        platformId: platform.id,
+        parentUserId: maForVinus.id,
+        displayName: 'User Stev (테스트)',
+        registrationStatus: RegistrationStatus.APPROVED,
+        rollingEnabled: true,
+      },
+      update: {
+        platformId: platform.id,
+        registrationStatus: RegistrationStatus.APPROVED,
+        rollingEnabled: true,
+      },
+    });
+    await prisma.wallet.upsert({
+      where: { userId: stevId },
+      create: {
+        userId: stevId,
+        platformId: platform.id,
+        balance: stevBal,
+      },
+      update: {
+        platformId: platform.id,
+        balance: stevBal,
+      },
+    });
+    console.log(
+      `테스트 회원 user-stev: loginId ${stevId} · wallet ${stevBal.toFixed(2)} · rollingEnabled`,
+    );
+  }
+
   await prisma.syncState.createMany({
     data: [
       SyncJobType.ODDS,
@@ -1055,6 +1098,7 @@ async function main() {
   console.log('회원         loginId: demo_subplayer            → 상위 총판 subagent');
   console.log('회원         loginId: demo_user_m2              → 상위 총판 demo_master2');
   console.log('회원/Vinus   id·loginId: stub-user-dev         → BT1 콜백·VINUS_STUB_USER_ID (시드 지갑 기본 100000)');
+  console.log('회원(테스트) loginId: user-stev               → 동일 규모 지갑·롤링 ON (문서/E2E)');
   console.log('회원(대기)   loginId: demo_pending              → 로그인 불가 · 관리자 승인 대기');
   console.log('================================================================');
   console.log('');

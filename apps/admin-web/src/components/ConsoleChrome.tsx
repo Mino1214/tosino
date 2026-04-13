@@ -34,6 +34,16 @@ const NAV = [
     hint: "연결·작업 점검",
   },
   {
+    href: "/console/operational",
+    label: "운영·한도",
+    hint: "롤링·최소입출금·포인트 규칙",
+  },
+  {
+    href: "/console/deposit-events",
+    label: "충전 이벤트",
+    hint: "첫충·기간 한정 JSON",
+  },
+  {
     href: "/console/announcements",
     label: "공지 팝업",
     hint: "모바일 이미지 최대 4장",

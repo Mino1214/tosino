@@ -47,9 +47,11 @@ export default function AgentMileagePage() {
     <div className="mx-auto max-w-2xl space-y-4">
       <h1 className="text-xl font-semibold text-zinc-100">마일리지 정산</h1>
       <p className="text-sm text-zinc-500">
-        마일리지(포인트) 적립·정산 내역은 백엔드 연동 후 이 화면에 표시됩니다.
-        아래는 현재 계정 기준{" "}
-        <span className="text-zinc-400">적용 중인 총판 요율</span>입니다.
+        회원 쪽 포인트(출석·낙첨·추천·교환)는 솔루션 API{" "}
+        <span className="text-zinc-400">/me/points/*</span> 및 플랫폼{" "}
+        <span className="text-zinc-400">pointRulesJson</span>으로 동작합니다.
+        아래는 이 총판 계정의{" "}
+        <span className="text-zinc-400">적용 중인 요율</span>입니다.
       </p>
 
       {err && (

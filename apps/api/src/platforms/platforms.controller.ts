@@ -20,6 +20,7 @@ import { PlatformsService } from './platforms.service';
 import { CreatePlatformDto } from './dto/create-platform.dto';
 import { UpdatePlatformThemeDto } from './dto/update-platform-theme.dto';
 import { UpdateSemiVirtualDto } from './dto/update-semi-virtual.dto';
+import { UpdatePlatformOperationalDto } from './dto/update-platform-operational.dto';
 
 @Controller('platforms')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -99,5 +100,16 @@ export class PlatformsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.platforms.updateTheme(platformId, user, dto);
+  }
+
+  @Patch(':platformId/operational')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  updateOperational(
+    @Param('platformId') platformId: string,
+    @Body() dto: UpdatePlatformOperationalDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.updateOperational(platformId, user, dto);
   }
 }

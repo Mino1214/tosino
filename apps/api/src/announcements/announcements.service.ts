@@ -39,6 +39,7 @@ export class AnnouncementsService {
             imageUrl: it.imageUrl.trim(),
             sortOrder: i,
             active: it.active !== false,
+            mandatoryRead: it.mandatoryRead === true,
             imageWidth: it.imageWidth ?? null,
             imageHeight: it.imageHeight ?? null,
           })),

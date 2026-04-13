@@ -1088,6 +1088,22 @@ export class AgentService {
     dto: UpdateRollingDto,
   ) {
     await this.assertDownline(actor, userId);
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { platformId: true },
+    });
+    if (!target?.platformId) {
+      throw new BadRequestException('플랫폼 소속 회원만 롤링을 설정할 수 있습니다');
+    }
+    const plat = await this.prisma.platform.findUnique({
+      where: { id: target.platformId },
+      select: { agentCanEditMemberRolling: true },
+    });
+    if (!plat?.agentCanEditMemberRolling) {
+      throw new ForbiddenException(
+        '플랫폼 설정상 총판은 회원 롤링 비율을 수정할 수 없습니다',
+      );
+    }
     const effectiveFrom = new Date();
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({

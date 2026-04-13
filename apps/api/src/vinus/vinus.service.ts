@@ -12,6 +12,8 @@ import {
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RollingObligationService } from '../rolling/rolling-obligation.service';
+import { PointsService } from '../points/points.service';
 import type { VinusLaunchDto } from './dto/vinus-launch.dto';
 
 /** 문서: 15~25자 토큰 (랜덤 + 시간 일부). 0/O·1/I/l 등 헷갈리는 문자 제외 */
@@ -492,6 +494,8 @@ export class VinusService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private rolling: RollingObligationService,
+    private points: PointsService,
   ) {}
 
   private assertConfigured() {
@@ -1174,6 +1178,12 @@ export class VinusService {
           },
         },
       });
+      await this.rolling.applyBetStake(tx, userRow.id, amount);
+      await this.points.maybeCreditReferrerFirstBet(
+        tx,
+        userRow.id,
+        platformId,
+      );
       return ok(newBal);
     });
   }
@@ -2239,6 +2249,12 @@ export class VinusService {
               },
             },
           });
+          await this.rolling.applyBetStake(tx, userRow!.id, amount);
+          await this.points.maybeCreditReferrerFirstBet(
+            tx,
+            userRow!.id,
+            platformId,
+          );
           return ok(newBal);
         });
       }
@@ -2309,6 +2325,13 @@ export class VinusService {
               },
             },
           });
+          await this.points.maybeCreditLoseBet(
+            tx,
+            userRow!.id,
+            platformId,
+            bet,
+            win.gt(0),
+          );
           return ok(newBal);
         });
       }

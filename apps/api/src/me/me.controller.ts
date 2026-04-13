@@ -3,12 +3,14 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
+  Param,
   Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { UserRole } from '@prisma/client';
+import { LedgerEntryType, UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,6 +21,10 @@ import { UpdateUserMemoDto } from '../users/dto/update-user-memo.dto';
 import { VinusService } from '../vinus/vinus.service';
 import { VinusLaunchDto } from '../vinus/dto/vinus-launch.dto';
 import { UpdatePayoutAccountDto } from './dto/update-payout-account.dto';
+import { RollingObligationService } from '../rolling/rolling-obligation.service';
+import { PointsService } from '../points/points.service';
+import { resolvePublicMediaUrl } from '../common/utils/media-url.util';
+import { RedeemPointsDto } from './dto/redeem-points.dto';
 
 @Controller('me')
 @UseGuards(AuthGuard('jwt'))
@@ -27,6 +33,8 @@ export class MeController {
     private prisma: PrismaService,
     private walletRequests: WalletRequestsService,
     private vinus: VinusService,
+    private rolling: RollingObligationService,
+    private points: PointsService,
   ) {}
 
   private assertEndUser(payload: JwtPayload) {
@@ -113,7 +121,130 @@ export class MeController {
     const w = await this.prisma.wallet.findUnique({
       where: { userId: user.sub },
     });
-    return { balance: w?.balance?.toFixed(2) ?? '0.00' };
+    return {
+      balance: w?.balance?.toFixed(2) ?? '0.00',
+      pointBalance: w?.pointBalance?.toFixed(2) ?? '0.00',
+    };
+  }
+
+  @Get('rolling-summary')
+  rollingSummary(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    return this.rolling.getSummaryForUser(user.sub);
+  }
+
+  @Get('betting-history')
+  async bettingHistory(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    const rows = await this.prisma.ledgerEntry.findMany({
+      where: { userId: user.sub, type: LedgerEntryType.BET },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return rows.map((r) => {
+      const meta = (r.metaJson as Record<string, unknown>) || {};
+      const cmd = typeof meta.command === 'string' ? meta.command : '';
+      const category =
+        cmd === 'sports-bet'
+          ? 'sports'
+          : cmd === 'bet-win' || cmd === 'bet'
+            ? 'casino'
+            : 'other';
+      return {
+        id: r.id,
+        createdAt: r.createdAt.toISOString(),
+        betAmount: r.amount.abs().toFixed(2),
+        reference: r.reference,
+        category,
+        meta,
+      };
+    });
+  }
+
+  @Get('session-guards')
+  async sessionGuards(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    if (!user.platformId) {
+      throw new ForbiddenException('플랫폼 소속 회원만 이용할 수 있습니다');
+    }
+    const mandatory = await this.prisma.platformAnnouncement.findMany({
+      where: {
+        platformId: user.platformId,
+        active: true,
+        mandatoryRead: true,
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const reads = await this.prisma.announcementRead.findMany({
+      where: { userId: user.sub },
+      select: { announcementId: true },
+    });
+    const readSet = new Set(reads.map((x) => x.announcementId));
+    const unread = mandatory.filter((a) => !readSet.has(a.id));
+    return {
+      unreadMandatory: unread.map((a) => ({
+        id: a.id,
+        imageUrl: resolvePublicMediaUrl(a.imageUrl),
+      })),
+    };
+  }
+
+  @Post('announcements/:announcementId/ack')
+  async ackAnnouncement(
+    @CurrentUser() user: JwtPayload,
+    @Param('announcementId') announcementId: string,
+  ) {
+    this.assertEndUser(user);
+    if (!user.platformId) {
+      throw new ForbiddenException('플랫폼 소속 회원만 이용할 수 있습니다');
+    }
+    const ann = await this.prisma.platformAnnouncement.findFirst({
+      where: { id: announcementId, platformId: user.platformId, active: true },
+    });
+    if (!ann) throw new NotFoundException();
+    await this.prisma.announcementRead.upsert({
+      where: {
+        userId_announcementId: {
+          userId: user.sub,
+          announcementId,
+        },
+      },
+      create: { userId: user.sub, announcementId },
+      update: { readAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  @Post('points/attend')
+  attendPoints(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    if (!user.platformId) {
+      throw new ForbiddenException('플랫폼 소속 회원만 이용할 수 있습니다');
+    }
+    return this.points.attend(user.sub, user.platformId);
+  }
+
+  @Post('points/redeem')
+  redeemPoints(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RedeemPointsDto,
+  ) {
+    this.assertEndUser(user);
+    if (!user.platformId) {
+      throw new ForbiddenException('플랫폼 소속 회원만 이용할 수 있습니다');
+    }
+    return this.points.redeem(
+      user.sub,
+      user.platformId,
+      dto.points,
+      dto.currency,
+    );
+  }
+
+  @Get('points/ledger')
+  pointLedger(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    return this.points.listLedger(user.sub);
   }
 
   @Post('wallet-requests')
@@ -129,6 +260,7 @@ export class MeController {
       dto.amount,
       dto.note,
       dto.depositorName,
+      dto.currency === 'USDT' ? 'USDT' : 'KRW',
     );
   }
 

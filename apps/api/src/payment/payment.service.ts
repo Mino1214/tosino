@@ -7,6 +7,8 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { LedgerEntryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RollingObligationService } from '../rolling/rolling-obligation.service';
+import { DepositEventsService } from '../deposit-events/deposit-events.service';
 
 export interface PaymentWebhookPayload {
   eventId: string;
@@ -22,6 +24,8 @@ export class PaymentService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private rolling: RollingObligationService,
+    private depositEvents: DepositEventsService,
   ) {}
 
   verifySignature(rawBody: Buffer, signatureHeader: string | undefined) {
@@ -38,6 +42,12 @@ export class PaymentService {
 
   async handleWebhook(payload: PaymentWebhookPayload) {
     const idemKey = payload.eventId;
+    if (
+      payload.status === 'completed' &&
+      payload.kind === 'withdrawal'
+    ) {
+      await this.rolling.assertWithdrawalAllowed(payload.userId);
+    }
     const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.idempotencyKey.findUnique({
         where: {
@@ -90,6 +100,20 @@ export class PaymentService {
           metaJson: { kind: payload.kind },
         },
       });
+      if (payload.kind === 'deposit') {
+        await this.rolling.createObligationIfNeeded(tx, {
+          userId: payload.userId,
+          platformId: payload.platformId,
+          depositAmount: amount,
+          sourceRef: `pay:${idemKey}:principal`,
+        });
+        await this.depositEvents.applyEligibleBonus(tx, {
+          userId: payload.userId,
+          platformId: payload.platformId,
+          depositAmount: amount,
+          ledgerRefPrefix: `pay:${idemKey}`,
+        });
+      }
       const snap = {
         ok: true,
         balance: newBal.toFixed(2),

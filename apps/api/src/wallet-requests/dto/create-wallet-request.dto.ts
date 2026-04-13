@@ -11,6 +11,11 @@ export class CreateWalletRequestDto {
   @Min(1)
   amount!: number;
 
+  /** KRW(기본) | USDT — 플랫폼 최소 입·출금 한도 구분용 */
+  @IsOptional()
+  @IsString()
+  currency?: 'KRW' | 'USDT';
+
   @IsOptional()
   @IsString()
   note?: string;

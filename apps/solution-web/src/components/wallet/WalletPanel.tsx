@@ -261,6 +261,7 @@ export function WalletPanel({
         body: JSON.stringify({
           type: "DEPOSIT",
           amount,
+          currency: "KRW",
           depositorName,
         }),
       });
@@ -299,6 +300,7 @@ export function WalletPanel({
         body: JSON.stringify({
           type: "WITHDRAWAL",
           amount,
+          currency: "KRW",
         }),
       });
       setWithdrawAmount("10000");

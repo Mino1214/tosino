@@ -53,6 +53,23 @@ export async function buildBootstrapPayload(
   prisma: PrismaService,
   p: PlatformBootstrapSource,
 ) {
+  const plimits = await prisma.platform.findUnique({
+    where: { id: p.id },
+    select: {
+      minDepositKrw: true,
+      minDepositUsdt: true,
+      minWithdrawKrw: true,
+      minWithdrawUsdt: true,
+      minPointRedeemPoints: true,
+      minPointRedeemKrw: true,
+      minPointRedeemUsdt: true,
+      rollingLockWithdrawals: true,
+      rollingTurnoverMultiplier: true,
+      agentCanEditMemberRolling: true,
+    },
+  });
+  const decStr = (v: { toString(): string } | null | undefined) =>
+    v != null ? v.toString() : null;
   const theme = (p.themeJson as Record<string, unknown>) || {};
   const uiRaw = theme.ui;
   const ui =
@@ -63,7 +80,13 @@ export async function buildBootstrapPayload(
     where: { platformId: p.id, active: true },
     orderBy: { sortOrder: 'asc' },
     take: 4,
-    select: { imageUrl: true, imageWidth: true, imageHeight: true },
+    select: {
+      id: true,
+      imageUrl: true,
+      imageWidth: true,
+      imageHeight: true,
+      mandatoryRead: true,
+    },
   });
   const bannerUrlsRaw = Array.isArray(theme.bannerUrls)
     ? (theme.bannerUrls as string[])
@@ -93,12 +116,26 @@ export async function buildBootstrapPayload(
     },
     flags: (p.flagsJson as Record<string, unknown>) || {},
     sportsSections: publicSportsSectionsFromIntegrations(p.integrationsJson),
+    walletRules: {
+      minDepositKrw: decStr(plimits?.minDepositKrw ?? null),
+      minDepositUsdt: decStr(plimits?.minDepositUsdt ?? null),
+      minWithdrawKrw: decStr(plimits?.minWithdrawKrw ?? null),
+      minWithdrawUsdt: decStr(plimits?.minWithdrawUsdt ?? null),
+      minPointRedeemPoints: plimits?.minPointRedeemPoints ?? null,
+      minPointRedeemKrw: decStr(plimits?.minPointRedeemKrw ?? null),
+      minPointRedeemUsdt: decStr(plimits?.minPointRedeemUsdt ?? null),
+      rollingLockWithdrawals: plimits?.rollingLockWithdrawals ?? true,
+      rollingTurnoverMultiplier: decStr(plimits?.rollingTurnoverMultiplier ?? null),
+      agentCanEditMemberRolling: plimits?.agentCanEditMemberRolling ?? true,
+    },
     announcements: {
       modalEnabled: ANNOUNCEMENT_MODAL_PUBLISH,
       items: announcementRows.map((r) => ({
+        id: r.id,
         imageUrl: resolvePublicMediaUrl(r.imageUrl),
         width: r.imageWidth,
         height: r.imageHeight,
+        mandatoryRead: r.mandatoryRead === true,
       })),
     },
     oddshost: oddshostEndpointFlags(),

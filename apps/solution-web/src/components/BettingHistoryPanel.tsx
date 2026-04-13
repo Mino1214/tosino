@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useBettingCart } from "./BettingCartContext";
 import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
+import { apiFetch, getAccessToken } from "@/lib/api";
 
 /* ── 테스트 데이터 ──────────────────────────────────── */
 type HistoryItem = {
@@ -51,11 +52,56 @@ const CATEGORY_ICON: Record<HistoryItem["category"], string> = {
   sports: "⚽", minigame: "🕹️", casino: "🎰",
 };
 
+type ApiBetRow = {
+  id: string;
+  createdAt: string;
+  betAmount: string;
+  category: string;
+  reference: string | null;
+  meta: Record<string, unknown>;
+};
+
+function mapApiToItem(r: ApiBetRow): HistoryItem {
+  const cmd =
+    typeof r.meta.command === "string" ? r.meta.command : r.category;
+  let cat: HistoryItem["category"] = "minigame";
+  if (r.category === "sports") cat = "sports";
+  else if (r.category === "casino") cat = "casino";
+  return {
+    id: r.id,
+    category: cat,
+    gameLabel: cmd,
+    pickLabel: r.reference?.trim() ? r.reference : "—",
+    betAmount: Number(r.betAmount),
+    winAmount: null,
+    status: "pending",
+    date: new Date(r.createdAt).toLocaleString("ko-KR", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+  };
+}
+
 /* ── 내용 (모바일·데스크톱 공용) ─────────────────────── */
 function HistoryContent({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<typeof TABS[number]["id"]>("all");
+  const [source, setSource] = useState<HistoryItem[]>(HISTORY);
+
+  useEffect(() => {
+    if (!getAccessToken()) return;
+    void apiFetch<ApiBetRow[]>("/me/betting-history")
+      .then((rows) => {
+        if (rows.length > 0) setSource(rows.map(mapApiToItem));
+      })
+      .catch(() => {
+        /* 데모 데이터 유지 */
+      });
+  }, []);
+
   const activeTab = TABS.find((t) => t.id === tab)!;
-  const items = HISTORY.filter(activeTab.filter);
+  const items = source.filter(activeTab.filter);
 
   const summary = {
     total:    items.length,
@@ -81,7 +127,7 @@ function HistoryContent({ onClose }: { onClose: () => void }) {
       {/* 카테고리 탭 */}
       <div className="flex shrink-0 gap-1.5 border-b border-white/5 bg-zinc-950/80 px-4 py-2.5">
         {TABS.map((t) => {
-          const cnt = HISTORY.filter(t.filter).length;
+          const cnt = source.filter(t.filter).length;
           return (
             <button
               key={t.id}

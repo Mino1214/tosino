@@ -28,6 +28,11 @@ export class AnnouncementItemInputDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  /** true면 솔루션에서 읽음 처리 전 내비게이션 제한 */
+  @IsOptional()
+  @IsBoolean()
+  mandatoryRead?: boolean;
 }
 
 export class ReplaceAnnouncementsDto {

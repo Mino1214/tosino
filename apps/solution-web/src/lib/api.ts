@@ -272,9 +272,27 @@ export async function fetchBootstrap(host: string) {
       european: { id: string; sportLabel: string }[];
       unset: { id: string; sportLabel: string }[];
     };
+    walletRules: {
+      minDepositKrw: string | null;
+      minDepositUsdt: string | null;
+      minWithdrawKrw: string | null;
+      minWithdrawUsdt: string | null;
+      minPointRedeemPoints: number | null;
+      minPointRedeemKrw: string | null;
+      minPointRedeemUsdt: string | null;
+      rollingLockWithdrawals: boolean;
+      rollingTurnoverMultiplier: string | null;
+      agentCanEditMemberRolling: boolean;
+    };
     announcements: {
       modalEnabled: boolean;
-      items: { imageUrl: string; width: number | null; height: number | null }[];
+      items: {
+        id: string;
+        imageUrl: string;
+        width: number | null;
+        height: number | null;
+        mandatoryRead?: boolean;
+      }[];
     };
     oddshostProxySecret: string | null;
     /** 구 API에는 없을 수 있음 */

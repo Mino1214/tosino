@@ -62,6 +62,20 @@ enum AgentInquiryStatus {
   CLOSED
 }
 
+enum PointLedgerEntryType {
+  ATTENDANCE
+  ATTENDANCE_STREAK
+  LOSE_BET
+  REFERRAL_FIRST_BET
+  REDEEM
+  ADJUSTMENT
+}
+
+enum DepositEventKind {
+  FIRST_CHARGE
+  LIMITED_TIME
+}
+
 model Platform {
   id        String   @id @default(cuid())
   slug      String   @unique
@@ -78,6 +92,21 @@ model Platform {
   semiVirtualRecipientPhone    String? @unique
   /** 계좌 줄에 포함되는 식별 문자열(예: 마스킹 계좌 일부). 휴대번호 미사용 시 구분용 */
   semiVirtualAccountHint       String?
+  /** 입금 후 출금 잠금: rollingEnabled 회원만 의무 생성 */
+  rollingLockWithdrawals       Boolean  @default(true)
+  /** 입금액 대비 필요 롤링 턴오버 배수 (예: 1 = 100%) */
+  rollingTurnoverMultiplier    Decimal  @default(1) @db.Decimal(8, 4)
+  /** 총판이 하위 회원 롤링 % 편집 가능 여부 */
+  agentCanEditMemberRolling    Boolean  @default(true)
+  minDepositKrw                Decimal? @db.Decimal(18, 2)
+  minDepositUsdt               Decimal? @db.Decimal(18, 8)
+  minWithdrawKrw               Decimal? @db.Decimal(18, 2)
+  minWithdrawUsdt              Decimal? @db.Decimal(18, 8)
+  minPointRedeemPoints         Int?
+  minPointRedeemKrw            Decimal? @db.Decimal(18, 2)
+  minPointRedeemUsdt           Decimal? @db.Decimal(18, 8)
+  /** 출석·낙첨·추천 등 포인트 규칙 JSON */
+  pointRulesJson               Json     @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -96,6 +125,8 @@ model Platform {
   vinusSessionTokens   VinusSessionToken[]
   casinoVinusTxs       CasinoVinusTx[]
   sportsBetReservations SportsBetReservation[]
+  rollingObligations   RollingObligation[]
+  depositEvents        DepositEvent[]
 }
 
 /// Vinus Gaming 게임 실행 시 회원 식별용(15~25자). 입장 시마다 재발급.
@@ -184,10 +215,91 @@ model PlatformAnnouncement {
   imageHeight Int?
   sortOrder   Int      @default(0)
   active      Boolean  @default(true)
+  /** true면 회원이 읽음 처리 전 솔루션 내 이동 제한(클라이언트 게이트) */
+  mandatoryRead Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  reads AnnouncementRead[]
+
   @@index([platformId, sortOrder])
+}
+
+model AnnouncementRead {
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcementId String
+  announcement   PlatformAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  readAt         DateTime             @default(now())
+
+  @@id([userId, announcementId])
+  @@index([announcementId])
+}
+
+/// 입금 승인 시 롤링 출금 잠금용 (FIFO 턴오버 차감)
+model RollingObligation {
+  id                String    @id @default(cuid())
+  platformId        String
+  platform          Platform  @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceRef         String    @db.VarChar(160)
+  principalAmount   Decimal   @db.Decimal(18, 2)
+  requiredTurnover  Decimal   @db.Decimal(18, 2)
+  appliedTurnover   Decimal   @default(0) @db.Decimal(18, 2)
+  createdAt         DateTime  @default(now())
+  satisfiedAt       DateTime?
+
+  @@index([userId, satisfiedAt])
+  @@index([platformId, userId])
+}
+
+model DepositEvent {
+  id          String           @id @default(cuid())
+  platformId  String
+  platform    Platform         @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  kind        DepositEventKind
+  title       String
+  active      Boolean          @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  /** [{ "minAmount": "10000", "bonusAmount": "1000" }] 문자열 금액 */
+  tiersJson   Json             @default("[]")
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  claims UserDepositEventClaim[]
+
+  @@index([platformId, kind, active])
+}
+
+model UserDepositEventClaim {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId   String
+  event     DepositEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, eventId])
+  @@index([eventId])
+}
+
+model PointLedgerEntry {
+  id           String               @id @default(cuid())
+  platformId   String
+  userId       String
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         PointLedgerEntryType
+  amount       Decimal              @db.Decimal(18, 2)
+  balanceAfter Decimal              @db.Decimal(18, 2)
+  reference    String?
+  metaJson     Json                 @default("{}")
+  createdAt    DateTime             @default(now())
+
+  @@index([userId, createdAt])
+  @@index([platformId, userId])
 }
 
 /// 업로드된 공지용 이미지 라이브러리(플랫폼별)
@@ -301,6 +413,10 @@ model User {
   vinusSessionTokens         VinusSessionToken[]
   casinoVinusTxs             CasinoVinusTx[]
   sportsBetReservations      SportsBetReservation[]
+  rollingObligations         RollingObligation[]
+  announcementReads          AnnouncementRead[]
+  pointLedgerEntries         PointLedgerEntry[]
+  depositEventClaims         UserDepositEventClaim[]
 
   @@index([platformId])
   @@index([parentUserId])
@@ -346,6 +462,7 @@ model Wallet {
   platformId String
   platform   Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
   balance    Decimal  @default(0) @db.Decimal(18, 2)
+  pointBalance Decimal @default(0) @db.Decimal(18, 2)
   updatedAt  DateTime @updatedAt
 
   @@index([platformId])

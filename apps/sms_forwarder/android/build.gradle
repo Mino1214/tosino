@@ -5,9 +5,34 @@ allprojects {
     }
 }
 
+def applyLegacyNamespace = { Project subproject ->
+    def android = subproject.extensions.findByName("android")
+    if (android == null || !android.hasProperty("namespace") || android.namespace) {
+        return
+    }
+
+    def manifestFile = android.sourceSets.findByName("main")?.manifest?.srcFile
+    if (manifestFile == null || !manifestFile.exists()) {
+        return
+    }
+
+    def manifestPackage = new XmlSlurper(false, false)
+        .parse(manifestFile)
+        .attributes()
+        .get("package")
+        ?.trim()
+    if (manifestPackage) {
+        android.namespace = manifestPackage
+    }
+}
+
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
+
+    plugins.withId("com.android.library") {
+        applyLegacyNamespace(project)
+    }
 }
 subprojects {
     project.evaluationDependsOn(":app")

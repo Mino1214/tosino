@@ -19,6 +19,7 @@ type Row = {
   imageWidth: number | null;
   imageHeight: number | null;
   active: boolean;
+  mandatoryRead: boolean;
 };
 
 type ApiRow = {
@@ -28,6 +29,7 @@ type ApiRow = {
   imageHeight: number | null;
   sortOrder: number;
   active: boolean;
+  mandatoryRead?: boolean;
   resolvedUrl: string;
 };
 
@@ -47,6 +49,7 @@ function emptyRows(): Row[] {
     imageWidth: null,
     imageHeight: null,
     active: true,
+    mandatoryRead: false,
   }));
 }
 
@@ -83,6 +86,7 @@ export default function ConsoleAnnouncementsPage() {
             imageWidth: r.imageWidth,
             imageHeight: r.imageHeight,
             active: r.active,
+            mandatoryRead: r.mandatoryRead === true,
           };
         });
         setRows(next);
@@ -124,6 +128,7 @@ export default function ConsoleAnnouncementsPage() {
         imageUrl: asset.publicPath,
         imageWidth: asset.width,
         imageHeight: asset.height,
+        mandatoryRead: next[i].mandatoryRead,
       };
       return next;
     });
@@ -180,6 +185,7 @@ export default function ConsoleAnnouncementsPage() {
       .map((r) => ({
         imageUrl: r.imageUrl.trim(),
         active: r.active,
+        mandatoryRead: r.mandatoryRead,
         imageWidth: r.imageWidth ?? undefined,
         imageHeight: r.imageHeight ?? undefined,
       }))
@@ -223,6 +229,8 @@ export default function ConsoleAnnouncementsPage() {
           <code className="text-zinc-400">ANNOUNCEMENT_MODAL_PUBLISH=false</code>
           . 상대 경로 이미지는{" "}
           <code className="text-zinc-400">PUBLIC_API_URL</code>이 붙습니다.
+          <strong className="text-zinc-400"> 필수 읽기</strong>를 켜면 로그인
+          회원은 확인 전 솔루션 이동이 제한됩니다.
         </p>
       </div>
 
@@ -356,6 +364,23 @@ export default function ConsoleAnnouncementsPage() {
                       className="rounded border-zinc-600"
                     />
                     활성
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-amber-200/80">
+                    <input
+                      type="checkbox"
+                      checked={row.mandatoryRead}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const next = [...rows];
+                        next[i] = {
+                          ...next[i],
+                          mandatoryRead: e.target.checked,
+                        };
+                        setRows(next);
+                      }}
+                      className="rounded border-zinc-600"
+                    />
+                    필수 읽기
                   </label>
                 </div>
                 <input

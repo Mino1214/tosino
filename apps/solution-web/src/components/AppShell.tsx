@@ -20,6 +20,7 @@ import { BettingHistoryPanel } from "./BettingHistoryPanel";
 import { AppModalsProvider } from "@/contexts/AppModalsContext";
 import { AppModalsRoot } from "@/components/modals/AppModalsRoot";
 import { isSportsBettingPath } from "@/lib/sports-lobby-path";
+import { MandatoryAnnouncementGate } from "@/components/MandatoryAnnouncementGate";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -30,6 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <BettingCartProvider>
       <AppModalsProvider>
+      <MandatoryAnnouncementGate />
       {/* 헤더 */}
       <SiteHeader onDrawerOpen={() => setDrawerOpen(true)} />
 

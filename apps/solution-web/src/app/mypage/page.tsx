@@ -1,79 +1,11 @@
 "use client";
 
 import Link from "next/link";
-
-/* ══════════════════════════════════════════════════════════
-   1. 내 정보
-══════════════════════════════════════════════════════════ */
-function ProfileSection() {
-  return (
-    <section className="py-6">
-      <div className="flex flex-col items-center gap-4">
-        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-white/10 bg-zinc-800 text-3xl">
-          👤
-        </div>
-        <div className="text-center">
-          <p className="text-lg font-bold text-white">회원</p>
-          <p className="text-xs text-zinc-500">Lv.1</p>
-        </div>
-        <div className="grid w-full grid-cols-2 gap-3">
-          <div className="flex min-w-0 flex-col items-center gap-1 rounded-xl border border-white/8 bg-white/3 py-4">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500">MONEY</span>
-            <span className="font-mono text-lg font-bold tabular-nums text-main-gold sm:text-xl">0</span>
-            <span className="text-[10px] text-zinc-500">원</span>
-          </div>
-          <div className="flex min-w-0 flex-col items-center gap-1 rounded-xl border border-white/8 bg-white/3 py-4">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500">POINT</span>
-            <span className="font-mono text-lg font-bold tabular-nums text-pink-400 sm:text-xl">0</span>
-            <span className="text-[10px] text-zinc-500">₱</span>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════
-   2. 롤링현황
-══════════════════════════════════════════════════════════ */
-function RollingSection() {
-  const rolling = 0;
-  return (
-    <section id="rolling" className="py-6">
-      <h2 className="mb-4 text-sm font-bold text-white">롤링현황</h2>
-      <div className="space-y-4">
-        <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
-          <span className="shrink-0 text-zinc-400">롤링 달성</span>
-          <span className="truncate text-right font-mono tabular-nums text-zinc-200">
-            0 / 0원 ({rolling}%)
-          </span>
-        </div>
-        <div className="h-3 overflow-hidden rounded-full bg-zinc-800">
-          <div
-            className="h-full rounded-full bg-gold-gradient transition-all duration-500"
-            style={{ width: `${rolling}%` }}
-          />
-        </div>
-        <div className="overflow-hidden rounded-xl border border-white/8">
-          {[
-            ["입금금액", "0원"],
-            ["보너스", "0원"],
-            ["추가롤링", "0원"],
-            ["롤링배수", "×0"],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              className="flex min-w-0 items-center justify-between gap-2 border-b border-white/5 px-3 py-3 last:border-b-0 sm:px-4"
-            >
-              <span className="shrink-0 text-xs text-zinc-500">{label}</span>
-              <span className="truncate text-right font-mono text-sm text-zinc-200">{value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
+import {
+  AttendCheckButton,
+  ProfileWalletSection,
+  RollingLiveSection,
+} from "./mypage-live";
 
 /* ══════════════════════════════════════════════════════════
    3. 전환 / 추천 카드
@@ -173,9 +105,7 @@ function AttendanceSection() {
           ))}
         </div>
         <div className="border-t border-white/8 p-3">
-          <button type="button" className="w-full rounded-lg bg-gold-gradient py-2.5 text-sm font-bold text-black">
-            오늘 출석체크
-          </button>
+          <AttendCheckButton />
         </div>
       </div>
     </section>
@@ -292,9 +222,9 @@ export default function MyPage() {
           {/* 모바일: 세로 스택 */}
           <div className="min-w-0 divide-y divide-white/10 md:hidden">
             <div id="profile">
-              <ProfileSection />
+              <ProfileWalletSection />
             </div>
-            <RollingSection />
+            <RollingLiveSection />
             <ConversionSection />
             <AttendanceSection />
             <NoticeSection />
@@ -305,9 +235,9 @@ export default function MyPage() {
           <div className="hidden min-w-0 md:grid md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)_minmax(0,1fr)] lg:gap-10 xl:gap-12">
             <div className="flex min-h-0 min-w-0 flex-col divide-y divide-white/10 rounded-2xl border border-white/10 bg-zinc-950/40 px-4 py-0 lg:px-5">
               <div id="profile" className="min-w-0">
-                <ProfileSection />
+                <ProfileWalletSection />
               </div>
-              <RollingSection />
+              <RollingLiveSection />
               <ConversionSection />
             </div>
 

@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlatformDto } from './dto/create-platform.dto';
 import { UpdateIntegrationsDto } from './dto/update-integrations.dto';
 import { UpdatePlatformThemeDto } from './dto/update-platform-theme.dto';
+import { UpdatePlatformOperationalDto } from './dto/update-platform-operational.dto';
 import { JwtPayload } from '../auth/auth.service';
 import { access, copyFile, cp, mkdir } from 'fs/promises';
 import { constants as FsConstants } from 'fs';
@@ -270,10 +271,97 @@ export class PlatformsService {
         previewPort: true,
         themeJson: true,
         flagsJson: true,
+        rollingLockWithdrawals: true,
+        rollingTurnoverMultiplier: true,
+        agentCanEditMemberRolling: true,
+        minDepositKrw: true,
+        minDepositUsdt: true,
+        minWithdrawKrw: true,
+        minWithdrawUsdt: true,
+        minPointRedeemPoints: true,
+        minPointRedeemKrw: true,
+        minPointRedeemUsdt: true,
+        pointRulesJson: true,
       },
     });
     if (!p) throw new NotFoundException('Platform not found');
-    return p;
+    return {
+      ...p,
+      rollingTurnoverMultiplier: p.rollingTurnoverMultiplier?.toString() ?? '1',
+      minDepositKrw: p.minDepositKrw?.toString() ?? null,
+      minDepositUsdt: p.minDepositUsdt?.toString() ?? null,
+      minWithdrawKrw: p.minWithdrawKrw?.toString() ?? null,
+      minWithdrawUsdt: p.minWithdrawUsdt?.toString() ?? null,
+      minPointRedeemKrw: p.minPointRedeemKrw?.toString() ?? null,
+      minPointRedeemUsdt: p.minPointRedeemUsdt?.toString() ?? null,
+    };
+  }
+
+  async updateOperational(
+    platformId: string,
+    actor: JwtPayload,
+    dto: UpdatePlatformOperationalDto,
+  ) {
+    this.assertPlatformScope(actor, platformId);
+    const data: Prisma.PlatformUpdateInput = {};
+    if (dto.rollingLockWithdrawals !== undefined) {
+      data.rollingLockWithdrawals = dto.rollingLockWithdrawals;
+    }
+    if (dto.rollingTurnoverMultiplier !== undefined) {
+      data.rollingTurnoverMultiplier = new Prisma.Decimal(
+        dto.rollingTurnoverMultiplier,
+      );
+    }
+    if (dto.agentCanEditMemberRolling !== undefined) {
+      data.agentCanEditMemberRolling = dto.agentCanEditMemberRolling;
+    }
+    if (dto.minDepositKrw !== undefined) {
+      data.minDepositKrw =
+        dto.minDepositKrw.trim() === ''
+          ? null
+          : new Prisma.Decimal(dto.minDepositKrw);
+    }
+    if (dto.minDepositUsdt !== undefined) {
+      data.minDepositUsdt =
+        dto.minDepositUsdt.trim() === ''
+          ? null
+          : new Prisma.Decimal(dto.minDepositUsdt);
+    }
+    if (dto.minWithdrawKrw !== undefined) {
+      data.minWithdrawKrw =
+        dto.minWithdrawKrw.trim() === ''
+          ? null
+          : new Prisma.Decimal(dto.minWithdrawKrw);
+    }
+    if (dto.minWithdrawUsdt !== undefined) {
+      data.minWithdrawUsdt =
+        dto.minWithdrawUsdt.trim() === ''
+          ? null
+          : new Prisma.Decimal(dto.minWithdrawUsdt);
+    }
+    if (dto.minPointRedeemPoints !== undefined) {
+      data.minPointRedeemPoints = dto.minPointRedeemPoints;
+    }
+    if (dto.minPointRedeemKrw !== undefined) {
+      data.minPointRedeemKrw =
+        dto.minPointRedeemKrw.trim() === ''
+          ? null
+          : new Prisma.Decimal(dto.minPointRedeemKrw);
+    }
+    if (dto.minPointRedeemUsdt !== undefined) {
+      data.minPointRedeemUsdt =
+        dto.minPointRedeemUsdt.trim() === ''
+          ? null
+          : new Prisma.Decimal(dto.minPointRedeemUsdt);
+    }
+    if (dto.pointRulesJson !== undefined) {
+      data.pointRulesJson = dto.pointRulesJson as Prisma.InputJsonValue;
+    }
+    await this.prisma.platform.update({
+      where: { id: platformId },
+      data,
+    });
+    return this.getDetail(platformId, actor);
   }
 
   async updateTheme(

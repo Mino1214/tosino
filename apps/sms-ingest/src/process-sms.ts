@@ -9,6 +9,51 @@ import {
   RegistrationStatus,
   Prisma,
 } from '@prisma/client';
+
+/** API RollingObligationService 와 동일 조건 (sms-ingest 단독 실행용) */
+async function maybeCreateRollingObligation(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  platformId: string,
+  amount: Prisma.Decimal,
+  sourceRef: string,
+): Promise<void> {
+  if (amount.lte(0)) return;
+  const [platform, user] = await Promise.all([
+    tx.platform.findUnique({
+      where: { id: platformId },
+      select: {
+        rollingLockWithdrawals: true,
+        rollingTurnoverMultiplier: true,
+      },
+    }),
+    tx.user.findUnique({
+      where: { id: userId },
+      select: { rollingEnabled: true, role: true },
+    }),
+  ]);
+  if (
+    !platform?.rollingLockWithdrawals ||
+    user?.role !== UserRole.USER ||
+    !user?.rollingEnabled
+  ) {
+    return;
+  }
+  const mult =
+    platform.rollingTurnoverMultiplier ?? new Prisma.Decimal(1);
+  const required = amount.times(mult);
+  if (required.lte(0)) return;
+  await tx.rollingObligation.create({
+    data: {
+      platformId,
+      userId,
+      sourceRef: sourceRef.slice(0, 160),
+      principalAmount: amount,
+      requiredTurnover: required,
+      appliedTurnover: new Prisma.Decimal(0),
+    },
+  });
+}
 import {
   parseWebBankSms,
   namesMatchSms,
@@ -335,6 +380,13 @@ async function tryAutoCreditDeposit(
         resolverNote: '반가상: 은행 문자 자동 매칭',
       },
     });
+    await maybeCreateRollingObligation(
+      tx,
+      req.userId,
+      platformId,
+      delta,
+      `sms-wr:${req.id}:principal`,
+    );
     await tx.bankSmsIngest.create({
       data: {
         platformId,
