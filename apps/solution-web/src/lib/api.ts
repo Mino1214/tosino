@@ -157,7 +157,7 @@ export async function fetchReferral(code: string, host: string) {
   q.set("code", code.trim());
   const res = await fetch(`${getApiBase()}/public/referral?${q}`, { cache: "no-store" });
   if (!res.ok) {
-    let msg = "코드를 확인할 수 없습니다";
+    let msg = "가입코드 또는 추천인 아이디를 확인할 수 없습니다";
     try {
       const j = (await res.json()) as { message?: string | string[] };
       if (typeof j.message === "string") msg = j.message;
@@ -169,14 +169,15 @@ export async function fetchReferral(code: string, host: string) {
   return res.json() as Promise<{
     valid: boolean;
     platformName: string;
-    agentDisplayName: string;
+    resolvedBy?: "signup_code" | "login_id";
+    referrerLoginId?: string | null;
   }>;
 }
 
 export type PublicRegisterBody = {
   loginId: string;
   password: string;
-  referralCode: string;
+  signupKey: string;
   displayName?: string;
   contactEmail?: string;
   signupMode?: "full" | "anonymous";
@@ -189,6 +190,7 @@ export type PublicRegisterBody = {
   bankAccountNumber?: string;
   bankAccountHolder?: string;
   exchangePin?: string;
+  usdtWalletAddress?: string;
 };
 
 export async function publicRegister(body: PublicRegisterBody, host: string) {
@@ -198,7 +200,7 @@ export async function publicRegister(body: PublicRegisterBody, host: string) {
     body: JSON.stringify({
       loginId: body.loginId.trim().toLowerCase(),
       password: body.password,
-      referralCode: body.referralCode.trim().toUpperCase(),
+      signupKey: body.signupKey.trim(),
       displayName: body.displayName,
       signupMode: body.signupMode,
       telegramUsername: body.telegramUsername?.trim() || undefined,
@@ -210,6 +212,7 @@ export async function publicRegister(body: PublicRegisterBody, host: string) {
       bankAccountNumber: body.bankAccountNumber?.trim() || undefined,
       bankAccountHolder: body.bankAccountHolder?.trim() || undefined,
       exchangePin: body.exchangePin || undefined,
+      usdtWalletAddress: body.usdtWalletAddress?.trim() || undefined,
       ...(body.contactEmail?.trim()
         ? { contactEmail: body.contactEmail.trim().toLowerCase() }
         : {}),

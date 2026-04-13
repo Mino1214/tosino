@@ -8,34 +8,64 @@ import { registrationStatusLabelKo } from "@/lib/labels";
 
 type Pending = {
   id: string;
-  email: string;
+  loginId: string;
+  email: string | null;
   displayName: string | null;
+  signupMode: string | null;
+  signupReferralInput: string | null;
+  usdtWalletAddress: string | null;
   createdAt: string;
   parentUserId: string | null;
+  referredBy: {
+    id: string;
+    loginId: string;
+    displayName: string | null;
+    email: string | null;
+  } | null;
   parent: {
     id: string;
     displayName: string | null;
-    email: string;
+    loginId: string;
+    email: string | null;
     referralCode: string | null;
   } | null;
 };
 
 type HistoryRow = {
   id: string;
-  email: string;
+  loginId: string;
+  email: string | null;
   displayName: string | null;
+  signupMode: string | null;
+  signupReferralInput: string | null;
+  usdtWalletAddress: string | null;
   registrationStatus: string;
   registrationResolvedAt: string | null;
   createdAt: string;
+  referredBy: {
+    id: string;
+    loginId: string;
+    displayName: string | null;
+    email: string | null;
+  } | null;
   parent: {
     id: string;
     displayName: string | null;
-    email: string;
+    loginId: string;
+    email: string | null;
     referralCode: string | null;
   } | null;
 };
 
 type FilterKey = "all" | "unassigned" | string;
+
+function loginLabel(row: { loginId: string; email: string | null }) {
+  return row.loginId || row.email || "—";
+}
+
+function signupModeLabel(mode: string | null | undefined) {
+  return mode === "anonymous" ? "무기명" : "일반";
+}
 
 export default function ConsoleRegistrationsPage() {
   const router = useRouter();
@@ -96,7 +126,7 @@ export default function ConsoleRegistrationsPage() {
       }
       const id = r.parent.id;
       const label =
-        r.parent.displayName?.trim() || r.parent.email;
+        r.parent.displayName?.trim() || r.parent.loginId || r.parent.email || r.parent.id;
       const ref = r.parent.referralCode;
       const prev = masterMap.get(id);
       if (prev) prev.count += 1;
@@ -235,11 +265,36 @@ export default function ConsoleRegistrationsPage() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-zinc-100">{r.email}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-zinc-100">{loginLabel(r)}</p>
+                    <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">
+                      {signupModeLabel(r.signupMode)}
+                    </span>
+                  </div>
                   <p className="text-xs text-zinc-500">
                     {r.displayName ?? "이름 없음"} · 신청{" "}
                     {new Date(r.createdAt).toLocaleString()}
                   </p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    가입 입력:{" "}
+                    <span className="font-mono text-zinc-300">
+                      {r.signupReferralInput ?? "—"}
+                    </span>
+                    {r.referredBy ? (
+                      <>
+                        <span className="mx-1 text-zinc-700">·</span>
+                        추천인{" "}
+                        <span className="text-zinc-300">
+                          {r.referredBy.displayName ?? r.referredBy.loginId}
+                        </span>
+                      </>
+                    ) : null}
+                  </p>
+                  {r.signupMode === "anonymous" && r.usdtWalletAddress ? (
+                    <p className="mt-1 truncate text-xs text-emerald-300/80">
+                      테더지갑: {r.usdtWalletAddress}
+                    </p>
+                  ) : null}
                   <div className="mt-2 rounded-lg border border-violet-900/40 bg-violet-950/25 px-3 py-2 text-xs">
                     <p className="font-medium text-violet-200/90">소속 총판</p>
                     <p className="mt-0.5 text-violet-100/80">
@@ -254,11 +309,11 @@ export default function ConsoleRegistrationsPage() {
                             <span className="text-zinc-500"> · </span>
                           )}
                           <span>
-                            {r.parent.displayName ?? r.parent.email}
+                            {r.parent.displayName ?? r.parent.loginId}
                           </span>
                           <span className="text-zinc-500">
                             {" "}
-                            ({r.parent.email})
+                            ({r.parent.loginId})
                           </span>
                         </>
                       ) : (
@@ -308,8 +363,11 @@ export default function ConsoleRegistrationsPage() {
                 <tr>
                   <th className="px-4 py-2">처리 시각</th>
                   <th className="px-4 py-2">결과</th>
-                  <th className="px-4 py-2">이메일</th>
+                  <th className="px-4 py-2">아이디</th>
                   <th className="px-4 py-2">표시명</th>
+                  <th className="px-4 py-2">가입유형</th>
+                  <th className="px-4 py-2">가입 입력</th>
+                  <th className="px-4 py-2">추천인</th>
                   <th className="px-4 py-2">소속 총판</th>
                   <th className="px-4 py-2">가입 신청일</th>
                 </tr>
@@ -336,9 +394,20 @@ export default function ConsoleRegistrationsPage() {
                         {registrationStatusLabelKo(h.registrationStatus)}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-zinc-200">{h.email}</td>
+                    <td className="px-4 py-2 text-zinc-200">{loginLabel(h)}</td>
                     <td className="px-4 py-2 text-zinc-500">
                       {h.displayName ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 text-zinc-400">
+                      {signupModeLabel(h.signupMode)}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-xs text-zinc-400">
+                      {h.signupReferralInput ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-zinc-400">
+                      {h.referredBy
+                        ? h.referredBy.displayName ?? h.referredBy.loginId
+                        : "—"}
                     </td>
                     <td className="px-4 py-2 text-xs text-zinc-400">
                       {h.parent ? (
@@ -348,7 +417,7 @@ export default function ConsoleRegistrationsPage() {
                               {h.parent.referralCode}{" "}
                             </span>
                           )}
-                          {h.parent.displayName ?? h.parent.email}
+                          {h.parent.displayName ?? h.parent.loginId}
                         </>
                       ) : (
                         <span className="text-zinc-600">무소속</span>

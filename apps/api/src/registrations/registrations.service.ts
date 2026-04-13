@@ -13,7 +13,10 @@ export class RegistrationsService {
 
   private assertAdmin(actor: JwtPayload, platformId: string) {
     if (actor.role === UserRole.SUPER_ADMIN) return;
-    if (actor.role === UserRole.PLATFORM_ADMIN && actor.platformId === platformId)
+    if (
+      actor.role === UserRole.PLATFORM_ADMIN &&
+      actor.platformId === platformId
+    )
       return;
     throw new ForbiddenException();
   }
@@ -31,8 +34,19 @@ export class RegistrationsService {
         loginId: true,
         email: true,
         displayName: true,
+        signupMode: true,
+        signupReferralInput: true,
+        usdtWalletAddress: true,
         parentUserId: true,
         createdAt: true,
+        referredBy: {
+          select: {
+            id: true,
+            loginId: true,
+            displayName: true,
+            email: true,
+          },
+        },
         parent: {
           select: {
             id: true,
@@ -167,10 +181,22 @@ export class RegistrationsService {
       select: {
         id: true,
         email: true,
+        loginId: true,
         displayName: true,
+        signupMode: true,
+        signupReferralInput: true,
+        usdtWalletAddress: true,
         registrationStatus: true,
         registrationResolvedAt: true,
         createdAt: true,
+        referredBy: {
+          select: {
+            id: true,
+            loginId: true,
+            displayName: true,
+            email: true,
+          },
+        },
         parent: {
           select: {
             id: true,

@@ -5,14 +5,26 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import {
-  RegistrationStatus,
-  UserRole,
-} from '@prisma/client';
+import { RegistrationStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PublicRegisterDto } from './dto/public-register.dto';
 import { PublicPlatformResolveService } from './public-platform-resolve.service';
 import { normalizeLoginId } from '../common/login-id.util';
+
+type SignupFlags = {
+  publicSignupCode: string | null;
+  defaultSignupReferrerUserId: string | null;
+};
+
+type ResolvedSignupTarget = {
+  platformId: string;
+  platformName: string;
+  signupKey: string;
+  resolvedBy: 'signup_code' | 'login_id';
+  parentUserId: string | null;
+  referredByUserId: string | null;
+  referredByLoginId: string | null;
+};
 
 @Injectable()
 export class PublicRegistrationService {
@@ -42,22 +54,151 @@ export class PublicRegistrationService {
     }
   }
 
+  private getSignupKey(input: {
+    signupKey?: string;
+    referralCode?: string;
+  }): string {
+    const raw = input.signupKey?.trim() || input.referralCode?.trim() || '';
+    if (!raw) {
+      throw new BadRequestException(
+        '가입코드 또는 추천인 아이디를 입력해주세요',
+      );
+    }
+    return raw;
+  }
+
+  private readSignupFlags(flagsJson: unknown): SignupFlags {
+    const raw =
+      flagsJson && typeof flagsJson === 'object' && !Array.isArray(flagsJson)
+        ? (flagsJson as Record<string, unknown>)
+        : {};
+    const code =
+      typeof raw.publicSignupCode === 'string'
+        ? raw.publicSignupCode.trim().toUpperCase()
+        : '';
+    const defaultSignupReferrerUserId =
+      typeof raw.defaultSignupReferrerUserId === 'string'
+        ? raw.defaultSignupReferrerUserId.trim()
+        : '';
+    return {
+      publicSignupCode: code || null,
+      defaultSignupReferrerUserId: defaultSignupReferrerUserId || null,
+    };
+  }
+
+  private async resolveMasterFromFlags(
+    platformId: string,
+    userId: string | null,
+  ): Promise<{ id: string; loginId: string } | null> {
+    if (!userId) return null;
+    return this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        platformId,
+        role: UserRole.MASTER_AGENT,
+        registrationStatus: RegistrationStatus.APPROVED,
+      },
+      select: { id: true, loginId: true },
+    });
+  }
+
+  private async resolveSignupTarget(
+    signupKeyRaw: string,
+    platformId: string,
+  ): Promise<ResolvedSignupTarget> {
+    const platform = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: {
+        id: true,
+        name: true,
+        flagsJson: true,
+      },
+    });
+    if (!platform) {
+      throw new BadRequestException('가입 플랫폼을 찾을 수 없습니다');
+    }
+
+    const signupKey = signupKeyRaw.trim();
+    const normalizedCode = signupKey.toUpperCase();
+    const normalizedLoginId = normalizeLoginId(signupKey);
+    const signupFlags = this.readSignupFlags(platform.flagsJson);
+    const defaultMaster = await this.resolveMasterFromFlags(
+      platform.id,
+      signupFlags.defaultSignupReferrerUserId,
+    );
+
+    if (
+      signupFlags.publicSignupCode &&
+      normalizedCode === signupFlags.publicSignupCode
+    ) {
+      if (!defaultMaster) {
+        throw new BadRequestException(
+          '공통 가입코드에 연결된 마스터가 아직 설정되지 않았습니다',
+        );
+      }
+      return {
+        platformId: platform.id,
+        platformName: platform.name,
+        signupKey,
+        resolvedBy: 'signup_code',
+        parentUserId: defaultMaster.id,
+        referredByUserId: defaultMaster.id,
+        referredByLoginId: defaultMaster.loginId,
+      };
+    }
+
+    const referrer = await this.prisma.user.findFirst({
+      where: {
+        platformId: platform.id,
+        loginId: normalizedLoginId,
+        role: { in: [UserRole.MASTER_AGENT, UserRole.USER] },
+        registrationStatus: RegistrationStatus.APPROVED,
+      },
+      select: {
+        id: true,
+        loginId: true,
+        role: true,
+        parentUserId: true,
+        parent: {
+          select: {
+            id: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!referrer) {
+      throw new NotFoundException(
+        '유효하지 않은 가입코드 또는 추천인 아이디입니다',
+      );
+    }
+
+    const parentUserId =
+      referrer.role === UserRole.MASTER_AGENT
+        ? referrer.id
+        : referrer.parent?.role === UserRole.MASTER_AGENT
+          ? referrer.parent.id
+          : (defaultMaster?.id ?? null);
+
+    return {
+      platformId: platform.id,
+      platformName: platform.name,
+      signupKey,
+      resolvedBy: 'login_id',
+      parentUserId,
+      referredByUserId: referrer.id,
+      referredByLoginId: referrer.loginId,
+    };
+  }
+
   async lookupReferral(
     code: string | undefined,
     host?: string,
     port?: string,
     previewSecret?: string,
   ) {
-    if (!code?.trim()) {
-      throw new NotFoundException('code required');
-    }
-    const normalized = code.trim().toUpperCase();
-    const baseWhere = {
-      referralCode: normalized,
-      role: UserRole.MASTER_AGENT,
-      registrationStatus: RegistrationStatus.APPROVED,
-    };
-
+    const signupKey = this.getSignupKey({ signupKey: code });
     const portNum = port?.trim() ? Number(port) : NaN;
     const platformId = await this.resolvePlatformIdFromDto({
       host,
@@ -65,126 +206,97 @@ export class PublicRegistrationService {
       previewSecret,
     });
 
-    if (platformId) {
-      const agent = await this.prisma.user.findFirst({
-        where: { ...baseWhere, platformId },
-        include: { platform: true },
-      });
-      if (!agent?.platform) {
-        throw new NotFoundException('유효하지 않은 추천 코드입니다');
-      }
-      return {
-        valid: true,
-        platformName: agent.platform.name,
-        platformSlug: agent.platform.slug,
-        agentDisplayName: agent.displayName ?? '총판',
-      };
+    if (!platformId) {
+      throw new BadRequestException('가입 플랫폼을 확인할 수 없습니다');
     }
 
-    const agents = await this.prisma.user.findMany({
-      where: baseWhere,
-      include: { platform: true },
-    });
-    if (agents.length === 0) {
-      throw new NotFoundException('유효하지 않은 추천 코드입니다');
-    }
-    if (agents.length > 1) {
-      throw new BadRequestException(
-        '동일 추천 코드가 여러 플랫폼에 있습니다. 가입·코드 확인은 해당 플랫폼 사이트(또는 미리보기 포트)에서 진행하세요.',
-      );
-    }
-    const agent = agents[0];
-    if (!agent.platform) {
-      throw new NotFoundException('유효하지 않은 추천 코드입니다');
-    }
+    const resolved = await this.resolveSignupTarget(signupKey, platformId);
     return {
       valid: true,
-      platformName: agent.platform.name,
-      platformSlug: agent.platform.slug,
-      agentDisplayName: agent.displayName ?? '총판',
+      platformName: resolved.platformName,
+      resolvedBy: resolved.resolvedBy,
+      referrerLoginId: resolved.referredByLoginId,
     };
   }
 
   async register(dto: PublicRegisterDto) {
-    const normalized = dto.referralCode.trim().toUpperCase();
-    const baseWhere = {
-      referralCode: normalized,
-      role: UserRole.MASTER_AGENT,
-      registrationStatus: RegistrationStatus.APPROVED,
-    };
-
+    const signupKey = this.getSignupKey(dto);
     const platformId = await this.resolvePlatformIdFromDto(dto);
-
-    let agent = null as Awaited<
-      ReturnType<typeof this.prisma.user.findFirst>
-    > | null;
-
-    if (platformId) {
-      agent = await this.prisma.user.findFirst({
-        where: { ...baseWhere, platformId },
-      });
-    } else {
-      const agents = await this.prisma.user.findMany({ where: baseWhere });
-      if (agents.length === 1) agent = agents[0];
-      else if (agents.length > 1) {
-        throw new BadRequestException(
-          '동일 추천 코드가 여러 플랫폼에 있습니다. 가입은 해당 플랫폼 사이트에서 진행하세요.',
-        );
-      }
+    if (!platformId) {
+      throw new BadRequestException('가입 플랫폼을 확인할 수 없습니다');
     }
 
-    if (!agent?.platformId) {
-      throw new BadRequestException('유효하지 않은 추천 코드입니다');
-    }
-
+    const resolved = await this.resolveSignupTarget(signupKey, platformId);
     const loginId = normalizeLoginId(dto.loginId);
     const existing = await this.prisma.user.findFirst({
-      where: { loginId, platformId: agent.platformId },
+      where: { loginId, platformId: resolved.platformId },
     });
     if (existing) {
       throw new ConflictException('이 플랫폼에서 이미 사용 중인 아이디입니다');
     }
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const email =
       dto.contactEmail?.trim() != null && dto.contactEmail.trim().length > 0
         ? dto.contactEmail.trim().toLowerCase()
         : null;
 
-    // 입출금 PIN 해싱
     const exchangePinHash =
       dto.exchangePin && dto.exchangePin.length >= 4
         ? await bcrypt.hash(dto.exchangePin, 10)
         : null;
 
     const isAnonymous = dto.signupMode === 'anonymous';
+    if (isAnonymous && !dto.usdtWalletAddress?.trim()) {
+      throw new BadRequestException(
+        '무기명 회원가입은 테더 지갑 주소를 입력해야 합니다',
+      );
+    }
+
     const now = new Date();
 
-    await this.prisma.user.create({
+    const created = await this.prisma.user.create({
       data: {
         loginId,
         email,
         passwordHash,
         role: UserRole.USER,
-        platformId: agent.platformId,
-        parentUserId: agent.id,
+        platformId: resolved.platformId,
+        parentUserId: resolved.parentUserId,
+        referredByUserId: resolved.referredByUserId,
         displayName: dto.displayName?.trim() || null,
         registrationStatus: isAnonymous
           ? RegistrationStatus.APPROVED
           : RegistrationStatus.PENDING,
         registrationResolvedAt: isAnonymous ? now : null,
-        // 프로필 확장 필드
-        signupMode:       dto.signupMode ?? null,
+        signupMode: dto.signupMode ?? null,
+        signupReferralInput: signupKey,
         telegramUsername: dto.telegramUsername?.trim() || null,
-        phone:            dto.phone?.trim() || null,
-        telecomCompany:   dto.telecomCompany?.trim() || null,
-        birthDate:        dto.birthDate?.trim() || null,
-        gender:           dto.gender ?? null,
-        bankCode:         dto.bankCode?.trim() || null,
+        phone: dto.phone?.trim() || null,
+        telecomCompany: dto.telecomCompany?.trim() || null,
+        birthDate: dto.birthDate?.trim() || null,
+        gender: dto.gender ?? null,
+        bankCode: dto.bankCode?.trim() || null,
         bankAccountNumber: dto.bankAccountNumber?.trim() || null,
         bankAccountHolder: dto.bankAccountHolder?.trim() || null,
+        usdtWalletAddress: dto.usdtWalletAddress?.trim() || null,
         exchangePinHash,
       },
+      select: {
+        id: true,
+      },
     });
+
+    if (isAnonymous) {
+      await this.prisma.wallet.create({
+        data: {
+          userId: created.id,
+          platformId: resolved.platformId,
+          balance: 0,
+        },
+      });
+    }
+
     return {
       ok: true,
       message: isAnonymous

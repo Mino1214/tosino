@@ -17,6 +17,15 @@ type Detail = {
   minPointRedeemKrw: string | null;
   minPointRedeemUsdt: string | null;
   pointRulesJson: unknown;
+  publicSignupCode: string | null;
+  defaultSignupReferrerUserId: string | null;
+};
+
+type MasterRow = {
+  id: string;
+  role: string;
+  loginId?: string | null;
+  displayName?: string | null;
 };
 
 const POINT_RULE_KEYS = [
@@ -34,6 +43,7 @@ export default function ConsoleOperationalPage() {
   const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [row, setRow] = useState<Detail | null>(null);
+  const [masters, setMasters] = useState<MasterRow[]>([]);
   const [rulesText, setRulesText] = useState("{}");
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -46,8 +56,11 @@ export default function ConsoleOperationalPage() {
   const load = useCallback(() => {
     if (!selectedPlatformId) return Promise.resolve();
     setErr(null);
-    return apiFetch<Detail>(`/platforms/${selectedPlatformId}`)
-      .then((d) => {
+    return Promise.all([
+      apiFetch<Detail>(`/platforms/${selectedPlatformId}`),
+      apiFetch<MasterRow[]>(`/platforms/${selectedPlatformId}/users`),
+    ])
+      .then(([d, users]) => {
         setRow({
           rollingLockWithdrawals: d.rollingLockWithdrawals,
           rollingTurnoverMultiplier: d.rollingTurnoverMultiplier,
@@ -60,7 +73,10 @@ export default function ConsoleOperationalPage() {
           minPointRedeemKrw: d.minPointRedeemKrw,
           minPointRedeemUsdt: d.minPointRedeemUsdt,
           pointRulesJson: d.pointRulesJson,
+          publicSignupCode: d.publicSignupCode ?? "",
+          defaultSignupReferrerUserId: d.defaultSignupReferrerUserId ?? "",
         });
+        setMasters(users.filter((user) => user.role === "MASTER_AGENT"));
         try {
           setRulesText(JSON.stringify(d.pointRulesJson ?? {}, null, 2));
         } catch {
@@ -108,6 +124,8 @@ export default function ConsoleOperationalPage() {
           minPointRedeemPoints: row.minPointRedeemPoints ?? undefined,
           minPointRedeemKrw: row.minPointRedeemKrw ?? "",
           minPointRedeemUsdt: row.minPointRedeemUsdt ?? "",
+          publicSignupCode: row.publicSignupCode ?? "",
+          defaultSignupReferrerUserId: row.defaultSignupReferrerUserId ?? "",
           pointRulesJson,
         }),
       });
@@ -254,6 +272,52 @@ export default function ConsoleOperationalPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-100">회원가입 연결</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            공통 가입코드와 그 코드를 사용할 때 연결할 마스터를 설정합니다. 추천인 로그인 아이디 입력은 회원가입 화면에서 별도로 함께 지원됩니다.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="text-xs text-zinc-500">공통 가입코드</label>
+            <input
+              type="text"
+              value={row.publicSignupCode ?? ""}
+              onChange={(e) =>
+                patchRow(
+                  "publicSignupCode",
+                  (e.target.value.trim().toUpperCase() || null) as Detail["publicSignupCode"],
+                )
+              }
+              placeholder="예: ION"
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-zinc-500">공통 코드 연결 마스터</label>
+            <select
+              value={row.defaultSignupReferrerUserId ?? ""}
+              onChange={(e) =>
+                patchRow(
+                  "defaultSignupReferrerUserId",
+                  (e.target.value || null) as Detail["defaultSignupReferrerUserId"],
+                )
+              }
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+            >
+              <option value="">선택 안 함</option>
+              {masters.map((master) => (
+                <option key={master.id} value={master.id}>
+                  {master.displayName?.trim() || master.loginId || master.id}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </section>

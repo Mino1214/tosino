@@ -290,6 +290,12 @@ export class PlatformsService {
       },
     });
     if (!p) throw new NotFoundException('Platform not found');
+    const flags =
+      p.flagsJson &&
+      typeof p.flagsJson === 'object' &&
+      !Array.isArray(p.flagsJson)
+        ? (p.flagsJson as Record<string, unknown>)
+        : {};
     return {
       ...p,
       rollingTurnoverMultiplier: p.rollingTurnoverMultiplier?.toString() ?? '1',
@@ -299,6 +305,14 @@ export class PlatformsService {
       minWithdrawUsdt: p.minWithdrawUsdt?.toString() ?? null,
       minPointRedeemKrw: p.minPointRedeemKrw?.toString() ?? null,
       minPointRedeemUsdt: p.minPointRedeemUsdt?.toString() ?? null,
+      publicSignupCode:
+        typeof flags.publicSignupCode === 'string'
+          ? flags.publicSignupCode
+          : null,
+      defaultSignupReferrerUserId:
+        typeof flags.defaultSignupReferrerUserId === 'string'
+          ? flags.defaultSignupReferrerUserId
+          : null,
     };
   }
 
@@ -309,6 +323,17 @@ export class PlatformsService {
   ) {
     this.assertPlatformScope(actor, platformId);
     const data: Prisma.PlatformUpdateInput = {};
+    const current = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: { flagsJson: true },
+    });
+    if (!current) throw new NotFoundException('Platform not found');
+    const nextFlags =
+      current.flagsJson &&
+      typeof current.flagsJson === 'object' &&
+      !Array.isArray(current.flagsJson)
+        ? { ...(current.flagsJson as Record<string, unknown>) }
+        : {};
     if (dto.rollingLockWithdrawals !== undefined) {
       data.rollingLockWithdrawals = dto.rollingLockWithdrawals;
     }
@@ -361,6 +386,37 @@ export class PlatformsService {
     }
     if (dto.pointRulesJson !== undefined) {
       data.pointRulesJson = dto.pointRulesJson as Prisma.InputJsonValue;
+    }
+    if (dto.publicSignupCode !== undefined) {
+      const code = dto.publicSignupCode.trim().toUpperCase();
+      if (code) {
+        nextFlags.publicSignupCode = code;
+      } else {
+        delete nextFlags.publicSignupCode;
+      }
+      data.flagsJson = nextFlags as Prisma.InputJsonValue;
+    }
+    if (dto.defaultSignupReferrerUserId !== undefined) {
+      const userId = dto.defaultSignupReferrerUserId?.trim() || '';
+      if (userId) {
+        const target = await this.prisma.user.findFirst({
+          where: {
+            id: userId,
+            platformId,
+            role: UserRole.MASTER_AGENT,
+          },
+          select: { id: true },
+        });
+        if (!target) {
+          throw new BadRequestException(
+            '공통 가입코드에 연결할 마스터를 찾을 수 없습니다',
+          );
+        }
+        nextFlags.defaultSignupReferrerUserId = userId;
+      } else {
+        delete nextFlags.defaultSignupReferrerUserId;
+      }
+      data.flagsJson = nextFlags as Prisma.InputJsonValue;
     }
     await this.prisma.platform.update({
       where: { id: platformId },
@@ -582,8 +638,7 @@ export class PlatformsService {
       기기수신_파싱실패: '등록 기기로 수신 · 본문 형식을 읽지 못함',
       기기수신_힌트불일치:
         '등록 기기로 수신 · 계좌 힌트/번호 조합이 설정과 맞지 않음',
-      미등록번호_미전달:
-        '수신번호가 앱에 전달되지 않았거나 반가상 미등록 번호',
+      미등록번호_미전달: '수신번호가 앱에 전달되지 않았거나 반가상 미등록 번호',
       파싱실패: '본문 파싱 실패',
       출금알림: '출금 알림(자동 입금 처리 안 함)',
       중복: '이미 처리된 동일 문자',

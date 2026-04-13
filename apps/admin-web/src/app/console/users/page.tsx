@@ -16,6 +16,16 @@ type Row = {
   role: string;
   displayName: string | null;
   parentUserId: string | null;
+  referredByUserId?: string | null;
+  referredBy?: {
+    id: string;
+    loginId?: string | null;
+    displayName?: string | null;
+    email?: string | null;
+  } | null;
+  signupMode?: string | null;
+  signupReferralInput?: string | null;
+  usdtWalletAddress?: string | null;
   createdAt: string;
   registrationStatus?: string;
   referralCode?: string | null;
@@ -31,6 +41,10 @@ type Tab = "masters" | "users";
 function rowLoginLabel(r: Pick<Row, "loginId" | "email">): string {
   const v = r.loginId ?? r.email;
   return v != null && String(v).length > 0 ? String(v) : "—";
+}
+
+function signupModeLabel(mode: string | null | undefined): string {
+  return mode === "anonymous" ? "무기명" : "일반";
 }
 
 function canEditAgentMemo(
@@ -817,6 +831,8 @@ export default function ConsoleUsersPage() {
                         <th className="px-3 py-2">아이디</th>
                         <th className="px-3 py-2">표시명</th>
                         <th className="px-3 py-2">가입 상태</th>
+                        <th className="px-3 py-2">가입유형</th>
+                        <th className="px-3 py-2">가입 입력</th>
                         <th className="px-3 py-2">가입일</th>
                         <th className="px-3 py-2">메모</th>
                         {canCreate && (
@@ -838,6 +854,12 @@ export default function ConsoleUsersPage() {
                           </td>
                           <td className="px-3 py-2 text-zinc-500">
                             {registrationStatusLabelKo(u.registrationStatus)}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-400">
+                            {signupModeLabel(u.signupMode)}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-zinc-400">
+                            {u.signupReferralInput ?? "—"}
                           </td>
                           <td className="px-3 py-2 text-xs text-zinc-500">
                             {new Date(u.createdAt).toLocaleDateString()}
@@ -885,6 +907,10 @@ export default function ConsoleUsersPage() {
                   <th className="px-4 py-2">아이디</th>
                   <th className="px-4 py-2">표시명</th>
                   <th className="px-4 py-2">가입 상태</th>
+                  <th className="px-4 py-2">가입유형</th>
+                  <th className="px-4 py-2">가입 입력</th>
+                  <th className="px-4 py-2">추천인</th>
+                  <th className="px-4 py-2">테더지갑</th>
                   <th className="px-4 py-2">소속 총판</th>
                   <th className="px-4 py-2">가입일</th>
                   <th className="px-4 py-2">메모</th>
@@ -897,7 +923,7 @@ export default function ConsoleUsersPage() {
                 {endUsers.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={canCreate ? 7 : 6}
+                      colSpan={canCreate ? 11 : 10}
                       className="px-4 py-6 text-center text-zinc-500"
                     >
                       일반 유저가 없습니다.
@@ -921,6 +947,24 @@ export default function ConsoleUsersPage() {
                         </td>
                         <td className="px-4 py-2 text-zinc-500">
                           {registrationStatusLabelKo(r.registrationStatus)}
+                        </td>
+                        <td className="px-4 py-2 text-zinc-400">
+                          {signupModeLabel(r.signupMode)}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-xs text-zinc-400">
+                          {r.signupReferralInput ?? "—"}
+                        </td>
+                        <td className="px-4 py-2 text-zinc-400">
+                          {r.referredBy
+                            ? r.referredBy.displayName ||
+                              rowLoginLabel({
+                                loginId: r.referredBy.loginId ?? undefined,
+                                email: r.referredBy.email ?? undefined,
+                              })
+                            : "—"}
+                        </td>
+                        <td className="max-w-[220px] truncate px-4 py-2 text-xs text-emerald-300/80">
+                          {r.signupMode === "anonymous" ? r.usdtWalletAddress ?? "—" : "—"}
                         </td>
                         <td className="px-4 py-2 text-zinc-400">
                           {parent ? (

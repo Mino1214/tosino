@@ -9,12 +9,36 @@ type ReqRow = {
   id: string;
   type: string;
   amount: string;
+  currency: string;
   status: string;
   note: string | null;
   depositorName: string | null;
   createdAt: string;
-  user: { id: string; email: string; displayName: string | null };
+  user: {
+    id: string;
+    loginId?: string | null;
+    email: string | null;
+    displayName: string | null;
+    signupMode?: string | null;
+    bankCode?: string | null;
+    bankAccountNumber?: string | null;
+    bankAccountHolder?: string | null;
+    usdtWalletAddress?: string | null;
+  };
 };
+
+function loginLabel(user: ReqRow["user"]) {
+  return user.loginId || user.email || "—";
+}
+
+function signupModeLabel(mode: string | null | undefined) {
+  return mode === "anonymous" ? "무기명" : "일반";
+}
+
+function amountLabel(row: ReqRow) {
+  if (row.currency === "USDT") return `${Number(row.amount).toLocaleString("en-US")} USDT`;
+  return `${Number(row.amount).toLocaleString("ko-KR")}원`;
+}
 
 export default function ConsoleWalletRequestsPage() {
   const router = useRouter();
@@ -115,13 +139,15 @@ export default function ConsoleWalletRequestsPage() {
         <div className="overflow-x-auto rounded-xl border border-zinc-800">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400">
-              <tr>
-                <th className="px-4 py-2">회원</th>
-                <th className="px-4 py-2">유형</th>
-                <th className="px-4 py-2">금액</th>
-                <th className="px-4 py-2">입금자명</th>
-                <th className="px-4 py-2">메모</th>
-                <th className="px-4 py-2">일시</th>
+                <tr>
+                  <th className="px-4 py-2">회원</th>
+                  <th className="px-4 py-2">가입유형</th>
+                  <th className="px-4 py-2">유형</th>
+                  <th className="px-4 py-2">금액</th>
+                  <th className="px-4 py-2">출금/입금 기준</th>
+                  <th className="px-4 py-2">입금자명</th>
+                  <th className="px-4 py-2">메모</th>
+                  <th className="px-4 py-2">일시</th>
                 <th className="px-4 py-2">처리</th>
               </tr>
             </thead>
@@ -129,15 +155,27 @@ export default function ConsoleWalletRequestsPage() {
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-zinc-800/80">
                   <td className="px-4 py-2 text-zinc-200">
-                    {r.user.email}
+                    {loginLabel(r.user)}
                     <br />
                     <span className="text-xs text-zinc-500">
                       {r.user.displayName ?? ""}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-zinc-400">{r.type}</td>
+                  <td className="px-4 py-2 text-zinc-400">
+                    {signupModeLabel(r.user.signupMode)}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-400">
+                    {r.type} / {r.currency}
+                  </td>
                   <td className="px-4 py-2 font-mono text-zinc-200">
-                    {r.amount}
+                    {amountLabel(r)}
+                  </td>
+                  <td className="max-w-[220px] truncate px-4 py-2 text-xs text-zinc-400">
+                    {r.currency === "USDT"
+                      ? r.user.usdtWalletAddress ?? "지갑 미등록"
+                      : r.user.bankAccountNumber
+                        ? `${r.user.bankAccountHolder ?? ""} · ${r.user.bankAccountNumber}`
+                        : "계좌 미등록"}
                   </td>
                   <td className="max-w-[100px] truncate px-4 py-2 text-zinc-300">
                     {r.depositorName ?? "—"}

@@ -28,7 +28,9 @@ export class UsersService {
     private rateRevision: RateRevisionService,
   ) {}
 
-  private async generateUniqueReferralCode(platformId: string): Promise<string> {
+  private async generateUniqueReferralCode(
+    platformId: string,
+  ): Promise<string> {
     for (let i = 0; i < 24; i++) {
       const code = randomReferralSegment(6);
       const existing = await this.prisma.user.findFirst({
@@ -69,7 +71,11 @@ export class UsersService {
         role: true,
         platformId: true,
         parentUserId: true,
+        referredByUserId: true,
         displayName: true,
+        signupMode: true,
+        signupReferralInput: true,
+        usdtWalletAddress: true,
         createdAt: true,
         registrationStatus: true,
         referralCode: true,
@@ -79,6 +85,14 @@ export class UsersService {
         uplinePrivateMemo: true,
         agentPlatformSharePct: true,
         agentSplitFromParentPct: true,
+        referredBy: {
+          select: {
+            id: true,
+            loginId: true,
+            displayName: true,
+            email: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -107,16 +121,20 @@ export class UsersService {
       role: r.role,
       platformId: r.platformId,
       parentUserId: r.parentUserId,
+      referredByUserId: r.referredByUserId,
       displayName: r.displayName,
+      signupMode: r.signupMode,
+      signupReferralInput: r.signupReferralInput,
+      usdtWalletAddress: r.usdtWalletAddress,
       createdAt: r.createdAt,
       registrationStatus: r.registrationStatus,
       referralCode: r.referralCode,
+      referredBy: r.referredBy,
       agentMemo: r.agentMemo,
       userMemo: r.userMemo,
       masterPrivateMemo: isPlatformStaff ? r.masterPrivateMemo : undefined,
       uplinePrivateMemo:
-        isPlatformStaff ||
-        (isMasterAgentViewer && r.parentUserId === actor.sub)
+        isPlatformStaff || (isMasterAgentViewer && r.parentUserId === actor.sub)
           ? r.uplinePrivateMemo
           : undefined,
       agentPlatformSharePct:
@@ -147,10 +165,7 @@ export class UsersService {
     });
     if (!target) throw new NotFoundException();
     if (actor.role === UserRole.MASTER_AGENT) {
-      if (
-        target.role !== UserRole.USER ||
-        target.parentUserId !== actor.sub
-      ) {
+      if (target.role !== UserRole.USER || target.parentUserId !== actor.sub) {
         throw new ForbiddenException(
           '소속 회원에게만 총판 메모를 남길 수 있습니다',
         );
@@ -202,13 +217,14 @@ export class UsersService {
     const existing = await this.prisma.user.findFirst({
       where: { loginId, platformId },
     });
-    if (existing) throw new ConflictException('이 플랫폼에서 이미 등록된 아이디입니다');
+    if (existing)
+      throw new ConflictException('이 플랫폼에서 이미 등록된 아이디입니다');
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const email =
       dto.contactEmail?.trim() != null && dto.contactEmail.trim().length > 0
         ? dto.contactEmail.trim().toLowerCase()
         : null;
-    let parentUserId: string | null = dto.parentUserId ?? null;
+    const parentUserId: string | null = dto.parentUserId ?? null;
     if (actor.role === UserRole.PLATFORM_ADMIN && dto.role === UserRole.USER) {
       // optional parent validation if provided
       if (parentUserId) {
@@ -229,13 +245,16 @@ export class UsersService {
     };
     if (dto.role === UserRole.MASTER_AGENT) {
       let code =
-        dto.referralCode?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') ||
-        null;
+        dto.referralCode
+          ?.trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '') || null;
       if (code) {
         const taken = await this.prisma.user.findFirst({
           where: { referralCode: code, platformId },
         });
-        if (taken) throw new ConflictException('이미 사용 중인 추천 코드입니다');
+        if (taken)
+          throw new ConflictException('이미 사용 중인 추천 코드입니다');
       } else {
         code = await this.generateUniqueReferralCode(platformId);
       }
@@ -421,7 +440,9 @@ export class UsersService {
     });
     if (!target) throw new NotFoundException();
     if (target.role !== UserRole.USER) {
-      throw new BadRequestException('일반 회원만 롤링 이력을 조회할 수 있습니다');
+      throw new BadRequestException(
+        '일반 회원만 롤링 이력을 조회할 수 있습니다',
+      );
     }
     const items = await this.rateRevision.listRollingRevisions(targetUserId);
     return {
@@ -539,7 +560,9 @@ export class UsersService {
       select: { id: true },
     });
     if (!parent) {
-      throw new ForbiddenException('총판 계정만 하위 총판을 등록할 수 있습니다');
+      throw new ForbiddenException(
+        '총판 계정만 하위 총판을 등록할 수 있습니다',
+      );
     }
     const loginId = normalizeLoginId(dto.loginId);
     const existing = await this.prisma.user.findFirst({
@@ -556,8 +579,10 @@ export class UsersService {
     }
     const passwordHash = await bcrypt.hash(dto.password, 10);
     let code =
-      dto.referralCode?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') ||
-      null;
+      dto.referralCode
+        ?.trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '') || null;
     if (code) {
       const taken = await this.prisma.user.findFirst({
         where: { referralCode: code, platformId },

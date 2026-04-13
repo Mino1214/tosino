@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const DEFAULT_RATE = 1488;
-const STORAGE_PREFIX = "wallet-usdt-address:v1";
 
 function UsdtIcon({ className }: { className?: string }) {
   return (
@@ -20,8 +19,9 @@ function UsdtIcon({ className }: { className?: string }) {
 }
 
 type UsdtDepositPanelProps = {
-  userId: string;
+  savedAddress?: string | null;
   krwBalanceDisplay?: string | null;
+  onSaveAddress: (address: string) => Promise<void>;
 };
 
 function formatUsdtAmount(value: number) {
@@ -32,34 +32,28 @@ function formatUsdtAmount(value: number) {
   });
 }
 
-function getStorageKey(userId: string) {
-  return `${STORAGE_PREFIX}:${userId}`;
-}
-
 export function UsdtDepositPanel({
-  userId,
+  savedAddress,
   krwBalanceDisplay,
+  onSaveAddress,
 }: UsdtDepositPanelProps) {
   const rate = useMemo(() => {
     const n = Number(process.env.NEXT_PUBLIC_USDT_KRW_RATE);
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_RATE;
   }, []);
 
-  const [savedAddress, setSavedAddress] = useState("");
-  const [draftAddress, setDraftAddress] = useState("");
-  const [isEditing, setIsEditing] = useState(true);
+  const [draftAddress, setDraftAddress] = useState(savedAddress?.trim() ?? "");
+  const [isEditing, setIsEditing] = useState(!(savedAddress?.trim() ?? ""));
   const [copied, setCopied] = useState(false);
-  const [qrTick, setQrTick] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = localStorage.getItem(getStorageKey(userId)) ?? "";
-    setSavedAddress(saved);
-    setDraftAddress(saved);
-    setIsEditing(!saved);
-  }, [userId]);
+    const next = savedAddress?.trim() ?? "";
+    setDraftAddress(next);
+    setIsEditing(!next);
+  }, [savedAddress]);
 
   const withdrawableUsdt = useMemo(() => {
     const krw = Number(krwBalanceDisplay ?? 0);
@@ -69,13 +63,14 @@ export function UsdtDepositPanel({
 
   const qrSource =
     isEditing && draftAddress.trim()
-      ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(draftAddress.trim())}&t=${qrTick}`
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(draftAddress.trim())}`
       : "";
 
   const copyAddress = useCallback(async () => {
-    if (!savedAddress) return;
+    const target = savedAddress?.trim();
+    if (!target) return;
     try {
-      await navigator.clipboard.writeText(savedAddress);
+      await navigator.clipboard.writeText(target);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -83,35 +78,40 @@ export function UsdtDepositPanel({
     }
   }, [savedAddress]);
 
-  function saveWallet() {
+  async function saveWallet() {
     const trimmed = draftAddress.trim();
     if (trimmed.length < 20) {
       setNotice(null);
       setError("TRC20 지갑 주소를 다시 확인해주세요.");
       return;
     }
-    if (typeof window === "undefined") return;
-
-    localStorage.setItem(getStorageKey(userId), trimmed);
-    setSavedAddress(trimmed);
-    setDraftAddress(trimmed);
-    setIsEditing(false);
+    setSaving(true);
+    setNotice(null);
     setError(null);
-    setNotice("테더 지갑 주소가 이 브라우저에 저장되었습니다.");
+    try {
+      await onSaveAddress(trimmed);
+      setIsEditing(false);
+      setNotice("테더 지갑 주소가 저장되었습니다.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "지갑 저장에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function startEditing() {
     setNotice(null);
     setError(null);
+    setDraftAddress(savedAddress?.trim() ?? "");
     setIsEditing(true);
-    setDraftAddress(savedAddress);
   }
 
   function cancelEditing() {
+    const next = savedAddress?.trim() ?? "";
     setNotice(null);
     setError(null);
-    setDraftAddress(savedAddress);
-    setIsEditing(!savedAddress);
+    setDraftAddress(next);
+    setIsEditing(!next);
   }
 
   return (
@@ -122,7 +122,7 @@ export function UsdtDepositPanel({
             <UsdtIcon />
             <div>
               <h2 className="text-lg font-bold text-white">테더 지갑</h2>
-              <p className="mt-1 text-xs text-zinc-500">TRC20 출금 지갑 등록용</p>
+              <p className="mt-1 text-xs text-zinc-500">무기명 회원 전용 출금 지갑</p>
             </div>
           </div>
           <span className="rounded-full border border-emerald-700/40 bg-emerald-950/40 px-3 py-1 text-xs font-semibold text-emerald-200">
@@ -152,8 +152,8 @@ export function UsdtDepositPanel({
                 </p>
                 <p className="mt-1 text-sm text-zinc-400">
                   {savedAddress && !isEditing
-                    ? "등록된 지갑 주소로 테더 출금 기준을 확인할 수 있습니다."
-                    : "지갑 주소를 등록하면 이후 출금 기준을 한눈에 볼 수 있습니다."}
+                    ? "등록된 지갑 주소로 테더 출금이 진행됩니다."
+                    : "출금받을 TRC20 지갑 주소를 등록해주세요."}
                 </p>
               </div>
               {savedAddress && !isEditing ? (
@@ -198,12 +198,13 @@ export function UsdtDepositPanel({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={saveWallet}
-                    className="flex-1 rounded-xl bg-gold-gradient py-3 text-sm font-bold text-black transition-opacity hover:opacity-90"
+                    disabled={saving}
+                    onClick={() => void saveWallet()}
+                    className="flex-1 rounded-xl bg-gold-gradient py-3 text-sm font-bold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
-                    지갑 저장
+                    {saving ? "지갑 저장 중…" : "지갑 저장"}
                   </button>
-                  {savedAddress ? (
+                  {(savedAddress?.trim() ?? "") ? (
                     <button
                       type="button"
                       onClick={cancelEditing}
@@ -213,10 +214,6 @@ export function UsdtDepositPanel({
                     </button>
                   ) : null}
                 </div>
-
-                <p className="text-xs leading-relaxed text-zinc-500">
-                  지금은 브라우저에 임시 저장되며, 이후 DB와 연결할 때 같은 구조로 옮기기 쉽게 맞춰둔 상태입니다.
-                </p>
               </div>
             )}
           </div>
@@ -258,33 +255,19 @@ export function UsdtDepositPanel({
             <div className="rounded-2xl border border-white/8 bg-black/25 p-4">
               <p className="text-sm font-semibold text-white">등록 중 QR 미리보기</p>
               <p className="mt-1 text-sm text-zinc-500">
-                지갑 등록 단계에서만 QR을 보여주고, 저장이 끝나면 숨깁니다.
+                등록 중일 때만 QR이 보입니다. 저장 후에는 보안상 숨겨집니다.
               </p>
             </div>
-
-            <div className="flex items-center justify-center rounded-2xl border border-white/8 bg-white p-4">
+            <div className="flex items-center justify-center rounded-2xl border border-white/8 bg-black/25 p-4">
               {qrSource ? (
-                <div className="text-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={qrSource}
-                    alt="지갑 주소 QR"
-                    width={220}
-                    height={220}
-                    className="h-[220px] w-[220px]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setQrTick((tick) => tick + 1)}
-                    className="mt-3 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-                  >
-                    QR 새로고침
-                  </button>
-                </div>
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={qrSource}
+                  alt="테더 지갑 QR 코드"
+                  className="h-[220px] w-[220px] rounded-xl bg-white p-2"
+                />
               ) : (
-                <span className="px-4 text-center text-xs text-zinc-500">
-                  지갑 주소를 입력하면 QR 미리보기가 표시됩니다.
-                </span>
+                <p className="text-sm text-zinc-500">주소를 입력하면 QR이 표시됩니다.</p>
               )}
             </div>
           </div>

@@ -25,9 +25,36 @@ export class WalletRequestsService {
     private depositEvents: DepositEventsService,
   ) {}
 
+  private getUsdtKrwRate(): Prisma.Decimal {
+    const raw =
+      process.env.USDT_KRW_RATE?.trim() ||
+      process.env.NEXT_PUBLIC_USDT_KRW_RATE?.trim() ||
+      '1488';
+    try {
+      const rate = new Prisma.Decimal(raw);
+      if (!rate.gt(0)) throw new Error('invalid');
+      return rate;
+    } catch {
+      return new Prisma.Decimal(1488);
+    }
+  }
+
+  private toWalletKrwAmount(
+    amount: Prisma.Decimal,
+    currency: 'KRW' | 'USDT',
+  ): Prisma.Decimal {
+    if (currency === 'USDT') {
+      return amount.times(this.getUsdtKrwRate());
+    }
+    return amount;
+  }
+
   private assertPlatformAdmin(actor: JwtPayload, platformId: string) {
     if (actor.role === UserRole.SUPER_ADMIN) return;
-    if (actor.role === UserRole.PLATFORM_ADMIN && actor.platformId === platformId)
+    if (
+      actor.role === UserRole.PLATFORM_ADMIN &&
+      actor.platformId === platformId
+    )
       return;
     throw new ForbiddenException();
   }
@@ -49,10 +76,19 @@ export class WalletRequestsService {
         role: UserRole.USER,
         registrationStatus: RegistrationStatus.APPROVED,
       },
+      select: {
+        id: true,
+        signupMode: true,
+        bankCode: true,
+        bankAccountNumber: true,
+        bankAccountHolder: true,
+        usdtWalletAddress: true,
+      },
     });
     if (!user) throw new ForbiddenException();
     const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new BadRequestException('지갑이 없습니다. 승인을 기다려 주세요.');
+    if (!wallet)
+      throw new BadRequestException('지갑이 없습니다. 승인을 기다려 주세요.');
     const platform = await this.prisma.platform.findUnique({
       where: { id: platformId },
       select: {
@@ -63,10 +99,33 @@ export class WalletRequestsService {
       },
     });
     const amt = new Prisma.Decimal(amount);
+    const walletKrwAmount = this.toWalletKrwAmount(amt, currency);
+    const isAnonymous = user.signupMode === 'anonymous';
+
+    if (isAnonymous && currency !== 'USDT') {
+      throw new BadRequestException(
+        '무기명 회원은 테더 입출금만 사용할 수 있습니다',
+      );
+    }
+    if (!isAnonymous && currency === 'USDT') {
+      throw new BadRequestException(
+        '일반 회원은 원화 입출금만 사용할 수 있습니다',
+      );
+    }
+
     if (type === WalletRequestType.WITHDRAWAL) {
       await this.rolling.assertWithdrawalAllowed(userId);
-      if (wallet.balance.lt(amt)) {
+      if (wallet.balance.lt(walletKrwAmount)) {
         throw new BadRequestException('출금액이 잔액을 초과합니다');
+      }
+      if (currency === 'USDT' && !user.usdtWalletAddress?.trim()) {
+        throw new BadRequestException('테더 지갑 주소를 먼저 등록해주세요');
+      }
+      if (
+        currency !== 'USDT' &&
+        (!user.bankCode || !user.bankAccountNumber || !user.bankAccountHolder)
+      ) {
+        throw new BadRequestException('출금 계좌를 먼저 등록해주세요');
       }
       if (currency === 'USDT' && platform?.minWithdrawUsdt != null) {
         if (amt.lt(platform.minWithdrawUsdt)) {
@@ -101,7 +160,12 @@ export class WalletRequestsService {
     }
     const dep = depositorName?.trim() || null;
     if (type === WalletRequestType.WITHDRAWAL && dep) {
-      throw new BadRequestException('출금 신청에는 입금자명을 넣을 수 없습니다');
+      throw new BadRequestException(
+        '출금 신청에는 입금자명을 넣을 수 없습니다',
+      );
+    }
+    if (type === WalletRequestType.DEPOSIT && currency === 'KRW' && !dep) {
+      throw new BadRequestException('원화 입금은 입금자명을 입력해주세요');
     }
     return this.prisma.walletRequest.create({
       data: {
@@ -109,8 +173,10 @@ export class WalletRequestsService {
         userId,
         type,
         amount,
+        currency,
         note: note?.trim() || null,
-        depositorName: type === WalletRequestType.DEPOSIT ? dep : null,
+        depositorName:
+          type === WalletRequestType.DEPOSIT && currency === 'KRW' ? dep : null,
         status: WalletRequestStatus.PENDING,
       },
     });
@@ -124,7 +190,11 @@ export class WalletRequestsService {
     });
   }
 
-  listForPlatform(platformId: string, actor: JwtPayload, status?: WalletRequestStatus) {
+  listForPlatform(
+    platformId: string,
+    actor: JwtPayload,
+    status?: WalletRequestStatus,
+  ) {
     this.assertPlatformAdmin(actor, platformId);
     return this.prisma.walletRequest.findMany({
       where: {
@@ -132,7 +202,19 @@ export class WalletRequestsService {
         ...(status ? { status } : {}),
       },
       include: {
-        user: { select: { id: true, email: true, displayName: true } },
+        user: {
+          select: {
+            id: true,
+            loginId: true,
+            email: true,
+            displayName: true,
+            signupMode: true,
+            bankCode: true,
+            bankAccountNumber: true,
+            bankAccountHolder: true,
+            usdtWalletAddress: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -160,11 +242,14 @@ export class WalletRequestsService {
       });
       if (!wallet) throw new BadRequestException('User wallet missing');
       const amount = req.amount;
+      const requestCurrency =
+        req.currency === 'USDT' ? ('USDT' as const) : ('KRW' as const);
+      const walletDeltaBase = this.toWalletKrwAmount(amount, requestCurrency);
       let delta: Prisma.Decimal;
       if (req.type === WalletRequestType.DEPOSIT) {
-        delta = amount;
+        delta = walletDeltaBase;
       } else {
-        delta = amount.negated();
+        delta = walletDeltaBase.negated();
       }
       const newBal = wallet.balance.plus(delta);
       if (newBal.lt(0)) throw new BadRequestException('Insufficient balance');
@@ -183,6 +268,9 @@ export class WalletRequestsService {
           metaJson: {
             demoWalletRequest: true,
             requestType: req.type,
+            requestCurrency,
+            requestAmount: amount.toFixed(2),
+            walletKrwAmount: walletDeltaBase.toFixed(2),
           },
         },
       });
@@ -190,13 +278,13 @@ export class WalletRequestsService {
         await this.rolling.createObligationIfNeeded(tx, {
           userId: req.userId,
           platformId,
-          depositAmount: amount,
+          depositAmount: walletDeltaBase,
           sourceRef: `wr:${req.id}:principal`,
         });
         await this.depositEvents.applyEligibleBonus(tx, {
           userId: req.userId,
           platformId,
-          depositAmount: amount,
+          depositAmount: walletDeltaBase,
           ledgerRefPrefix: `wr:${req.id}`,
         });
       }

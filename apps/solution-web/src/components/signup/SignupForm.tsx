@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { fetchReferral, publicRegister } from "@/lib/api";
+import { useBootstrap } from "@/components/BootstrapProvider";
 
 const BANKS = [
   { value: "43", label: "카카오뱅크" },
@@ -23,15 +24,6 @@ const BANKS = [
   { value: "37", label: "우체국" },
   { value: "40", label: "하나은행" },
   { value: "41", label: "신한은행" },
-];
-
-const TELECOM = [
-  { value: "SKT", label: "SKT" },
-  { value: "KT", label: "KT" },
-  { value: "LG_U_PLUS", label: "LGU+" },
-  { value: "SKT_MVNO", label: "SKT 알뜰폰" },
-  { value: "KT_MVNO", label: "KT 알뜰폰" },
-  { value: "LG_U_PLUS_MVNO", label: "LGU 알뜰폰" },
 ];
 
 const inputCls =
@@ -122,14 +114,20 @@ export type SignupFormProps = {
 
 export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
   const host = typeof window !== "undefined" ? window.location.host : "";
+  const bootstrap = useBootstrap();
+  const publicSignupCode =
+    typeof bootstrap?.flags?.publicSignupCode === "string"
+      ? bootstrap.flags.publicSignupCode.trim()
+      : "";
 
   type Mode = "full" | "anonymous";
   const [mode, setMode] = useState<Mode>("full");
   const [step, setStep] = useState<1 | 2>(1);
-  const [code, setCode] = useState("");
+  const [signupKey, setSignupKey] = useState("");
   const [refOk, setRefOk] = useState<{
     platformName: string;
-    agentDisplayName: string;
+    resolvedBy?: "signup_code" | "login_id";
+    referrerLoginId?: string | null;
   } | null>(null);
 
   const [loginId, setLoginId] = useState("");
@@ -143,11 +141,9 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
   const [bank, setBank] = useState("");
   const [accountNo, setAccountNo] = useState("");
   const [holder, setHolder] = useState("");
-  const [telecom, setTelecom] = useState("SKT");
   const [phone1, setPhone1] = useState("");
   const [phone2, setPhone2] = useState("");
-  const [birth, setBirth] = useState("");
-  const [gender, setGender] = useState("M");
+  const [usdtWalletAddress, setUsdtWalletAddress] = useState("");
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -156,13 +152,19 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
 
   async function verifyCode(e: React.FormEvent) {
     e.preventDefault();
+    const raw = signupKey.trim();
+    if (!raw) {
+      setError("가입코드 또는 추천인 아이디를 입력하세요");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
-      const data = await fetchReferral(code || "ZXX", host);
+      const data = await fetchReferral(raw, host);
       setRefOk({
         platformName: data.platformName,
-        agentDisplayName: data.agentDisplayName,
+        resolvedBy: data.resolvedBy,
+        referrerLoginId: data.referrerLoginId,
       });
       setStep(2);
     } catch (err) {
@@ -186,6 +188,9 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
       if (pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin)) {
         errs.pin = "4~6자리 숫자 PIN을 입력하세요";
       }
+      if (usdtWalletAddress.trim().length < 20) {
+        errs.usdtWalletAddress = "테더 지갑 주소를 입력하세요";
+      }
     }
     if (mode === "full") {
       if (!bank) errs.bank = "은행을 선택하세요";
@@ -194,8 +199,6 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
       if (exchangePwd.length < 4)
         errs.exchangePwd = "환전 비밀번호를 4자 이상 입력하세요";
       if (!phone1.trim() || !phone2.trim()) errs.phone = "전화번호를 입력하세요";
-      if (birth.length !== 8)
-        errs.birth = "생년월일 8자리를 입력하세요 (YYYYMMDD)";
     }
 
     setFieldErrors(errs);
@@ -212,21 +215,20 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
         {
           loginId: loginId.trim().toLowerCase(),
           password,
-          referralCode: code || "ZXX",
+          signupKey: signupKey.trim(),
           displayName: nickname.trim() || undefined,
           signupMode: mode,
           telegramUsername: telegram.trim() || undefined,
           exchangePin:
             mode === "anonymous" ? pin || undefined : exchangePwd || undefined,
+          usdtWalletAddress:
+            mode === "anonymous" ? usdtWalletAddress.trim() || undefined : undefined,
           ...(mode === "full"
             ? {
                 bankCode: bank,
                 bankAccountNumber: accountNo.trim(),
                 bankAccountHolder: holder.trim(),
-                telecomCompany: telecom,
                 phone: `010${phone1.trim()}${phone2.trim()}`,
-                birthDate: birth.trim(),
-                gender,
               }
             : {}),
         },
@@ -269,6 +271,7 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
               setError(null);
               setPin("");
               setExchangePwd("");
+              setUsdtWalletAddress("");
             }}
             className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
               mode === m
@@ -328,17 +331,17 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
             <p>
               가입코드가 없으시다면{" "}
               <span className="font-bold text-main-gold">
-                ION
+                {publicSignupCode || "공통 가입코드"}
               </span>
               를 입력해 주세요
             </p>
           </div>
 
-          <Field label="가입코드">
+          <Field label="가입코드 또는 추천인 아이디">
             <input
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="코드를 입력하세요"
+              value={signupKey}
+              onChange={(e) => setSignupKey(e.target.value)}
+              placeholder="가입코드 또는 추천인 아이디 입력"
               autoComplete="off"
               className={inputCls}
             />
@@ -358,9 +361,8 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
         <form onSubmit={submit} className="space-y-4">
           <div className="flex items-center justify-between rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-sm">
             <span className="text-zinc-500">
-              <span className="text-zinc-300">{refOk.platformName}</span> ·
-              총판:{" "}
-              <span className="text-zinc-300">{refOk.agentDisplayName}</span>
+              <span className="text-zinc-300">입력값</span> ·{" "}
+              <span className="font-mono text-zinc-200">{signupKey.trim()}</span>
             </span>
             <button
               type="button"
@@ -486,20 +488,6 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
 
           {mode === "full" && (
             <>
-              <Field label="통신사">
-                <select
-                  value={telecom}
-                  onChange={(e) => setTelecom(e.target.value)}
-                  className={`${selectCls} w-full`}
-                >
-                  {TELECOM.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
               <Field label="전화번호" required error={fieldErrors.phone}>
                 <div className="flex items-center gap-2">
                   <input
@@ -529,43 +517,36 @@ export function SignupForm({ onRegistered, onRequestLogin }: SignupFormProps) {
                   />
                 </div>
               </Field>
-
-              <Field label="생년월일" required error={fieldErrors.birth}>
-                <input
-                  value={birth}
-                  onChange={(e) =>
-                    setBirth(e.target.value.replace(/\D/, "").slice(0, 8))
-                  }
-                  placeholder="생년월일을 입력하세요 (YYYYMMDD) 19930505"
-                  autoComplete="bday"
-                  className={inputCls}
-                />
-              </Field>
-
-              <Field label="성별">
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className={`${selectCls} w-full`}
-                >
-                  <option value="M">남성</option>
-                  <option value="F">여성</option>
-                </select>
-              </Field>
             </>
           )}
 
           {mode === "anonymous" && (
-            <Field
-              label="입출금 2차 비밀번호 (숫자 4~6자리)"
-              required
-              error={fieldErrors.pin}
-            >
-              <PinInput value={pin} onChange={setPin} />
-              <p className="mt-1.5 text-[11px] text-zinc-600">
-                ※ 입출금 시 사용할 2차 비밀번호 (숫자 4~6자리)
-              </p>
-            </Field>
+            <>
+              <Field
+                label="입출금 2차 비밀번호 (숫자 4~6자리)"
+                required
+                error={fieldErrors.pin}
+              >
+                <PinInput value={pin} onChange={setPin} />
+                <p className="mt-1.5 text-[11px] text-zinc-600">
+                  ※ 입출금 시 사용할 2차 비밀번호 (숫자 4~6자리)
+                </p>
+              </Field>
+
+              <Field
+                label="테더 지갑 주소"
+                required
+                error={fieldErrors.usdtWalletAddress}
+              >
+                <input
+                  value={usdtWalletAddress}
+                  onChange={(e) => setUsdtWalletAddress(e.target.value)}
+                  placeholder="TRC20 지갑 주소를 입력하세요"
+                  autoComplete="off"
+                  className={inputCls}
+                />
+              </Field>
+            </>
           )}
 
           <button

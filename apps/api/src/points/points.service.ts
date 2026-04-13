@@ -196,7 +196,9 @@ export class PointsService {
       currency === 'KRW' ? 'redeemKrwPerPoint' : 'redeemUsdtPerPoint';
     const rateRaw = rules[rateKey];
     if (rateRaw === undefined || rateRaw === null) {
-      throw new BadRequestException('포인트→머니 교환 비율이 설정되지 않았습니다');
+      throw new BadRequestException(
+        '포인트→머니 교환 비율이 설정되지 않았습니다',
+      );
     }
     const rate = new Prisma.Decimal(String(rateRaw));
     if (!rate.gt(0)) {
@@ -299,18 +301,26 @@ export class PointsService {
     const user = await tx.user.findUnique({
       where: { id: userId },
       select: {
+        referredByUserId: true,
         parentUserId: true,
         role: true,
+        referredBy: { select: { role: true, id: true } },
         parent: { select: { role: true, id: true } },
       },
     });
     if (!user || user.role !== UserRole.USER) return;
-    const parentId = user.parentUserId;
-    if (!parentId || user.parent?.role !== UserRole.MASTER_AGENT) return;
+    const referrerId = user.referredByUserId ?? user.parentUserId;
+    const referrerRole = user.referredBy?.role ?? user.parent?.role;
+    if (
+      !referrerId ||
+      (referrerRole !== UserRole.MASTER_AGENT && referrerRole !== UserRole.USER)
+    ) {
+      return;
+    }
 
     const priorParent = await tx.pointLedgerEntry.findMany({
       where: {
-        userId: parentId,
+        userId: referrerId,
         type: PointLedgerEntryType.REFERRAL_FIRST_BET,
       },
       select: { metaJson: true },
@@ -350,12 +360,12 @@ export class PointsService {
     }
     if (pts.lte(0)) return;
 
-    const w = await tx.wallet.findUnique({ where: { userId: parentId } });
+    const w = await tx.wallet.findUnique({ where: { userId: referrerId } });
     if (!w) return;
     const bal = w.pointBalance.plus(pts);
     await tx.pointLedgerEntry.create({
       data: {
-        userId: parentId,
+        userId: referrerId,
         platformId,
         type: PointLedgerEntryType.REFERRAL_FIRST_BET,
         amount: pts,
@@ -365,7 +375,7 @@ export class PointsService {
       },
     });
     await tx.wallet.update({
-      where: { userId: parentId },
+      where: { userId: referrerId },
       data: { pointBalance: bal },
     });
   }

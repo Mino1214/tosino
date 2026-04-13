@@ -356,9 +356,14 @@ model User {
   parentUserId         String?
   parent               User?              @relation("AgentTree", fields: [parentUserId], references: [id], onDelete: SetNull)
   children             User[]             @relation("AgentTree")
+  referredByUserId     String?
+  referredBy           User?              @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  referredUsers        User[]             @relation("UserReferrals")
   displayName          String?
   /** 가입 유형: full(실명) | anonymous(무기명) */
   signupMode           String?
+  /** 회원가입 화면에서 실제 입력한 가입코드 또는 추천인 아이디 */
+  signupReferralInput  String?
   /** 텔레그램 아이디 (@ 제외) */
   telegramUsername     String?
   /** 전화번호 (010XXXXXXXX 형식) */
@@ -375,6 +380,8 @@ model User {
   bankAccountNumber    String?
   /** 예금주 */
   bankAccountHolder    String?
+  /** 테더(TRC20) 출금 지갑 주소 */
+  usdtWalletAddress    String?
   /** 입출금 2차 비밀번호 (bcrypt hash) */
   exchangePinHash      String?
   /** 총판(또는 플랫폼)이 하위 회원에게 남기는 메모 */
@@ -420,6 +427,7 @@ model User {
 
   @@index([platformId])
   @@index([parentUserId])
+  @@index([referredByUserId])
   @@index([platformId, registrationResolvedAt])
   @@index([loginId])
   @@index([platformId, loginId])
@@ -517,6 +525,7 @@ model WalletRequest {
   user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   type         WalletRequestType
   amount       Decimal             @db.Decimal(18, 2)
+  currency     String              @default("KRW")
   status       WalletRequestStatus @default(PENDING)
   note         String?
   /** 반가상 입금 매칭용 입금자명(은행 문자 ee 와 비교) */

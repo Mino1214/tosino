@@ -25,6 +25,7 @@ import { RollingObligationService } from '../rolling/rolling-obligation.service'
 import { PointsService } from '../points/points.service';
 import { resolvePublicMediaUrl } from '../common/utils/media-url.util';
 import { RedeemPointsDto } from './dto/redeem-points.dto';
+import { UpdateUsdtWalletDto } from './dto/update-usdt-wallet.dto';
 
 @Controller('me')
 @UseGuards(AuthGuard('jwt'))
@@ -57,9 +58,12 @@ export class MeController {
         referralCode: true,
         userMemo: true,
         agentMemo: true,
+        signupMode: true,
+        signupReferralInput: true,
         bankCode: true,
         bankAccountNumber: true,
         bankAccountHolder: true,
+        usdtWalletAddress: true,
       },
     });
     return row;
@@ -71,6 +75,16 @@ export class MeController {
     @Body() dto: UpdatePayoutAccountDto,
   ) {
     this.assertEndUser(user);
+
+    const me = await this.prisma.user.findUnique({
+      where: { id: user.sub },
+      select: { signupMode: true },
+    });
+    if (me?.signupMode === 'anonymous') {
+      throw new BadRequestException(
+        '무기명 회원은 원화 계좌 대신 테더 지갑 주소를 사용합니다',
+      );
+    }
 
     const bankCode = dto.bankCode.trim();
     const bankAccountNumber = dto.bankAccountNumber.trim();
@@ -88,6 +102,28 @@ export class MeController {
         bankCode,
         bankAccountNumber,
         bankAccountHolder,
+      },
+    });
+
+    return { ok: true };
+  }
+
+  @Patch('usdt-wallet')
+  async updateMyUsdtWallet(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateUsdtWalletDto,
+  ) {
+    this.assertEndUser(user);
+
+    const walletAddress = dto.usdtWalletAddress.trim();
+    if (!walletAddress || walletAddress.length < 20) {
+      throw new BadRequestException('테더 지갑 주소를 다시 확인해주세요');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.sub },
+      data: {
+        usdtWalletAddress: walletAddress,
       },
     });
 
@@ -225,10 +261,7 @@ export class MeController {
   }
 
   @Post('points/redeem')
-  redeemPoints(
-    @CurrentUser() user: JwtPayload,
-    @Body() dto: RedeemPointsDto,
-  ) {
+  redeemPoints(@CurrentUser() user: JwtPayload, @Body() dto: RedeemPointsDto) {
     this.assertEndUser(user);
     if (!user.platformId) {
       throw new ForbiddenException('플랫폼 소속 회원만 이용할 수 있습니다');

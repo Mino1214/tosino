@@ -25,10 +25,17 @@ export class PublicRegisterDto {
   @MinLength(6)
   password!: string;
 
-  /** 총판 레퍼럴 코드 */
+  /** 공통 가입코드 또는 추천인 로그인 ID */
+  @IsOptional()
   @IsString()
-  @Matches(/^[A-Za-z0-9]{4,16}$/)
-  referralCode!: string;
+  @Matches(/^[A-Za-z0-9._@-]{3,64}$/)
+  signupKey?: string;
+
+  /** 구 프런트 호환용 */
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9._@-]{3,64}$/)
+  referralCode?: string;
 
   // ── 기본 선택 ──────────────────────────────────────────────
   @IsOptional()
@@ -87,6 +94,11 @@ export class PublicRegisterDto {
   @IsString()
   @MinLength(4)
   exchangePin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(20)
+  usdtWalletAddress?: string;
 
   // ── 플랫폼 식별 (공개 가입 시 host/port 로 플랫폼 구분) ──
   @IsOptional()

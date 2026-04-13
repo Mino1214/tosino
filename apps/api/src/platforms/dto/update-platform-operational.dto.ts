@@ -58,4 +58,12 @@ export class UpdatePlatformOperationalDto {
   @IsOptional()
   @IsObject()
   pointRulesJson?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  publicSignupCode?: string;
+
+  @IsOptional()
+  @IsString()
+  defaultSignupReferrerUserId?: string | null;
 }
