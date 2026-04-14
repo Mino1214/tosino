@@ -11,8 +11,8 @@
   ─────────────────────────────────────────────────────────────────
 */
 
-import Link from "next/link";
 import { CasinoPortalCards } from "@/components/CasinoPortalCards";
+import { ProtectedNavLink } from "@/components/ProtectedNavLink";
 
 /* 카지노 제공사 목록 (뼈대 — 실제 연동 전 placeholder) */
 const CASINO_PROVIDERS = [
@@ -27,9 +27,9 @@ export function SectionCasino() {
       {/* 섹션 헤더 */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-bold text-white">카지노</h2>
-        <Link href="/lobby/live-casino" className="text-xs text-main-gold">
+        <ProtectedNavLink href="/lobby/live-casino" className="text-xs text-main-gold">
           전체 보기 →
-        </Link>
+        </ProtectedNavLink>
       </div>
 
       {/* 제공사 그리드 (ZXX.BET: .casino-providers-grid) */}

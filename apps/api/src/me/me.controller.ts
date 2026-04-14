@@ -163,6 +163,61 @@ export class MeController {
     };
   }
 
+  @Get('deposit-account')
+  async depositAccount(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    if (!user.platformId) {
+      throw new ForbiddenException('플랫폼 소속 회원만 이용할 수 있습니다');
+    }
+
+    const [me, platform] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: user.sub },
+        select: {
+          signupMode: true,
+          bankCode: true,
+          bankAccountNumber: true,
+          bankAccountHolder: true,
+        },
+      }),
+      this.prisma.platform.findUnique({
+        where: { id: user.platformId },
+        select: {
+          semiVirtualEnabled: true,
+          semiVirtualRecipientPhone: true,
+          semiVirtualAccountHint: true,
+          semiVirtualBankName: true,
+          semiVirtualAccountNumber: true,
+          semiVirtualAccountHolder: true,
+        },
+      }),
+    ]);
+
+    if (!me || !platform) {
+      throw new NotFoundException('입금 계좌 정보를 찾을 수 없습니다');
+    }
+
+    return {
+      mode: me.signupMode === 'anonymous' ? 'USDT' : 'KRW',
+      autoCreditEnabled: platform.semiVirtualEnabled,
+      depositAccount: {
+        bankName: platform.semiVirtualBankName,
+        accountNumber: platform.semiVirtualAccountNumber,
+        accountHolder: platform.semiVirtualAccountHolder,
+        accountHint: platform.semiVirtualAccountHint,
+        recipientPhone: platform.semiVirtualRecipientPhone,
+      },
+      registeredAccount: {
+        bankCode: me.bankCode,
+        accountNumber: me.bankAccountNumber,
+        accountHolder: me.bankAccountHolder,
+        ready: Boolean(
+          me.bankCode && me.bankAccountNumber && me.bankAccountHolder,
+        ),
+      },
+    };
+  }
+
   @Get('rolling-summary')
   rollingSummary(@CurrentUser() user: JwtPayload) {
     this.assertEndUser(user);

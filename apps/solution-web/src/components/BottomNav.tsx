@@ -18,6 +18,8 @@ import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 import { useAppModals } from "@/contexts/AppModalsContext";
 import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { publicAsset } from "@/lib/public-asset";
+import { getAccessToken } from "@/lib/api";
+import { ProtectedNavLink } from "@/components/ProtectedNavLink";
 
 const PLAY_ITEMS = [
   // 스포츠/e스포츠는 임시 비노출.
@@ -115,10 +117,11 @@ function PlayGameDial({
           {items.map((item, i) => {
             const lastOdd = i === items.length - 1 && items.length % 2 === 1;
             return (
-              <Link
+              <ProtectedNavLink
                 key={item.href}
                 href={item.href}
-                onClick={onClose}
+                onNavigate={onClose}
+                onBlocked={onClose}
                 style={anim(i)}
                 className={`${QUICK_DIAL_ITEM_CLASS} gap-1 ${
                   lastOdd ? "col-span-2" : ""
@@ -126,7 +129,7 @@ function PlayGameDial({
               >
                 {item.emoji ? <span aria-hidden>{item.emoji}</span> : null}
                 {item.label}
-              </Link>
+              </ProtectedNavLink>
             );
           })}
         </div>
@@ -141,16 +144,45 @@ export function BottomNav() {
   const [playSpinning, setPlaySpinning] = useState(false);
   const [walletDialOpen, setWalletDialOpen] = useState(false);
   const { setPanelOpen, setHistoryOpen } = useBettingCart();
-  const { openWallet: openWalletModal } = useAppModals();
+  const { openWallet: openWalletModal, openLogin } = useAppModals();
+
+  const closeAll = useCallback(() => {
+    setPlayOpen(false);
+    setWalletDialOpen(false);
+  }, []);
+
+  const requireLogin = useCallback(
+    (action: () => void) => {
+      if (!getAccessToken()) {
+        closeAll();
+        openLogin();
+        return;
+      }
+      action();
+    },
+    [closeAll, openLogin],
+  );
 
   const walletDialItems: SpeedDialActionItem[] = useMemo(
     () => [
-      { label: "입금신청", onSelect: () => openWalletModal({ fiatTab: "DEPOSIT" }) },
-      { label: "출금신청", onSelect: () => openWalletModal({ fiatTab: "WITHDRAWAL" }) },
-      { label: "포인트전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
-      { label: "콤프전환", onSelect: () => openWalletModal({ mainTab: "fiat" }) },
+      {
+        label: "입금신청",
+        onSelect: () => requireLogin(() => openWalletModal({ fiatTab: "DEPOSIT" })),
+      },
+      {
+        label: "출금신청",
+        onSelect: () => requireLogin(() => openWalletModal({ fiatTab: "WITHDRAWAL" })),
+      },
+      {
+        label: "포인트전환",
+        onSelect: () => requireLogin(() => openWalletModal({ mainTab: "fiat" })),
+      },
+      {
+        label: "콤프전환",
+        onSelect: () => requireLogin(() => openWalletModal({ mainTab: "fiat" })),
+      },
     ],
-    [openWalletModal],
+    [openWalletModal, requireLogin],
   );
 
   const isSportPage = isSportsBettingPath(pathname);
@@ -167,11 +199,6 @@ export function BottomNav() {
     else unlockScroll();
     return () => { unlockScroll(); };
   }, [playOpen, walletDialOpen]);
-
-  function closeAll() {
-    setPlayOpen(false);
-    setWalletDialOpen(false);
-  }
 
   const desktopPlaySpin = useCallback(() => {
     setPlaySpinning(true);
@@ -253,8 +280,10 @@ export function BottomNav() {
                 <button
                     type="button"
                     onClick={() => {
-                        closeAll();
-                        setHistoryOpen(true);
+                        requireLogin(() => {
+                            closeAll();
+                            setHistoryOpen(true);
+                        });
                     }}
                     className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-[rgba(218,174,87,0.85)] active:text-main-gold"
                 >
@@ -326,8 +355,10 @@ export function BottomNav() {
                 <button
                     type="button"
                     onClick={() => {
-                        setPlayOpen(false);
-                        setWalletDialOpen((o) => !o);
+                        requireLogin(() => {
+                            setPlayOpen(false);
+                            setWalletDialOpen((o) => !o);
+                        });
                     }}
                     className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
                         walletDialOpen ? "text-main-gold" : "text-[rgba(218,174,87,0.85)]"

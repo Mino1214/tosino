@@ -21,12 +21,15 @@ import { AppModalsProvider } from "@/contexts/AppModalsContext";
 import { AppModalsRoot } from "@/components/modals/AppModalsRoot";
 import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { MandatoryAnnouncementGate } from "@/components/MandatoryAnnouncementGate";
+import { AuthRequiredGate } from "@/components/AuthRequiredGate";
+import { isUserOnlyRoute } from "@/lib/protected-routes";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const isHome      = pathname === "/";
   const isSports    = isSportsBettingPath(pathname);
+  const isUserOnly  = isUserOnlyRoute(pathname);
 
   return (
     <BettingCartProvider>
@@ -52,11 +55,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ? "max-md:h-[100svh] max-md:max-h-[100svh] max-md:overflow-hidden max-md:overscroll-none"
             : "max-md:app-main-mobile-scroll",
           "md:overflow-visible md:pb-0",
-          isHome ? "" : "pt-20",
+          isHome ? "" : "pt-[var(--app-mobile-header)] md:pt-[var(--app-desktop-header)]",
           isSports ? "md:mr-72" : "",
         ].join(" ")}
       >
-        {children}
+        {isUserOnly ? <AuthRequiredGate>{children}</AuthRequiredGate> : children}
       </main>
 
       {/* 스포츠 전용 배팅카트 (데스크톱: 우측 고정 패널 / 모바일: 슬라이드업) */}

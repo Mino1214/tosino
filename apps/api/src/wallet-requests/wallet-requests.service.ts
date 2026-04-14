@@ -96,6 +96,7 @@ export class WalletRequestsService {
         minDepositUsdt: true,
         minWithdrawKrw: true,
         minWithdrawUsdt: true,
+        semiVirtualEnabled: true,
       },
     });
     const amt = new Prisma.Decimal(amount);
@@ -164,8 +165,18 @@ export class WalletRequestsService {
         '출금 신청에는 입금자명을 넣을 수 없습니다',
       );
     }
-    if (type === WalletRequestType.DEPOSIT && currency === 'KRW' && !dep) {
-      throw new BadRequestException('원화 입금은 입금자명을 입력해주세요');
+    const registeredDepositorName = user.bankAccountHolder?.trim() || null;
+    if (type === WalletRequestType.DEPOSIT && currency === 'KRW') {
+      if (!user.bankCode || !user.bankAccountNumber || !registeredDepositorName) {
+        throw new BadRequestException(
+          '입금 신청 전 등록 계좌를 먼저 저장해주세요',
+        );
+      }
+      if (dep && dep !== registeredDepositorName) {
+        throw new BadRequestException(
+          '원화 입금은 등록 계좌 예금주명으로만 신청할 수 있습니다',
+        );
+      }
     }
     return this.prisma.walletRequest.create({
       data: {
@@ -176,7 +187,9 @@ export class WalletRequestsService {
         currency,
         note: note?.trim() || null,
         depositorName:
-          type === WalletRequestType.DEPOSIT && currency === 'KRW' ? dep : null,
+          type === WalletRequestType.DEPOSIT && currency === 'KRW'
+            ? registeredDepositorName
+            : null,
         status: WalletRequestStatus.PENDING,
       },
     });

@@ -15,4 +15,16 @@ export class UpdateSemiVirtualDto {
   @IsOptional()
   @IsString()
   accountHint?: string;
+
+  @IsOptional()
+  @IsString()
+  bankName?: string;
+
+  @IsOptional()
+  @IsString()
+  accountNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  accountHolder?: string;
 }

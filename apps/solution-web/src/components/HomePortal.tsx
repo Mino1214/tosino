@@ -8,7 +8,7 @@
   ─────────────────────────────────────────────────
 */
 
-import Link from "next/link";
+import { ProtectedNavLink } from "./ProtectedNavLink";
 import { SlotVendorCatalog } from "./SlotVendorCatalog";
 import { VendorGridCatalog } from "./VendorGridCatalog";
 
@@ -34,7 +34,7 @@ export function HomePortal({ view, onViewChange }: HomePortalProps) {
       {/* ① 카테고리 탭 — sticky: 헤더 바로 아래 */}
       <nav
         aria-label="게임 카테고리"
-        className="sticky top-20 z-40 flex h-10 overflow-x-auto border-b border-[rgba(218,174,87,0.2)] bg-[#0a0a0e] md:top-20 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="sticky top-[var(--app-mobile-header)] z-40 flex h-10 overflow-x-auto border-b border-[rgba(218,174,87,0.2)] bg-[#0a0a0e] md:top-[var(--app-desktop-header)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {TABS.map((tab) => (
           <button
@@ -76,13 +76,13 @@ export function HomePortal({ view, onViewChange }: HomePortalProps) {
 function CasinoContent() {
   return (
     <div className="space-y-3">
-      <Link
+      <ProtectedNavLink
         href="/lobby/live-casino"
         className="flex items-center justify-between rounded-lg border border-[rgba(218,174,87,0.25)] px-4 py-4"
       >
         <span className="text-sm font-semibold text-white">라이브 카지노</span>
         <span className="text-xs text-main-gold">입장 →</span>
-      </Link>
+      </ProtectedNavLink>
     </div>
   );
 }
@@ -91,10 +91,10 @@ function CasinoContent() {
 function SlotContent() {
   return (
     <div className="space-y-3">
-      <Link href="/lobby/slots" className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-4">
+      <ProtectedNavLink href="/lobby/slots" className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-4">
         <span className="text-sm font-semibold text-white">슬롯 게임</span>
         <span className="text-xs text-violet-400">입장 →</span>
-      </Link>
+      </ProtectedNavLink>
       <SlotVendorCatalog className="mt-0" />
     </div>
   );
@@ -104,13 +104,13 @@ function SlotContent() {
 function ArcadeContent() {
   return (
     <div className="space-y-3">
-      <Link
+      <ProtectedNavLink
         href="/lobby/arcade"
         className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-4"
       >
         <span className="text-sm font-semibold text-white">아케이드 게임</span>
         <span className="text-xs text-main-gold">입장 →</span>
-      </Link>
+      </ProtectedNavLink>
       <VendorGridCatalog
         categories={["arcade"]}
         showCategoryTabs={false}
@@ -124,7 +124,7 @@ function ArcadeContent() {
 function MinigameContent() {
   return (
     <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-white/10">
-      <Link href="/lobby/minigame" className="text-sm text-zinc-400">미니게임 로비 →</Link>
+      <ProtectedNavLink href="/lobby/minigame" className="text-sm text-zinc-400">미니게임 로비 →</ProtectedNavLink>
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import type { CasinoLobbyVendor } from "@tosino/shared";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AdBanner } from "@/components/SportsLobbyLayout";
 import { fetchCasinoLobbyCatalog } from "@/lib/api";
 import {
   getVendorDescription,
@@ -345,11 +344,6 @@ export default function LiveCasinoPage() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-zinc-950 pb-12">
-      <AdBanner
-        title="라이브 카지노 이벤트  첫충 보너스 혜택을 받아가세요!"
-        variant="billboard"
-      />
-
       <div className="content-pad-phi mx-auto w-full min-w-0 max-w-[90rem]">
         <div className="border-b border-[rgba(218,174,87,0.2)] bg-black py-5">
           <h1 className="text-xl font-bold text-main-gold">카지노</h1>

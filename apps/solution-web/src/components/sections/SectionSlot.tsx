@@ -11,8 +11,8 @@
   ─────────────────────────────────────────────────────────────────
 */
 
-import Link from "next/link";
 import { SlotVendorCatalog } from "@/components/SlotVendorCatalog";
+import { ProtectedNavLink } from "@/components/ProtectedNavLink";
 
 const SLOT_PROVIDERS = [
   "CQ9", "Hacksaw", "PlayStar", "Octoplay", "Mobilots",
@@ -26,9 +26,9 @@ export function SectionSlot() {
       {/* 섹션 헤더 */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-bold text-white">슬롯</h2>
-        <Link href="/lobby/slots" className="text-xs text-main-gold">
+        <ProtectedNavLink href="/lobby/slots" className="text-xs text-main-gold">
           전체 보기 →
-        </Link>
+        </ProtectedNavLink>
       </div>
 
       {/* 제공사 그리드 (ZXX.BET: .slot-providers-grid) */}

@@ -12,7 +12,7 @@
   ─────────────────────────────────────────────────────────────────
 */
 
-import Link from "next/link";
+import { ProtectedNavLink } from "@/components/ProtectedNavLink";
 
 /* 미니게임 카드 목록 (ZXX.BET 참조) */
 const MINIGAME_ITEMS = [
@@ -39,9 +39,9 @@ export function SectionMinigame() {
       {/* 섹션 헤더 */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-bold text-white">미니게임</h2>
-        <Link href="/lobby/minigame" className="text-xs text-main-gold">
+        <ProtectedNavLink href="/lobby/minigame" className="text-xs text-main-gold">
           전체 보기 →
-        </Link>
+        </ProtectedNavLink>
       </div>
 
       {/* 카드 그리드 (ZXX.BET: .grid-wrapper) */}

@@ -92,6 +92,12 @@ model Platform {
   semiVirtualRecipientPhone    String? @unique
   /** 계좌 줄에 포함되는 식별 문자열(예: 마스킹 계좌 일부). 휴대번호 미사용 시 구분용 */
   semiVirtualAccountHint       String?
+  /** 회원 입금 화면에 노출할 반가상 계좌 은행명 */
+  semiVirtualBankName          String?
+  /** 회원 입금 화면에 노출할 반가상 계좌번호 */
+  semiVirtualAccountNumber     String?
+  /** 회원 입금 화면에 노출할 반가상 계좌 예금주 */
+  semiVirtualAccountHolder     String?
   /** 입금 후 출금 잠금: rollingEnabled 회원만 의무 생성 */
   rollingLockWithdrawals       Boolean  @default(true)
   /** 입금액 대비 필요 롤링 턴오버 배수 (예: 1 = 100%) */

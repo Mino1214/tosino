@@ -22,6 +22,7 @@
   --site-header-logo-h: 52px;
   --site-header-logo-max-w: 260px;
   --app-mobile-header: 5rem; /* h-20, 모바일 헤더 */
+  --app-desktop-header: 7.5rem;
   --app-mobile-nav: 3.5rem; /* h-14 */
   --app-mobile-nav-safe: env(safe-area-inset-bottom, 0px);
   --app-mobile-nav-total: calc(var(--app-mobile-nav) + var(--app-mobile-nav-safe));
@@ -159,6 +160,7 @@ body {
   :root {
     --site-header-logo-h: 56px;
     --site-header-logo-max-w: 360px;
+    --app-desktop-header: 7.75rem;
   }
 }
 @media (min-width: 1280px) {

@@ -145,9 +145,9 @@ export function BettingCartDock() {
 
   return (
     <>
-      {/* ── 데스크톱: fixed right-0 top-20 bottom-0 w-72 ── */}
+      {/* ── 데스크톱: fixed right-0 top-header bottom-0 w-72 ── */}
       <aside
-        className="fixed right-0 top-20 bottom-0 z-40 hidden w-72 border-l border-white/8 bg-[#0a0a0e] md:flex"
+        className="fixed right-0 bottom-0 top-[var(--app-desktop-header)] z-40 hidden w-72 border-l border-white/8 bg-[#0a0a0e] md:flex"
         aria-label="배팅카트"
       >
         <CartPanel />

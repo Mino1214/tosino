@@ -13,7 +13,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { clearSession, getAccessToken, subscribeAuthChange } from "@/lib/api";
+import { useAppModals } from "@/contexts/AppModalsContext";
 import { publicAsset } from "@/lib/public-asset";
+import { ProtectedNavLink } from "@/components/ProtectedNavLink";
 
 type DrawerNavItem =
   | { label: string; href: string }
@@ -47,6 +49,7 @@ type Props = {
 export function MobileDrawer({ open, onClose }: Props) {
   const pathname = usePathname();
   const router = useRouter();
+  const { openLogin, openSignup } = useAppModals();
   const [logged, setLogged] = useState(false);
 
   useEffect(() => {
@@ -143,10 +146,16 @@ export function MobileDrawer({ open, onClose }: Props) {
             }
 
             return (
-              <Link key={item.href} href={item.href} onClick={onClose} className={rowClass}>
+              <ProtectedNavLink
+                key={item.href}
+                href={item.href}
+                onNavigate={onClose}
+                onBlocked={onClose}
+                className={rowClass}
+              >
                 <span>{item.label}</span>
                 <ChevronRightFilled className="h-4 w-4 shrink-0 opacity-70" />
-              </Link>
+              </ProtectedNavLink>
             );
           })}
         </nav>
@@ -161,13 +170,28 @@ export function MobileDrawer({ open, onClose }: Props) {
               로그아웃
             </button>
           ) : (
-            <Link
-              href="/login"
-              onClick={onClose}
-              className="block w-full rounded-lg bg-gold-gradient px-5 py-2.5 text-center text-sm font-bold text-[#0f0f12] transition-opacity hover:opacity-90"
-            >
-              로그인
-            </Link>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  openLogin();
+                }}
+                className="rounded-lg bg-gold-gradient px-5 py-2.5 text-center text-sm font-bold text-[#0f0f12] transition-opacity hover:opacity-90"
+              >
+                로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  openSignup();
+                }}
+                className="rounded-lg border border-white/15 bg-white/[0.03] px-5 py-2.5 text-center text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/[0.06]"
+              >
+                회원가입
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -482,6 +482,9 @@ export class PlatformsService {
         semiVirtualEnabled: true,
         semiVirtualRecipientPhone: true,
         semiVirtualAccountHint: true,
+        semiVirtualBankName: true,
+        semiVirtualAccountNumber: true,
+        semiVirtualAccountHolder: true,
       },
     });
     if (!p) throw new NotFoundException('Platform not found');
@@ -496,6 +499,9 @@ export class PlatformsService {
     this.assertPlatformScope(actor, platformId);
     const phone = this.normalizeSemiVirtualPhone(dto.recipientPhone ?? null);
     const hint = dto.accountHint?.trim() || null;
+    const bankName = dto.bankName?.trim() || null;
+    const accountNumber = dto.accountNumber?.trim() || null;
+    const accountHolder = dto.accountHolder?.trim() || null;
     if (dto.enabled && !phone && !hint) {
       throw new BadRequestException(
         '반가상 사용 시 수신 휴대번호 또는 계좌 힌트 중 하나 이상이 필요합니다',
@@ -521,11 +527,17 @@ export class PlatformsService {
             semiVirtualEnabled: true,
             semiVirtualRecipientPhone: phone,
             semiVirtualAccountHint: hint,
+            semiVirtualBankName: bankName,
+            semiVirtualAccountNumber: accountNumber,
+            semiVirtualAccountHolder: accountHolder,
           }
         : {
             semiVirtualEnabled: false,
             semiVirtualRecipientPhone: null,
             semiVirtualAccountHint: null,
+            semiVirtualBankName: null,
+            semiVirtualAccountNumber: null,
+            semiVirtualAccountHolder: null,
           },
     });
     return this.getSemiVirtual(platformId, actor);

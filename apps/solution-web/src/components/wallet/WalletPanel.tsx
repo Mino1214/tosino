@@ -58,6 +58,24 @@ type WReq = {
   depositorName: string | null;
 };
 
+type DepositAccountInfo = {
+  mode: "KRW" | "USDT";
+  autoCreditEnabled: boolean;
+  depositAccount: {
+    bankName: string | null;
+    accountNumber: string | null;
+    accountHolder: string | null;
+    accountHint: string | null;
+    recipientPhone: string | null;
+  };
+  registeredAccount: {
+    bankCode: string | null;
+    accountNumber: string | null;
+    accountHolder: string | null;
+    ready: boolean;
+  };
+};
+
 type WalletPanelProps = {
   initialOpts?: WalletModalOptions;
   onNeedLogin?: () => void;
@@ -151,6 +169,8 @@ export function WalletPanel({
   const [profile, setProfile] = useState<Profile | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
   const [requests, setRequests] = useState<WReq[] | null>(null);
+  const [depositAccountInfo, setDepositAccountInfo] =
+    useState<DepositAccountInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -181,6 +201,15 @@ export function WalletPanel({
     profile?.bankCode && profile?.bankAccountNumber && profile?.bankAccountHolder,
   );
   const hasUsdtWallet = Boolean(profile?.usdtWalletAddress?.trim());
+  const depositAccount = depositAccountInfo?.depositAccount ?? null;
+  const registeredDepositAccount = depositAccountInfo?.registeredAccount ?? null;
+  const hasRegisteredDepositAccount = Boolean(
+    registeredDepositAccount?.ready ??
+      (profile?.bankCode && profile?.bankAccountNumber && profile?.bankAccountHolder),
+  );
+  const registeredDepositBankLabel = getBankLabel(
+    registeredDepositAccount?.bankCode ?? profile?.bankCode,
+  );
   const withdrawableUsdt = useMemo(() => {
     const krw = Number(balance ?? 0);
     if (!Number.isFinite(krw) || krw <= 0) return 0;
@@ -198,6 +227,7 @@ export function WalletPanel({
         bankAccountNumber: p.bankAccountNumber ?? "",
         bankAccountHolder: p.bankAccountHolder ?? "",
       });
+      setDepositDepositorName(p.bankAccountHolder ?? "");
       setEditingPayout(
         p.signupMode !== "anonymous" &&
           !(p.bankCode && p.bankAccountNumber && p.bankAccountHolder),
@@ -208,12 +238,14 @@ export function WalletPanel({
         return;
       }
 
-      const [wallet, list] = await Promise.all([
+      const [wallet, list, depositInfo] = await Promise.all([
         apiFetch<{ balance: string }>("/me/wallet"),
         apiFetch<WReq[]>("/me/wallet-requests"),
+        apiFetch<DepositAccountInfo>("/me/deposit-account"),
       ]);
       setBalance(wallet.balance);
       setRequests(list);
+      setDepositAccountInfo(depositInfo);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "오류가 발생했습니다.");
     }
@@ -264,9 +296,9 @@ export function WalletPanel({
       return;
     }
 
-    if (!isAnonymousUser && !depositDepositorName.trim()) {
+    if (!isAnonymousUser && !hasRegisteredDepositAccount) {
       setSuccess(null);
-      setErr("입금자명을 입력해주세요.");
+      setErr("입금 신청 전 등록 계좌를 먼저 저장해주세요.");
       return;
     }
 
@@ -288,17 +320,18 @@ export function WalletPanel({
                 type: "DEPOSIT",
                 amount,
                 currency: "KRW",
-                depositorName: depositDepositorName.trim(),
+                depositorName:
+                  profile?.bankAccountHolder?.trim() || depositDepositorName.trim(),
               },
         ),
       });
       setDepositAmount("10000");
-      setDepositDepositorName("");
+      setDepositDepositorName(profile?.bankAccountHolder ?? "");
       setDepositNote("");
       setSuccess(
         isAnonymousUser
           ? "테더 입금 신청이 저장되었습니다."
-          : "원화 입금 신청이 저장되었습니다.",
+          : "등록 계좌 기준 원화 입금 신청이 저장되었습니다. 등록 계좌에서 입금하면 자동충전됩니다.",
       );
       await load();
     } catch (e) {
@@ -495,7 +528,7 @@ export function WalletPanel({
               {
                 key: "deposit" as const,
                 label: isAnonymousUser ? "테더입금" : "원화입금",
-                hint: isAnonymousUser ? "USDT 수량 + 메모" : "금액 + 입금자명",
+                hint: isAnonymousUser ? "USDT 수량 + 메모" : "등록계좌 + 자동충전",
               },
               {
                 key: "withdraw" as const,
@@ -535,7 +568,7 @@ export function WalletPanel({
                   <p className="mt-1 text-sm text-zinc-400">
                     {isAnonymousUser
                       ? "무기명 회원은 테더 수량 기준으로 입금 요청을 남깁니다."
-                      : "금액과 입금자명만 입력하면 바로 입금 요청 API로 연결됩니다."}
+                      : "반가상 입금 계좌와 회원님의 등록 계좌를 확인한 뒤 입금 신청이 저장됩니다."}
                   </p>
                 </div>
                 <span className="rounded-full bg-gold-gradient px-3 py-1 text-xs font-bold text-black">
@@ -544,6 +577,104 @@ export function WalletPanel({
               </div>
 
               <form onSubmit={submitDepositRequest} className="mt-5 space-y-4">
+                {!isAnonymousUser ? (
+                  <>
+                    <div className="rounded-2xl border border-[rgba(218,174,87,0.2)] bg-[rgba(218,174,87,0.06)] p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-main-gold-solid/60">
+                            반가상 입금 계좌
+                          </p>
+                          <p className="mt-2 text-sm text-zinc-400">
+                            아래 계좌로 등록된 계좌에서 입금하면 자동충전 기준으로 처리됩니다.
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-semibold text-main-gold-solid">
+                          {depositAccountInfo?.autoCreditEnabled ? "자동충전" : "확인중"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <p className="text-xs text-zinc-500">은행명</p>
+                          <p className="mt-1 font-semibold text-white">
+                            {depositAccount?.bankName ?? "미등록"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-500">예금주</p>
+                          <p className="mt-1 font-semibold text-white">
+                            {depositAccount?.accountHolder ?? "미등록"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-zinc-500">계좌번호</p>
+                          <p className="mt-1 break-all font-mono text-sm font-semibold text-white">
+                            {depositAccount?.accountNumber ?? depositAccount?.accountHint ?? "미등록"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {depositAccount?.accountHint || depositAccount?.recipientPhone ? (
+                        <p className="mt-3 text-xs text-zinc-500">
+                          {depositAccount.accountHint
+                            ? `계좌 식별 힌트: ${depositAccount.accountHint}`
+                            : `수신 번호: ${depositAccount.recipientPhone}`}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/8 bg-black/25 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                            내 등록 계좌
+                          </p>
+                          <p className="mt-2 text-sm text-zinc-400">
+                            입금 신청은 이 등록 계좌 예금주명 기준으로 저장됩니다.
+                          </p>
+                        </div>
+                        {!hasRegisteredDepositAccount ? (
+                          <button
+                            type="button"
+                            onClick={() => jumpToSection("withdraw")}
+                            className="rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-200 hover:bg-white/5"
+                          >
+                            계좌 등록하기
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {hasRegisteredDepositAccount ? (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <p className="text-xs text-zinc-500">은행명</p>
+                            <p className="mt-1 font-semibold text-white">
+                              {registeredDepositBankLabel}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-zinc-500">예금주</p>
+                            <p className="mt-1 font-semibold text-white">
+                              {registeredDepositAccount?.accountHolder ?? profile?.bankAccountHolder ?? "미등록"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-zinc-500">계좌번호</p>
+                            <p className="mt-1 break-all font-mono text-sm font-semibold text-white">
+                              {registeredDepositAccount?.accountNumber ?? profile?.bankAccountNumber ?? "미등록"}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-500">
+                          등록 계좌가 없어서 원화 입금 자동충전을 사용할 수 없습니다. 아래 출금 계좌를 먼저 저장해주세요.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : null}
+
                 <label className="block text-sm text-zinc-400">
                   {isAnonymousUser ? "입금 수량 (USDT)" : "입금 금액"}
                   <input
@@ -566,20 +697,20 @@ export function WalletPanel({
                     />
                   </label>
                 ) : (
-                  <label className="block text-sm text-zinc-400">
-                    입금자명
-                    <input
-                      value={depositDepositorName}
-                      onChange={(e) => setDepositDepositorName(e.target.value)}
-                      placeholder="은행 문자에 찍히는 이름"
-                      className={fieldClass}
-                    />
-                  </label>
+                  <div className="rounded-xl border border-white/8 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
+                    자동 입금자명:{" "}
+                    <span className="font-semibold text-zinc-100">
+                      {registeredDepositAccount?.accountHolder ?? profile?.bankAccountHolder ?? "등록 계좌 필요"}
+                    </span>
+                  </div>
                 )}
 
                 <button
                   type="submit"
-                  disabled={submittingType === "DEPOSIT"}
+                  disabled={
+                    submittingType === "DEPOSIT" ||
+                    (!isAnonymousUser && !hasRegisteredDepositAccount)
+                  }
                   className="w-full rounded-xl bg-gold-gradient py-3 text-sm font-bold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   {submittingType === "DEPOSIT"
@@ -588,7 +719,9 @@ export function WalletPanel({
                       : "입금 신청 중…"
                     : isAnonymousUser
                       ? "테더 입금 신청 저장"
-                      : "입금 신청 저장"}
+                      : hasRegisteredDepositAccount
+                        ? "입금 신청 저장"
+                        : "등록 계좌 필요"}
                 </button>
               </form>
             </div>
