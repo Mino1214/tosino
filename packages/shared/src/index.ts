@@ -66,6 +66,40 @@ export const platformIntegrationsSchema = z.object({
 export type PlatformIntegrations = z.infer<typeof platformIntegrationsSchema>;
 export type SportsFeedConfig = z.infer<typeof sportsFeedConfigSchema>;
 
+export const casinoLobbySampleGameSchema = z.object({
+  game: z.string(),
+  title: z.string(),
+  group: z.string().optional(),
+  icon: z.string().optional(),
+});
+export type CasinoLobbySampleGame = z.infer<typeof casinoLobbySampleGameSchema>;
+
+export const casinoLobbyVendorSchema = z.object({
+  id: z.string(),
+  category: z.enum(["casino", "slot"]),
+  name: z.string(),
+  shortName: z.string(),
+  vendor: z.string(),
+  game: z.string().default("lobby"),
+  route: z.string(),
+  status: z.enum(["live", "paused"]).default("live"),
+  logo: z.string().nullable().optional(),
+  headline: z.string(),
+  description: z.string(),
+  tags: z.array(z.string()).default([]),
+  gameCount: z.number().int().nonnegative().nullable().optional(),
+  featuredLabels: z.array(z.string()).default([]),
+  sampleGames: z.array(casinoLobbySampleGameSchema).default([]),
+});
+export type CasinoLobbyVendor = z.infer<typeof casinoLobbyVendorSchema>;
+
+export const casinoLobbyCatalogSchema = z.object({
+  updatedAt: z.string(),
+  casino: z.array(casinoLobbyVendorSchema),
+  slot: z.array(casinoLobbyVendorSchema),
+});
+export type CasinoLobbyCatalog = z.infer<typeof casinoLobbyCatalogSchema>;
+
 export {
   ODDSHOST_SPORT_ID_NAME_KR,
   ODDSHOST_SPORT_IDS_WITH_KO_LABEL,

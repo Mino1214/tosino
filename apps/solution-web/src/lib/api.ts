@@ -1,3 +1,5 @@
+import type { CasinoLobbyCatalog } from "@tosino/shared";
+
 const ENV_API_BASE = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001/api"
 ).replace(/\/$/, "");
@@ -150,6 +152,12 @@ export async function apiFetch<T = unknown>(
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+export async function fetchCasinoLobbyCatalog() {
+  return apiFetch<CasinoLobbyCatalog>("/public/casino/catalog", {
+    cache: "no-store",
+  });
 }
 
 export async function fetchReferral(code: string, host: string) {

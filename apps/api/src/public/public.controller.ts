@@ -13,6 +13,7 @@ import { PublicRegisterDto } from './dto/public-register.dto';
 import { buildBootstrapPayload } from './bootstrap-payload.util';
 import { PublicPlatformResolveService } from './public-platform-resolve.service';
 import { OddsHostProxyService } from './oddshost-proxy.service';
+import { readCasinoLobbyCatalog } from './casino-catalog.util';
 
 @Controller('public')
 export class PublicController {
@@ -84,6 +85,11 @@ export class PublicController {
       fetchedAt: snap?.fetchedAt?.toISOString() ?? null,
       game: games,
     };
+  }
+
+  @Get('casino/catalog')
+  casinoCatalog() {
+    return readCasinoLobbyCatalog();
   }
 
   /**

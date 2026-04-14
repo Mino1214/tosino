@@ -13,29 +13,47 @@ import {
   type VinusVerifiedCatalogEntry,
 } from "@/lib/vinus-verified-game-catalog";
 
-const SLOT_VENDORS: {
+export const SLOT_VENDORS: {
   id: VinusMatrixVerifiedVendor;
   label: string;
 }[] = [
   { id: "pragmatic_slot", label: "프라그마틱" },
   { id: "habanero", label: "하바네로" },
   { id: "MICRO_Slot", label: "마이크로" },
+  { id: "TOMHORN_SLOT", label: "톰혼" },
 ];
 
 const SLOT_LAUNCH_MODE: LaunchSurface = "slot-iframe";
 
 const PAGE_SIZE = 24;
 
-export function SlotVendorCatalog({ className }: { className?: string }) {
+type SlotVendorCatalogProps = {
+  className?: string;
+  vendorId?: VinusMatrixVerifiedVendor;
+  onVendorChange?: (vendorId: VinusMatrixVerifiedVendor) => void;
+  showTabs?: boolean;
+};
+
+export function SlotVendorCatalog({
+  className,
+  vendorId,
+  onVendorChange,
+  showTabs = true,
+}: SlotVendorCatalogProps) {
   const b = useBootstrap();
   const { openLogin } = useAppModals();
   const { launch } = useGameLaunch();
-  const [vendorIdx, setVendorIdx] = useState(0);
+  const [internalVendorIdx, setInternalVendorIdx] = useState(0);
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [launchingKey, setLaunchingKey] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
+  const controlledIdx =
+    vendorId == null
+      ? -1
+      : SLOT_VENDORS.findIndex((item) => item.id === vendorId);
+  const vendorIdx = controlledIdx >= 0 ? controlledIdx : internalVendorIdx;
   const vendor = SLOT_VENDORS[vendorIdx]!;
   const games = VINUS_VERIFIED_GAMES_BY_VENDOR[vendor.id];
   const shown = useMemo(() => games.slice(0, visible), [games, visible]);
@@ -123,6 +141,11 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
     ? "text-zinc-600 ring-1 ring-zinc-200 hover:bg-zinc-100"
     : "text-main-gold-solid/65 ring-1 ring-[rgba(218,174,87,0.25)] hover:bg-[rgba(218,174,87,0.08)] hover:text-main-gold-solid";
 
+  const selectVendor = (nextVendorId: VinusMatrixVerifiedVendor, nextIdx: number) => {
+    if (controlledIdx < 0) setInternalVendorIdx(nextIdx);
+    onVendorChange?.(nextVendorId);
+  };
+
   return (
     <div
       className={["w-full min-w-0 max-w-full overflow-x-hidden", className ?? "mt-1"].join(
@@ -135,24 +158,26 @@ export function SlotVendorCatalog({ className }: { className?: string }) {
         </p>
       ) : null}
 
-      <div
-        className={`mb-4 flex min-w-0 gap-2 rounded-2xl p-1 ring-1 ${isLight ? "bg-zinc-100 ring-zinc-200" : "bg-black/40 ring-white/10"}`}
-        role="tablist"
-        aria-label="슬롯 벤더"
-      >
-        {SLOT_VENDORS.map((v, i) => (
-          <button
-            key={v.id}
-            type="button"
-            role="tab"
-            aria-selected={vendorIdx === i}
-            className={`min-w-0 shrink ${tabBtn} ${vendorIdx === i ? `${tabActive} bg-gold-gradient` : tabInactive}`}
-            onClick={() => setVendorIdx(i)}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
+      {showTabs ? (
+        <div
+          className={`mb-4 flex min-w-0 gap-2 rounded-2xl p-1 ring-1 ${isLight ? "bg-zinc-100 ring-zinc-200" : "bg-black/40 ring-white/10"}`}
+          role="tablist"
+          aria-label="슬롯 벤더"
+        >
+          {SLOT_VENDORS.map((v, i) => (
+            <button
+              key={v.id}
+              type="button"
+              role="tab"
+              aria-selected={vendorIdx === i}
+              className={`min-w-0 shrink ${tabBtn} ${vendorIdx === i ? `${tabActive} bg-gold-gradient` : tabInactive}`}
+              onClick={() => selectVendor(v.id, i)}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <p
         className={`mb-3 text-xs ${isLight ? "text-zinc-600" : "text-zinc-500"}`}
