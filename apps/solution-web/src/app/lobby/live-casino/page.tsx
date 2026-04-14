@@ -17,13 +17,29 @@ import {
   type VinusVerifiedCatalogEntry,
 } from "@/lib/vinus-verified-game-catalog";
 
-type CasinoTableRow = {
+type CasinoGridItem = {
   key: string;
   game: string;
   title: string;
   group: string;
   icon?: string;
 };
+
+type CasinoSection = {
+  label: string;
+  items: CasinoGridItem[];
+};
+
+const CATEGORY_ORDER = [
+  "바카라",
+  "룰렛",
+  "블랙잭",
+  "드래곤타이거",
+  "식보",
+  "포커",
+  "게임쇼",
+  "기타",
+] as const;
 
 function VendorTabs({
   vendors,
@@ -35,7 +51,7 @@ function VendorTabs({
   onSelect: (vendorId: string) => void;
 }) {
   return (
-    <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-y border-white/8 bg-black/40">
+    <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-y border-white/8 bg-black/45">
       <div
         className="flex min-w-max gap-2 py-3"
         style={{
@@ -66,176 +82,217 @@ function VendorTabs({
   );
 }
 
-function VendorHeroCard({
-  vendor,
-  launching,
-  onPlay,
-}: {
-  vendor: CasinoLobbyVendor;
-  launching: boolean;
-  onPlay: () => void;
-}) {
+function findVendorHero(vendor: CasinoLobbyVendor) {
   const homeCard = VINUS_VERIFIED_HOME_CARDS.find(
     (card) => card.category === "casino" && card.vendor === vendor.vendor,
   );
   const assets = homeCard ? getCasinoCardAsset(homeCard.slug) : undefined;
+  return { homeCard, assets };
+}
 
-  if (!homeCard || !assets) return null;
+function categorizeCasinoGame(title: string, fallback?: string) {
+  const text = `${title} ${fallback ?? ""}`.toLowerCase();
+  if (text.includes("baccarat") || text.includes("바카라")) return "바카라";
+  if (text.includes("roulette") || text.includes("룰렛")) return "룰렛";
+  if (text.includes("blackjack") || text.includes("블랙잭")) return "블랙잭";
+  if (
+    text.includes("dragon tiger") ||
+    text.includes("dragon") ||
+    text.includes("타이거") ||
+    text.includes("용호")
+  ) {
+    return "드래곤타이거";
+  }
+  if (text.includes("sic bo") || text.includes("식보") || text.includes("dice")) {
+    return "식보";
+  }
+  if (text.includes("poker") || text.includes("포커")) return "포커";
+  if (
+    text.includes("wheel") ||
+    text.includes("spaceman") ||
+    text.includes("candyland") ||
+    text.includes("flyer") ||
+    text.includes("show")
+  ) {
+    return "게임쇼";
+  }
+  return "기타";
+}
+
+function buildCasinoSections(vendor: CasinoLobbyVendor): CasinoSection[] {
+  const verified = (VINUS_VERIFIED_GAMES_BY_VENDOR as Record<
+    string,
+    VinusVerifiedCatalogEntry[]
+  >)[vendor.vendor];
+
+  const items: CasinoGridItem[] =
+    Array.isArray(verified) && verified.length > 0
+      ? verified.slice(0, 36).map((entry) => ({
+          key: `${vendor.id}:${entry.game}`,
+          game: entry.game,
+          title: entry.titleKo || entry.titleEn,
+          group: categorizeCasinoGame(entry.titleKo || entry.titleEn, entry.region),
+          icon: entry.icon,
+        }))
+      : vendor.sampleGames.map((entry, index) => ({
+          key: `${vendor.id}:${entry.game}:${index}`,
+          game: entry.game,
+          title: entry.title,
+          group: entry.group || "기타",
+          icon: entry.icon,
+        }));
+
+  const grouped = new Map<string, CasinoGridItem[]>();
+  for (const item of items) {
+    const bucket = grouped.get(item.group) ?? [];
+    bucket.push(item);
+    grouped.set(item.group, bucket);
+  }
+
+  return CATEGORY_ORDER.map((label) => ({
+    label,
+    items: grouped.get(label) ?? [],
+  })).filter((section) => section.items.length > 0);
+}
+
+function CasinoHeroCard({
+  vendor,
+  launching,
+  onEnter,
+}: {
+  vendor: CasinoLobbyVendor;
+  launching: boolean;
+  onEnter: () => void;
+}) {
+  const { assets } = findVendorHero(vendor);
+
+  if (!assets) {
+    return (
+      <article className="rounded-[1.8rem] border border-[rgba(218,174,87,0.2)] bg-[linear-gradient(135deg,rgba(30,24,8,0.98),rgba(12,12,16,0.98))] p-6">
+        <p className="text-xs uppercase tracking-[0.2em] text-main-gold-solid/55">
+          Full Entry
+        </p>
+        <h2 className="mt-2 text-2xl font-bold text-white">{vendor.name}</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
+          {vendor.description}
+        </p>
+        <button
+          type="button"
+          disabled={launching}
+          onClick={onEnter}
+          className="mt-5 rounded-full bg-gold-gradient px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {launching ? "입장 준비중…" : "회사 전체 입장"}
+        </button>
+      </article>
+    );
+  }
 
   return (
-    <article className="relative overflow-hidden rounded-[2rem] border border-[rgba(218,174,87,0.22)] bg-black shadow-[0_26px_70px_rgba(0,0,0,0.38)]">
-      <div
-        className="absolute inset-0 bg-cover bg-center opacity-90"
+    <article className="group relative min-h-[18rem] overflow-hidden rounded-[2rem] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+      <span
+        className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: `url(${publicAsset(CASINO_CARD_BG)})` }}
       />
-      <div className="absolute inset-0 bg-[linear-gradient(110deg,rgba(5,5,7,0.96)_28%,rgba(5,5,7,0.72)_58%,rgba(5,5,7,0.28)_100%)]" />
+      <span className="absolute inset-0 bg-gradient-to-t from-black via-black/65 to-black/15" />
 
-      <div className="relative grid min-h-[26rem] gap-6 px-6 py-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(18rem,1.1fr)] lg:px-8">
-        <div className="relative z-10 flex flex-col justify-between gap-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.26em] text-main-gold-solid/55">
-              Brand Main UI
-            </p>
-            <h2 className="mt-3 text-2xl font-bold text-white sm:text-3xl">
-              {vendor.name}
-            </h2>
-            <p className="mt-2 text-base font-medium text-main-gold">
-              {vendor.headline}
-            </p>
-            <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-300">
-              {vendor.description}
-            </p>
-          </div>
+      <div className="absolute right-3 top-3 z-10 h-10 w-28 md:right-5 md:top-5">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={publicAsset(assets.logo)}
+          alt={vendor.name}
+          className="h-full w-full object-contain object-right"
+        />
+      </div>
 
-          <div className="space-y-4">
+      <div className="absolute bottom-[4.8rem] right-0 top-8 z-[1] flex w-[56%] items-end justify-center overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={publicAsset(assets.thumb)}
+          alt=""
+          className="max-h-[20rem] w-auto object-contain object-bottom md:transition-transform md:duration-500 md:group-hover:scale-[1.03]"
+          draggable={false}
+        />
+      </div>
+
+      <div className="relative z-10 flex min-h-[18rem] flex-col justify-between px-5 pb-5 pt-6 sm:px-6 md:px-8">
+        <div className="max-w-[48%]">
+          <p className="text-xs uppercase tracking-[0.2em] text-main-gold-solid/55">
+            Full Entry
+          </p>
+          <h2 className="mt-2 text-2xl font-bold text-white">{vendor.name}</h2>
+          <p className="mt-3 text-sm leading-6 text-zinc-300">{vendor.headline}</p>
+        </div>
+
+        <div className="flex items-end justify-between gap-4">
+          <div className="max-w-xl">
             <div className="flex flex-wrap gap-2">
-              {vendor.featuredLabels.map((label) => (
+              {vendor.featuredLabels.slice(0, 4).map((label) => (
                 <span
                   key={label}
-                  className="rounded-full border border-[rgba(218,174,87,0.2)] bg-[rgba(218,174,87,0.1)] px-3 py-1 text-xs text-main-gold-solid/90"
+                  className="rounded-full border border-[rgba(218,174,87,0.2)] bg-[rgba(218,174,87,0.08)] px-3 py-1 text-xs text-main-gold-solid/85"
                 >
                   {label}
                 </span>
               ))}
             </div>
-
-            <button
-              type="button"
-              disabled={launching}
-              onClick={onPlay}
-              className="rounded-full bg-gold-gradient px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {launching ? "입장 준비중…" : "이 회사 메인 UI 입장"}
-            </button>
           </div>
-        </div>
 
-        <div className="relative z-10 flex items-end justify-center overflow-hidden rounded-[1.6rem] border border-white/10 bg-black/20 p-4">
-          <div className="absolute right-4 top-4 h-10 w-28">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={publicAsset(assets.logo)}
-              alt={vendor.name}
-              className="h-full w-full object-contain object-right"
-            />
-          </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={publicAsset(assets.thumb)}
-            alt=""
-            className="max-h-[24rem] w-auto object-contain object-bottom"
-            draggable={false}
-          />
+          <button
+            type="button"
+            disabled={launching}
+            onClick={onEnter}
+            className="rounded-full bg-gold-gradient px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {launching ? "입장 준비중…" : "회사 전체 입장"}
+          </button>
         </div>
       </div>
     </article>
   );
 }
 
-function TableRow({
-  row,
-  onEnter,
+function CasinoSquareCard({
+  item,
   launching,
+  onEnter,
 }: {
-  row: CasinoTableRow;
-  onEnter: () => void;
+  item: CasinoGridItem;
   launching: boolean;
+  onEnter: () => void;
 }) {
   return (
-    <div className="grid gap-3 border-b border-white/6 px-4 py-4 last:border-b-0 md:grid-cols-[minmax(0,1.4fr)_9rem_8rem] md:items-center">
-      <div className="flex min-w-0 items-center gap-3">
-        {row.icon ? (
-          <div className="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-black/35">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={row.icon}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-        ) : (
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[rgba(218,174,87,0.16)] bg-[rgba(218,174,87,0.08)] text-[11px] font-semibold text-main-gold-solid/85">
-            TABLE
-          </div>
-        )}
-
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">{row.title}</p>
-          <p className="mt-1 text-xs text-zinc-500">
-            {row.group} · {row.game === "lobby" ? "메인 로비" : `게임 코드 ${row.game}`}
-          </p>
+    <button
+      type="button"
+      disabled={launching}
+      onClick={onEnter}
+      className="group overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/65 text-left transition hover:border-[rgba(218,174,87,0.28)] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {item.icon ? (
+        <div className="aspect-square w-full overflow-hidden bg-zinc-950">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.icon}
+            alt=""
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+            loading="lazy"
+            decoding="async"
+          />
         </div>
+      ) : (
+        <div className="flex aspect-square items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(218,174,87,0.2),_transparent_58%),linear-gradient(180deg,_rgba(24,24,27,0.92),_rgba(10,10,14,0.98))] px-4 text-center text-xs font-semibold text-main-gold-solid/90">
+          {item.group}
+        </div>
+      )}
+
+      <div className="space-y-1 px-3 py-3">
+        <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
+        <p className="text-xs text-zinc-500">
+          {launching ? "연결중…" : item.game === "lobby" ? "메인 로비" : `코드 ${item.game}`}
+        </p>
       </div>
-
-      <div className="hidden text-sm text-zinc-400 md:block">{row.group}</div>
-
-      <div className="flex justify-start md:justify-end">
-        <button
-          type="button"
-          disabled={launching}
-          onClick={onEnter}
-          className="rounded-full border border-[rgba(218,174,87,0.28)] px-4 py-2 text-xs font-semibold text-main-gold-solid transition hover:bg-[rgba(218,174,87,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {launching ? "연결중…" : "입장"}
-        </button>
-      </div>
-    </div>
+    </button>
   );
-}
-
-function buildCasinoRows(vendor: CasinoLobbyVendor): CasinoTableRow[] {
-  const verified = (VINUS_VERIFIED_GAMES_BY_VENDOR as Record<
-    string,
-    VinusVerifiedCatalogEntry[]
-  >)[vendor.vendor];
-
-  if (Array.isArray(verified) && verified.length > 0) {
-    return verified.slice(0, 12).map((entry) => ({
-      key: `${vendor.id}:${entry.game}`,
-      game: entry.game,
-      title: entry.titleKo || entry.titleEn,
-      group: entry.region || "라이브 테이블",
-      icon: entry.icon,
-    }));
-  }
-
-  return vendor.sampleGames.map((entry, index) => ({
-    key: `${vendor.id}:${entry.game}:${index}`,
-    game: entry.game,
-    title: entry.title,
-    group: entry.group ?? "메인 라인업",
-    icon: entry.icon,
-  }));
-}
-
-function hasVendorHeroCard(vendor: CasinoLobbyVendor) {
-  const homeCard = VINUS_VERIFIED_HOME_CARDS.find(
-    (card) => card.category === "casino" && card.vendor === vendor.vendor,
-  );
-  if (!homeCard) return false;
-  return Boolean(getCasinoCardAsset(homeCard.slug));
 }
 
 export default function LiveCasinoPage() {
@@ -284,11 +341,10 @@ export default function LiveCasinoPage() {
   const selectedVendor =
     vendors.find((vendor) => vendor.id === selectedVendorId) ?? vendors[0] ?? null;
 
-  const casinoRows = useMemo(
-    () => (selectedVendor ? buildCasinoRows(selectedVendor) : []),
+  const sections = useMemo(
+    () => (selectedVendor ? buildCasinoSections(selectedVendor) : []),
     [selectedVendor],
   );
-  const hasHeroCard = selectedVendor ? hasVendorHeroCard(selectedVendor) : false;
 
   const selectVendor = (vendorId: string) => {
     setSelectedVendorId(vendorId);
@@ -314,8 +370,8 @@ export default function LiveCasinoPage() {
             카지노 회사 탭
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-main-gold-solid/72">
-            회사를 누르면 아래에 메인 UI 카드나 테이블 리스트가 바로 펼쳐지고,
-            각 카드와 리스트에서 바로 입장할 수 있게 정리했습니다.
+            슬롯처럼 회사를 누르면 전체 입장 카드가 먼저 나오고, 그 아래에
+            바카라/룰렛 같은 카테고리별 게임 카드가 정사각형으로 펼쳐집니다.
           </p>
         </div>
 
@@ -339,152 +395,68 @@ export default function LiveCasinoPage() {
           </p>
         ) : null}
 
+        {launchError ? (
+          <p className="mt-5 rounded-2xl border border-red-500/20 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+            {launchError}
+          </p>
+        ) : null}
+
         {selectedVendor ? (
           <>
-            <section className="mt-5 rounded-[1.8rem] border border-[rgba(218,174,87,0.16)] bg-[linear-gradient(180deg,rgba(19,19,23,0.96),rgba(8,8,12,0.98))] p-5 sm:p-6">
-              {launchError ? (
-                <p className="mb-4 rounded-2xl border border-red-500/20 bg-red-950/30 px-4 py-3 text-sm text-red-200">
-                  {launchError}
-                </p>
-              ) : null}
+            <section className="mt-5">
+              <CasinoHeroCard
+                vendor={selectedVendor}
+                launching={launchingKey === `${selectedVendor.id}:all`}
+                onEnter={() =>
+                  void openVendorLobby({
+                    key: `${selectedVendor.id}:all`,
+                    vendor: selectedVendor.vendor,
+                    game: selectedVendor.game,
+                    title: selectedVendor.name,
+                    mode: "casino-window",
+                  })
+                }
+              />
+            </section>
 
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-[0.22em] text-main-gold-solid/55">
-                    Selected Brand
-                  </p>
-                  <div className="mt-2 flex items-center gap-3">
-                    {selectedVendor.logo ? (
-                      <div className="flex h-11 w-28 items-center justify-center rounded-xl border border-white/10 bg-black/35 px-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={publicAsset(selectedVendor.logo)}
-                          alt={selectedVendor.name}
-                          className="max-h-7 w-full object-contain"
-                        />
-                      </div>
-                    ) : null}
+            <section className="mt-6 space-y-5">
+              {sections.map((section) => (
+                <div
+                  key={section.label}
+                  className="rounded-[1.6rem] border border-white/10 bg-black/35 p-4 sm:p-5"
+                >
+                  <div className="mb-4 flex items-end justify-between gap-3">
                     <div>
-                      <h2 className="text-xl font-bold text-white sm:text-2xl">
-                        {selectedVendor.name}
-                      </h2>
-                      <p className="mt-1 text-sm text-main-gold">
-                        {selectedVendor.headline}
+                      <p className="text-xs uppercase tracking-[0.2em] text-main-gold-solid/55">
+                        {selectedVendor.shortName}
                       </p>
+                      <h3 className="mt-1 text-lg font-semibold text-white">
+                        {section.label}
+                      </h3>
                     </div>
+                    <p className="text-xs text-zinc-500">{section.items.length}개</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+                    {section.items.map((item) => (
+                      <CasinoSquareCard
+                        key={item.key}
+                        item={item}
+                        launching={launchingKey === item.key}
+                        onEnter={() =>
+                          void openVendorLobby({
+                            key: item.key,
+                            vendor: selectedVendor.vendor,
+                            game: item.game,
+                            title: `${selectedVendor.name} · ${item.title}`,
+                            mode: "casino-window",
+                          })
+                        }
+                      />
+                    ))}
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  disabled={launchingKey === selectedVendor.id}
-                  onClick={() =>
-                    void openVendorLobby({
-                      key: selectedVendor.id,
-                      vendor: selectedVendor.vendor,
-                      game: selectedVendor.game,
-                      title: selectedVendor.name,
-                      mode: "casino-window",
-                    })
-                  }
-                  className="rounded-full bg-gold-gradient px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {launchingKey === selectedVendor.id ? "입장 준비중…" : "회사 전체 UI 입장"}
-                </button>
-              </div>
-
-              <p className="mt-4 max-w-4xl text-sm leading-6 text-zinc-300">
-                {selectedVendor.description}
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {selectedVendor.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border border-[rgba(218,174,87,0.2)] bg-[rgba(218,174,87,0.08)] px-3 py-1 text-xs text-main-gold-solid/85"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </section>
-
-            <section className="mt-5">
-              <div className="mb-4 flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-main-gold-solid/55">
-                    Brand UI
-                  </p>
-                  <h3 className="mt-1 text-lg font-semibold text-white">
-                    {selectedVendor.name} 메인 UI
-                  </h3>
-                </div>
-                <p className="text-xs text-zinc-500">
-                  여성 메인 카드가 있는 회사는 아래에서 바로 입장할 수 있습니다
-                </p>
-              </div>
-
-              {hasHeroCard ? (
-                <VendorHeroCard
-                  vendor={selectedVendor}
-                  launching={launchingKey === `${selectedVendor.id}:hero`}
-                  onPlay={() =>
-                    void openVendorLobby({
-                      key: `${selectedVendor.id}:hero`,
-                      vendor: selectedVendor.vendor,
-                      game: selectedVendor.game,
-                      title: selectedVendor.name,
-                      mode: "casino-window",
-                    })
-                  }
-                />
-              ) : (
-                <div className="rounded-[1.8rem] border border-white/10 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(10,10,14,0.98))] px-6 py-8">
-                  <p className="text-sm font-semibold text-white">
-                    이 회사는 현재 여성 메인 카드 대신 테이블 리스트 중심으로
-                    구성됩니다.
-                  </p>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                    아래 테이블 리스트에서 원하는 라인업을 바로 눌러 입장할 수 있게
-                    맞췄습니다.
-                  </p>
-                </div>
-              )}
-            </section>
-
-            <section className="mt-6 rounded-[1.6rem] border border-white/10 bg-black/35">
-              <div className="flex flex-wrap items-end justify-between gap-3 border-b border-white/8 px-5 py-5">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-main-gold-solid/55">
-                    Table List
-                  </p>
-                  <h3 className="mt-1 text-lg font-semibold text-white">
-                    {selectedVendor.name} 테이블 리스트
-                  </h3>
-                </div>
-                <p className="text-xs text-zinc-500">
-                  원하는 테이블을 눌러 바로 입장할 수 있습니다
-                </p>
-              </div>
-
-              <div>
-                {casinoRows.map((row) => (
-                  <TableRow
-                    key={row.key}
-                    row={row}
-                    launching={launchingKey === row.key}
-                    onEnter={() =>
-                      void openVendorLobby({
-                        key: row.key,
-                        vendor: selectedVendor.vendor,
-                        game: row.game,
-                        title: `${selectedVendor.name} · ${row.title}`,
-                        mode: "casino-window",
-                      })
-                    }
-                  />
-                ))}
-              </div>
+              ))}
             </section>
           </>
         ) : null}
