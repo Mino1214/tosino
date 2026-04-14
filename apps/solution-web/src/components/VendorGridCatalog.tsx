@@ -22,15 +22,46 @@ import { useVinusLobbyLaunch } from "@/lib/use-vinus-lobby-launch";
 
 const PAGE_SIZE = 24;
 
+type VendorTabsVariant = "bar" | "panel";
+
 function VendorTabs({
   vendors,
   selectedVendorId,
   onSelect,
+  variant = "bar",
 }: {
   vendors: CasinoLobbyVendor[];
   selectedVendorId: string | null;
   onSelect: (vendorId: string) => void;
+  variant?: VendorTabsVariant;
 }) {
+  if (variant === "panel") {
+    return (
+      <div className="mb-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-max gap-2 rounded-2xl bg-black/40 p-1 ring-1 ring-white/10">
+          {vendors.map((vendor) => {
+            const selected = vendor.id === selectedVendorId;
+            return (
+              <button
+                key={vendor.id}
+                type="button"
+                onClick={() => onSelect(vendor.id)}
+                className={[
+                  "rounded-xl px-3 py-2 text-xs font-semibold transition sm:text-sm",
+                  selected
+                    ? "bg-gold-gradient text-black shadow-md"
+                    : "text-main-gold-solid/65 ring-1 ring-[rgba(218,174,87,0.25)] hover:bg-[rgba(218,174,87,0.08)] hover:text-main-gold-solid",
+                ].join(" ")}
+              >
+                {vendor.shortName}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-y border-white/8 bg-black/45 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div
@@ -109,6 +140,7 @@ type VendorGridCatalogProps = {
   showVendorTabs?: boolean;
   showCategoryTabs?: boolean;
   showSummary?: boolean;
+  vendorTabsVariant?: VendorTabsVariant;
 };
 
 export function VendorGridCatalog({
@@ -119,6 +151,7 @@ export function VendorGridCatalog({
   showVendorTabs = true,
   showCategoryTabs = true,
   showSummary = true,
+  vendorTabsVariant = "bar",
 }: VendorGridCatalogProps) {
   const [catalog, setCatalog] = useState<CasinoLobbyCatalog | null>(null);
   const [loading, setLoading] = useState(true);
@@ -270,6 +303,7 @@ export function VendorGridCatalog({
           vendors={vendors}
           selectedVendorId={selectedVendor?.id ?? null}
           onSelect={selectVendor}
+          variant={vendorTabsVariant}
         />
       ) : null}
 

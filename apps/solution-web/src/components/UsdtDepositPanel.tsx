@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatKrwWithSymbol } from "@/lib/format-currency";
 
 const DEFAULT_RATE = 1488;
 
@@ -126,7 +127,7 @@ export function UsdtDepositPanel({
             </div>
           </div>
           <span className="rounded-full border border-emerald-700/40 bg-emerald-950/40 px-3 py-1 text-xs font-semibold text-emerald-200">
-            1 USDT = {rate.toLocaleString("ko-KR")} KRW
+            1 USDT = {formatKrwWithSymbol(rate)}
           </span>
         </div>
       </div>
@@ -228,16 +229,13 @@ export function UsdtDepositPanel({
               <div className="flex items-center justify-between gap-4">
                 <span className="text-zinc-500">원화 보유금액</span>
                 <span className="font-mono text-zinc-200">
-                  {Number(krwBalanceDisplay ?? 0).toLocaleString("ko-KR", {
-                    maximumFractionDigits: 0,
-                  })}{" "}
-                  KRW
+                  {formatKrwWithSymbol(krwBalanceDisplay)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-4">
                 <span className="text-zinc-500">기준 환율</span>
                 <span className="font-mono text-zinc-200">
-                  {rate.toLocaleString("ko-KR")} KRW
+                  {formatKrwWithSymbol(rate)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-4">

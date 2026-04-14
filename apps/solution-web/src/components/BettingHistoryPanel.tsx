@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useBettingCart } from "./BettingCartContext";
 import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 import { apiFetch, getAccessToken } from "@/lib/api";
+import { formatKrwWithSymbol } from "@/lib/format-currency";
 
 /* ── 테스트 데이터 ──────────────────────────────────── */
 type HistoryItem = {
@@ -190,12 +191,12 @@ function HistoryContent({ onClose }: { onClose: () => void }) {
                     <p className="mt-0.5 text-[11px] font-semibold text-white">{h.pickLabel}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-zinc-600">
                       <span>{h.date}</span>
-                      <span>배팅 {h.betAmount.toLocaleString("ko-KR")}원</span>
+                      <span>배팅 {formatKrwWithSymbol(h.betAmount)}</span>
                       {h.status === "win" && h.winAmount && (
-                        <span className="font-semibold text-emerald-500">+{h.winAmount.toLocaleString("ko-KR")}원</span>
+                        <span className="font-semibold text-emerald-500">+{formatKrwWithSymbol(h.winAmount)}</span>
                       )}
                       {h.status === "lose" && (
-                        <span className="text-red-500/70">-{h.betAmount.toLocaleString("ko-KR")}원</span>
+                        <span className="text-red-500/70">-{formatKrwWithSymbol(h.betAmount)}</span>
                       )}
                       {h.status === "cancel" && <span className="text-zinc-600">취소됨</span>}
                     </div>

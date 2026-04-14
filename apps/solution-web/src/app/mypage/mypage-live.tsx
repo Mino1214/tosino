@@ -2,18 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getAccessToken } from "@/lib/api";
+import {
+  formatKrwNumber,
+  formatKrwWithSymbol,
+} from "@/lib/format-currency";
 
 const numberCls = "font-mono tabular-nums";
 
 function toFiniteNumber(value: string | number | null | undefined) {
   const n = typeof value === "number" ? value : Number(value ?? NaN);
   return Number.isFinite(n) ? n : null;
-}
-
-function formatKrw(value: string | number | null | undefined) {
-  const n = toFiniteNumber(value);
-  if (n == null) return "—";
-  return n.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
 }
 
 function formatPoints(value: string | number | null | undefined) {
@@ -46,7 +44,7 @@ export function ProfileWalletSection() {
     load();
   }, [load]);
 
-  const b = formatKrw(balance);
+  const b = formatKrwWithSymbol(balance, "₩ —");
   const p = formatPoints(points);
 
   return (
@@ -67,7 +65,6 @@ export function ProfileWalletSection() {
             <span className={`${numberCls} text-lg font-bold text-main-gold sm:text-xl`}>
               {b}
             </span>
-            <span className="text-[10px] text-zinc-500">원</span>
           </div>
           <div className="flex min-w-0 flex-col items-center gap-1 rounded-xl border border-white/8 bg-white/3 py-4">
             <span className="text-[10px] uppercase tracking-widest text-zinc-500">
@@ -105,9 +102,9 @@ export function RollingLiveSection() {
   }, []);
 
   const rolling = formatPercent(data?.achievementPct ?? 0);
-  const req = formatKrw(data?.requiredTurnover);
-  const app = formatKrw(data?.appliedTurnover);
-  const rem = formatKrw(data?.remainingTurnover);
+  const req = formatKrwNumber(data?.requiredTurnover, "—");
+  const app = formatKrwNumber(data?.appliedTurnover, "—");
+  const rem = formatKrwNumber(data?.remainingTurnover, "—");
   const en = data?.rollingEnabled ?? false;
 
   return (
@@ -121,7 +118,7 @@ export function RollingLiveSection() {
         <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
           <span className="shrink-0 text-zinc-400">롤링 달성</span>
           <span className={`truncate text-right ${numberCls} text-zinc-200`}>
-            {app} / {req}원 ({rolling}%)
+            ₩ {app} / ₩ {req} ({rolling}%)
           </span>
         </div>
         <div className="h-3 overflow-hidden rounded-full bg-zinc-800">
@@ -132,9 +129,9 @@ export function RollingLiveSection() {
         </div>
         <div className="overflow-hidden rounded-xl border border-white/8">
           {[
-            ["필요 턴오버", `${req}원`],
-            ["충족 턴오버", `${app}원`],
-            ["잔여", `${rem}원`],
+            ["필요 턴오버", `₩ ${req}`],
+            ["충족 턴오버", `₩ ${app}`],
+            ["잔여", `₩ ${rem}`],
             ["달성률", `${rolling}%`],
           ].map(([label, value]) => (
             <div

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AdBanner } from "@/components/SportsLobbyLayout";
+import { formatKrwWithSymbol } from "@/lib/format-currency";
 
 /* ──────────────────────────────────────────── 게임 정의 */
 type Market = {
@@ -296,7 +297,7 @@ function GamePlayer({ game, onBack }: { game: GameDef; onBack: () => void }) {
             {/* 보유 머니 */}
             <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
               <span className="text-xs text-zinc-500">보유 머니</span>
-              <span className="font-bold text-white">0 원</span>
+              <span className="font-bold text-white">{formatKrwWithSymbol(0)}</span>
             </div>
 
             {/* 빠른 금액 버튼 */}

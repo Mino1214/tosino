@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch, clearSession, getAccessToken } from "@/lib/api";
 import { UsdtDepositPanel } from "@/components/UsdtDepositPanel";
 import type { WalletModalOptions } from "@/contexts/AppModalsContext";
+import { formatKrwWithSymbol } from "@/lib/format-currency";
 
 const BANKS = [
   { value: "43", label: "카카오뱅크" },
@@ -74,14 +75,6 @@ const shellCardClass =
 const fieldClass =
   "mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition-colors focus:border-[rgba(218,174,87,0.65)]";
 
-function formatKrw(value: string | number | null | undefined) {
-  const n = typeof value === "number" ? value : Number(value ?? 0);
-  if (!Number.isFinite(n)) return "0";
-  return n.toLocaleString("ko-KR", {
-    maximumFractionDigits: 0,
-  });
-}
-
 function formatUsdt(value: string | number | null | undefined) {
   const n = typeof value === "number" ? value : Number(value ?? 0);
   if (!Number.isFinite(n)) return "0.00";
@@ -137,7 +130,7 @@ function formatRequestAmount(request: WReq) {
   if (request.currency === "USDT") {
     return `${formatUsdt(request.amount)} USDT`;
   }
-  return `${formatKrw(request.amount)}원`;
+  return formatKrwWithSymbol(request.amount);
 }
 
 function getInitialTarget(initialOpts?: WalletModalOptions) {
@@ -483,8 +476,7 @@ export function WalletPanel({
                 보유 머니
               </p>
               <p className="mt-3 font-mono text-3xl font-bold text-main-gold">
-                {formatKrw(balance)}
-                <span className="ml-2 text-lg text-zinc-500">KRW</span>
+                {formatKrwWithSymbol(balance)}
               </p>
               <p className="mt-3 text-sm text-zinc-400">
                 {isAnonymousUser
@@ -709,7 +701,7 @@ export function WalletPanel({
                       <div className="rounded-xl border border-white/8 bg-zinc-950/80 px-4 py-3 text-sm text-zinc-400">
                         현재 보유 금액:{" "}
                         <span className="font-mono font-bold text-main-gold">
-                          {formatKrw(balance)}원
+                          {formatKrwWithSymbol(balance)}
                         </span>
                       </div>
 

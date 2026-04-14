@@ -28,6 +28,7 @@ import { useBettingCart } from "./BettingCartContext";
 import { useAppModals } from "@/contexts/AppModalsContext";
 import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { publicAsset } from "@/lib/public-asset";
+import { formatKrwWithSymbol } from "@/lib/format-currency";
 
 const NAV_ITEMS = [
   // 스포츠 메뉴는 임시 비노출.
@@ -213,7 +214,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
                 <div className="h-3 w-px bg-white/15" />
 
                 {/* 잔액 */}
-                <span className="text-zinc-400">MONEY <span className="font-mono font-bold text-main-gold">{money?.toLocaleString("ko-KR") ?? "—"}</span> ₩</span>
+                <span className="text-zinc-400">MONEY <span className="font-mono font-bold text-main-gold">{formatKrwWithSymbol(money, "₩ —")}</span></span>
 
                 {/* 포인트 */}
                 <span>POINT <span className="font-mono font-bold text-pink-400">0</span> ₱</span>

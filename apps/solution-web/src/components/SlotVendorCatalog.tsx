@@ -24,6 +24,7 @@ export function SlotVendorCatalog({
       showVendorTabs={showTabs}
       showCategoryTabs={false}
       showSummary={false}
+      vendorTabsVariant="panel"
     />
   );
 }

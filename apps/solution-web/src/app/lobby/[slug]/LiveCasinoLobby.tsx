@@ -7,6 +7,7 @@ import { apiFetch, getAccessToken } from "@/lib/api";
 import { useGameLaunch } from "@/components/GameIframeModal";
 import { useAppModals } from "@/contexts/AppModalsContext";
 import type { LaunchSurface } from "@/lib/vinus-home-cards";
+import { formatKrwWithSymbol } from "@/lib/format-currency";
 
 type LiveCasinoLobbyProps = {
   /** 기본 pragmatic_casino (에이전트에서 에볼루션 미개통 시) */
@@ -106,8 +107,7 @@ export function LiveCasinoLobby({
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-left">
           <p className="text-xs text-zinc-500">충전·입금과 같은 지갑 (심리스)</p>
           <p className="mt-0.5 font-mono text-xl font-semibold text-main-gold">
-            {walletBalance}{" "}
-            <span className="text-sm font-normal text-zinc-400">원</span>
+            {formatKrwWithSymbol(walletBalance)}
           </p>
           <button
             type="button"
