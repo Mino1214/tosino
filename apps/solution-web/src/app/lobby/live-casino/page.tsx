@@ -5,6 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AdBanner } from "@/components/SportsLobbyLayout";
 import { fetchCasinoLobbyCatalog } from "@/lib/api";
+import {
+  getVendorDescription,
+  getVendorFeaturedLabels,
+  getVendorGridItems,
+  getVendorHeadline,
+  getVendorLaunchMode,
+  type VendorGridItem,
+} from "@/lib/casino-lobby-vendor";
 import { publicAsset } from "@/lib/public-asset";
 import { useVinusLobbyLaunch } from "@/lib/use-vinus-lobby-launch";
 import {
@@ -12,22 +20,10 @@ import {
   getCasinoCardAsset,
 } from "@/lib/casino-card-assets";
 import { VINUS_VERIFIED_HOME_CARDS } from "@/lib/vinus-home-cards";
-import {
-  VINUS_VERIFIED_GAMES_BY_VENDOR,
-  type VinusVerifiedCatalogEntry,
-} from "@/lib/vinus-verified-game-catalog";
-
-type CasinoGridItem = {
-  key: string;
-  game: string;
-  title: string;
-  group: string;
-  icon?: string;
-};
 
 type CasinoSection = {
   label: string;
-  items: CasinoGridItem[];
+  items: VendorGridItem[];
 };
 
 const CATEGORY_ORDER = [
@@ -73,7 +69,7 @@ function VendorTabs({
                   : "border-[rgba(218,174,87,0.18)] bg-black/30 text-main-gold-solid/75 hover:border-[rgba(218,174,87,0.35)] hover:text-main-gold-solid",
               ].join(" ")}
             >
-              {vendor.name}
+              {vendor.shortName}
             </button>
           );
         })}
@@ -83,6 +79,10 @@ function VendorTabs({
 }
 
 function findVendorHero(vendor: CasinoLobbyVendor) {
+  if (vendor.entryStyle === "card") {
+    return { homeCard: undefined, assets: undefined };
+  }
+
   const homeCard = VINUS_VERIFIED_HOME_CARDS.find(
     (card) => card.category === "casino" && card.vendor === vendor.vendor,
   );
@@ -90,59 +90,10 @@ function findVendorHero(vendor: CasinoLobbyVendor) {
   return { homeCard, assets };
 }
 
-function categorizeCasinoGame(title: string, fallback?: string) {
-  const text = `${title} ${fallback ?? ""}`.toLowerCase();
-  if (text.includes("baccarat") || text.includes("바카라")) return "바카라";
-  if (text.includes("roulette") || text.includes("룰렛")) return "룰렛";
-  if (text.includes("blackjack") || text.includes("블랙잭")) return "블랙잭";
-  if (
-    text.includes("dragon tiger") ||
-    text.includes("dragon") ||
-    text.includes("타이거") ||
-    text.includes("용호")
-  ) {
-    return "드래곤타이거";
-  }
-  if (text.includes("sic bo") || text.includes("식보") || text.includes("dice")) {
-    return "식보";
-  }
-  if (text.includes("poker") || text.includes("포커")) return "포커";
-  if (
-    text.includes("wheel") ||
-    text.includes("spaceman") ||
-    text.includes("candyland") ||
-    text.includes("flyer") ||
-    text.includes("show")
-  ) {
-    return "게임쇼";
-  }
-  return "기타";
-}
-
 function buildCasinoSections(vendor: CasinoLobbyVendor): CasinoSection[] {
-  const verified = (VINUS_VERIFIED_GAMES_BY_VENDOR as Record<
-    string,
-    VinusVerifiedCatalogEntry[]
-  >)[vendor.vendor];
+  const items = getVendorGridItems(vendor);
 
-  const items: CasinoGridItem[] =
-    Array.isArray(verified) && verified.length > 0
-      ? verified.slice(0, 36).map((entry) => ({
-          key: `${vendor.id}:${entry.game}`,
-          game: entry.game,
-          title: entry.titleKo || entry.titleEn,
-          group: categorizeCasinoGame(entry.titleKo || entry.titleEn, entry.region),
-          icon: entry.icon,
-        }))
-      : vendor.sampleGames.map((entry, index) => ({
-          key: `${vendor.id}:${entry.game}:${index}`,
-          game: entry.game,
-          title: entry.title,
-          group: entry.group || "기타",
-          icon: entry.icon,
-        }));
-
-  const grouped = new Map<string, CasinoGridItem[]>();
+  const grouped = new Map<string, VendorGridItem[]>();
   for (const item of items) {
     const bucket = grouped.get(item.group) ?? [];
     bucket.push(item);
@@ -165,6 +116,10 @@ function CasinoHeroCard({
   onEnter: () => void;
 }) {
   const { assets } = findVendorHero(vendor);
+  const paused = vendor.status === "paused";
+  const headline = getVendorHeadline(vendor);
+  const description = getVendorDescription(vendor);
+  const featuredLabels = getVendorFeaturedLabels(vendor);
 
   if (!assets) {
     return (
@@ -172,17 +127,35 @@ function CasinoHeroCard({
         <p className="text-xs uppercase tracking-[0.2em] text-main-gold-solid/55">
           Full Entry
         </p>
-        <h2 className="mt-2 text-2xl font-bold text-white">{vendor.name}</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-          {vendor.description}
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h2 className="text-2xl font-bold text-white">{vendor.name}</h2>
+          {paused ? (
+            <span className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+              준비중
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-3 text-sm leading-6 text-zinc-300">{headline}</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-300">
+          {description}
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {featuredLabels.slice(0, 4).map((label) => (
+            <span
+              key={label}
+              className="rounded-full border border-[rgba(218,174,87,0.2)] bg-[rgba(218,174,87,0.08)] px-3 py-1 text-xs text-main-gold-solid/85"
+            >
+              {label}
+            </span>
+          ))}
+        </div>
         <button
           type="button"
-          disabled={launching}
+          disabled={paused || launching}
           onClick={onEnter}
           className="mt-5 rounded-full bg-gold-gradient px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {launching ? "입장 준비중…" : "회사 전체 입장"}
+          {paused ? "준비중" : launching ? "입장 준비중…" : "회사 전체 입장"}
         </button>
       </article>
     );
@@ -220,14 +193,21 @@ function CasinoHeroCard({
           <p className="text-xs uppercase tracking-[0.2em] text-main-gold-solid/55">
             Full Entry
           </p>
-          <h2 className="mt-2 text-2xl font-bold text-white">{vendor.name}</h2>
-          <p className="mt-3 text-sm leading-6 text-zinc-300">{vendor.headline}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h2 className="text-2xl font-bold text-white">{vendor.name}</h2>
+            {paused ? (
+              <span className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+                준비중
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-3 text-sm leading-6 text-zinc-300">{headline}</p>
         </div>
 
         <div className="flex items-end justify-between gap-4">
           <div className="max-w-xl">
             <div className="flex flex-wrap gap-2">
-              {vendor.featuredLabels.slice(0, 4).map((label) => (
+              {featuredLabels.slice(0, 4).map((label) => (
                 <span
                   key={label}
                   className="rounded-full border border-[rgba(218,174,87,0.2)] bg-[rgba(218,174,87,0.08)] px-3 py-1 text-xs text-main-gold-solid/85"
@@ -240,11 +220,11 @@ function CasinoHeroCard({
 
           <button
             type="button"
-            disabled={launching}
+            disabled={paused || launching}
             onClick={onEnter}
             className="rounded-full bg-gold-gradient px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {launching ? "입장 준비중…" : "회사 전체 입장"}
+            {paused ? "준비중" : launching ? "입장 준비중…" : "회사 전체 입장"}
           </button>
         </div>
       </div>
@@ -255,16 +235,18 @@ function CasinoHeroCard({
 function CasinoSquareCard({
   item,
   launching,
+  paused,
   onEnter,
 }: {
-  item: CasinoGridItem;
+  item: VendorGridItem;
   launching: boolean;
+  paused: boolean;
   onEnter: () => void;
 }) {
   return (
     <button
       type="button"
-      disabled={launching}
+      disabled={paused || launching}
       onClick={onEnter}
       className="group overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/65 text-left transition hover:border-[rgba(218,174,87,0.28)] disabled:cursor-not-allowed disabled:opacity-50"
     >
@@ -288,7 +270,13 @@ function CasinoSquareCard({
       <div className="space-y-1 px-3 py-3">
         <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
         <p className="text-xs text-zinc-500">
-          {launching ? "연결중…" : item.game === "lobby" ? "메인 로비" : `코드 ${item.game}`}
+          {paused
+            ? "준비중"
+            : launching
+              ? "연결중…"
+              : item.game === "lobby"
+                ? "메인 로비"
+                : `코드 ${item.game}`}
         </p>
       </div>
     </button>
@@ -345,6 +333,7 @@ export default function LiveCasinoPage() {
     () => (selectedVendor ? buildCasinoSections(selectedVendor) : []),
     [selectedVendor],
   );
+  const vendorPaused = selectedVendor?.status === "paused";
 
   const selectVendor = (vendorId: string) => {
     setSelectedVendorId(vendorId);
@@ -413,7 +402,7 @@ export default function LiveCasinoPage() {
                     vendor: selectedVendor.vendor,
                     game: selectedVendor.game,
                     title: selectedVendor.name,
-                    mode: "casino-window",
+                    mode: getVendorLaunchMode(selectedVendor.category),
                   })
                 }
               />
@@ -443,13 +432,14 @@ export default function LiveCasinoPage() {
                         key={item.key}
                         item={item}
                         launching={launchingKey === item.key}
+                        paused={!!vendorPaused}
                         onEnter={() =>
                           void openVendorLobby({
                             key: item.key,
                             vendor: selectedVendor.vendor,
                             game: item.game,
                             title: `${selectedVendor.name} · ${item.title}`,
-                            mode: "casino-window",
+                            mode: getVendorLaunchMode(selectedVendor.category),
                           })
                         }
                       />

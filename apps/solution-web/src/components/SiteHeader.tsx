@@ -30,7 +30,7 @@ import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { publicAsset } from "@/lib/public-asset";
 
 const NAV_ITEMS = [
-  { label: "스포츠", href: "/lobby/sports" },
+  // 스포츠 메뉴는 임시 비노출.
   { label: "카지노", href: "/lobby/live-casino" },
   { label: "슬롯",     href: "/lobby/slots"       },
   { label: "미니게임", href: "/lobby/minigame"    },

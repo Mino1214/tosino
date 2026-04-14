@@ -20,8 +20,7 @@ type DrawerNavItem =
   | { label: string; href: string; external: true };
 
 const DRAWER_NAV: DrawerNavItem[] = [
-  { label: "스포츠", href: "/lobby/sports" },
-  { label: "e스포츠", href: "/lobby/esports" },
+  // 스포츠/e스포츠는 임시 비노출.
   { label: "카지노", href: "/lobby/live-casino" },
   { label: "슬롯", href: "/lobby/slots" },
   { label: "미니게임", href: "/lobby/minigame" },

@@ -74,22 +74,34 @@ export const casinoLobbySampleGameSchema = z.object({
 });
 export type CasinoLobbySampleGame = z.infer<typeof casinoLobbySampleGameSchema>;
 
+export const casinoLobbyVendorCategorySchema = z.enum([
+  "casino",
+  "slot",
+  "arcade",
+  "other",
+  "holdem",
+]);
+export type CasinoLobbyVendorCategory = z.infer<
+  typeof casinoLobbyVendorCategorySchema
+>;
+
 export const casinoLobbyVendorSchema = z.object({
   id: z.string(),
-  category: z.enum(["casino", "slot"]),
+  category: casinoLobbyVendorCategorySchema,
   name: z.string(),
   shortName: z.string(),
   vendor: z.string(),
   game: z.string().default("lobby"),
-  route: z.string(),
+  route: z.string().default(""),
   status: z.enum(["live", "paused"]).default("live"),
-  logo: z.string().nullable().optional(),
-  headline: z.string(),
-  description: z.string(),
+  logo: z.string().nullable().default(null),
+  headline: z.string().default(""),
+  description: z.string().default(""),
   tags: z.array(z.string()).default([]),
-  gameCount: z.number().int().nonnegative().nullable().optional(),
+  gameCount: z.number().int().nonnegative().nullable().default(null),
   featuredLabels: z.array(z.string()).default([]),
   sampleGames: z.array(casinoLobbySampleGameSchema).default([]),
+  entryStyle: z.enum(["hero", "card"]).default("hero"),
 });
 export type CasinoLobbyVendor = z.infer<typeof casinoLobbyVendorSchema>;
 
@@ -97,6 +109,9 @@ export const casinoLobbyCatalogSchema = z.object({
   updatedAt: z.string(),
   casino: z.array(casinoLobbyVendorSchema),
   slot: z.array(casinoLobbyVendorSchema),
+  arcade: z.array(casinoLobbyVendorSchema),
+  other: z.array(casinoLobbyVendorSchema),
+  holdem: z.array(casinoLobbyVendorSchema),
 });
 export type CasinoLobbyCatalog = z.infer<typeof casinoLobbyCatalogSchema>;
 

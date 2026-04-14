@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AdBanner } from "@/components/SportsLobbyLayout";
+import { VendorGridCatalog } from "@/components/VendorGridCatalog";
 
 /* ──────────────────────────────────────────── 게임 정의 */
 type Market = {
@@ -372,6 +373,23 @@ function GameSelector({ onSelect }: { onSelect: (g: GameDef) => void }) {
             <GameCard key={g.id} g={g} onClick={() => onSelect(g)} />
           ))}
         </div>
+
+        <section className="mt-10 border-t border-[rgba(218,174,87,0.16)] pt-6">
+          <p className="text-xs uppercase tracking-[0.22em] text-main-gold-solid/55">
+            Vendor Test
+          </p>
+          <h2 className="mt-2 text-lg font-bold text-main-gold sm:text-2xl">
+            아케이드 · 외 · 홀덤 공급사
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-main-gold-solid/72">
+            분류별 탭과 회사별 카드 구성을 같은 방식으로 맞춰서, 썸네일이 없어도
+            바로 한 회사씩 테스트할 수 있게 정리했습니다.
+          </p>
+
+          <div className="pt-5">
+            <VendorGridCatalog categories={["arcade", "other", "holdem"]} />
+          </div>
+        </section>
       </div>
     </div>
   );

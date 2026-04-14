@@ -20,8 +20,7 @@ import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { publicAsset } from "@/lib/public-asset";
 
 const PLAY_ITEMS = [
-  { label: "스포츠", href: "/lobby/sports", emoji: "⚽" },
-  { label: "e스포츠", href: "/lobby/esports", emoji: "🎮" },
+  // 스포츠/e스포츠는 임시 비노출.
   { label: "카지노", href: "/lobby/live-casino", emoji: "" },
   { label: "슬롯",      href: "/lobby/slots",       emoji: "" },
   { label: "미니게임",  href: "/lobby/minigame",    emoji: "" },

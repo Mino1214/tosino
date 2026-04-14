@@ -9,6 +9,9 @@ const EMPTY_CATALOG: CasinoLobbyCatalog = {
   updatedAt: '',
   casino: [],
   slot: [],
+  arcade: [],
+  other: [],
+  holdem: [],
 };
 
 function catalogCandidates() {

@@ -17,7 +17,7 @@ export default function SlotsPage() {
         <div className="border-b border-[rgba(218,174,87,0.2)] bg-black py-5">
           <h1 className="text-xl font-bold text-main-gold">슬롯 게임</h1>
           <p className="mt-0.5 text-xs text-main-gold-solid/75">
-            프라그마틱 · 하바네로 · 마이크로 · 톰혼
+            슬롯 공급사를 탭으로 고르고 메인 로비와 대표 게임을 바로 테스트할 수 있습니다.
           </p>
         </div>
 
