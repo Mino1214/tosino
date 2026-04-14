@@ -1,5 +1,6 @@
 /** @type {import('pm2').StartOptions[]} */
 const path = require('path');
+const os = require('os');
 const ROOT = __dirname;
 const API_ROOT = path.join(ROOT, 'apps', 'api');
 const API_ENTRY = path.join(API_ROOT, 'dist', 'src', 'main.js');
@@ -7,6 +8,13 @@ const SMS_INGEST_ROOT = path.join(ROOT, 'apps', 'sms-ingest');
 const SMS_INGEST_ENTRY = path.join(SMS_INGEST_ROOT, 'dist', 'index.js');
 /** pnpm PATH 없이도 동작하도록 node 로 직접 실행 (502 방지) */
 const SERVE_CLI = path.join(ROOT, 'node_modules', 'serve', 'build', 'main.js');
+/** cloudflared 바이너리 경로 (설치 위치 우선순위: .local/bin → /usr/local/bin → /usr/bin) */
+const CLOUDFLARED = [
+  path.join(os.homedir(), '.local', 'bin', 'cloudflared'),
+  '/usr/local/bin/cloudflared',
+  '/usr/bin/cloudflared',
+].find(p => { try { require('fs').accessSync(p, require('fs').constants.X_OK); return true; } catch { return false; } }) || 'cloudflared';
+const CF_CONFIG = path.join(ROOT, 'deploy', 'cloudflared', 'config.yml');
 
 function serveStaticApp(outDir, port) {
   return {
@@ -61,6 +69,17 @@ module.exports = {
     {
       name: 'agent-web',
       ...serveStaticApp('apps/agent-web/out', 3003),
+    },
+    {
+      name: 'cloudflared',
+      script: CLOUDFLARED,
+      args: ['tunnel', '--config', CF_CONFIG, 'run'],
+      cwd: ROOT,
+      interpreter: 'none',
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      env: { NO_COLOR: '1' },
     },
   ],
 };
