@@ -10,12 +10,14 @@
 
 import Link from "next/link";
 import { SlotVendorCatalog } from "./SlotVendorCatalog";
+import { VendorGridCatalog } from "./VendorGridCatalog";
 
-export type PortalView = "casino" | "slot" | "minigame" | "hub";
+export type PortalView = "casino" | "slot" | "arcade" | "minigame" | "hub";
 
 const TABS: { key: PortalView; label: string }[] = [
   { key: "casino",   label: "카지노"   },
   { key: "slot",     label: "슬롯"     },
+  { key: "arcade",   label: "아케이드" },
   { key: "minigame", label: "미니게임" },
 ];
 
@@ -63,6 +65,7 @@ export function HomePortal({ view, onViewChange }: HomePortalProps) {
       <div className="p-3 sm:p-4">
         {active === "casino"   && <CasinoContent />}
         {active === "slot"     && <SlotContent />}
+        {active === "arcade"   && <ArcadeContent />}
         {active === "minigame" && <MinigameContent />}
       </div>
     </div>
@@ -93,6 +96,26 @@ function SlotContent() {
         <span className="text-xs text-violet-400">입장 →</span>
       </Link>
       <SlotVendorCatalog className="mt-0" />
+    </div>
+  );
+}
+
+/* ── 아케이드 ── */
+function ArcadeContent() {
+  return (
+    <div className="space-y-3">
+      <Link
+        href="/lobby/arcade"
+        className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-4"
+      >
+        <span className="text-sm font-semibold text-white">아케이드 게임</span>
+        <span className="text-xs text-main-gold">입장 →</span>
+      </Link>
+      <VendorGridCatalog
+        categories={["arcade"]}
+        showCategoryTabs={false}
+        showSummary={false}
+      />
     </div>
   );
 }

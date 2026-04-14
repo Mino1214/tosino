@@ -23,6 +23,7 @@ const PLAY_ITEMS = [
   // 스포츠/e스포츠는 임시 비노출.
   { label: "카지노", href: "/lobby/live-casino", emoji: "" },
   { label: "슬롯",      href: "/lobby/slots",       emoji: "" },
+  { label: "아케이드",  href: "/lobby/arcade",      emoji: "" },
   { label: "미니게임",  href: "/lobby/minigame",    emoji: "" },
 ];
 

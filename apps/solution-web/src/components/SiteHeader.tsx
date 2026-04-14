@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   // 스포츠 메뉴는 임시 비노출.
   { label: "카지노", href: "/lobby/live-casino" },
   { label: "슬롯",     href: "/lobby/slots"       },
+  { label: "아케이드", href: "/lobby/arcade"      },
   { label: "미니게임", href: "/lobby/minigame"    },
   { label: "마이페이지", href: "/mypage"          },
 ];

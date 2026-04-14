@@ -2,6 +2,40 @@
   "updatedAt": "2026-04-14",
   "slot": [
     {
+      "id": "pragmatic_slot",
+      "category": "slot",
+      "name": "프라그마틱",
+      "shortName": "프라그마틱",
+      "vendor": "pragmatic_slot",
+      "route": "/lobby/slots?vendor=pragmatic_slot",
+      "logo": "/logo/logo_Pragmatic.png"
+    },
+    {
+      "id": "MICRO_Slot",
+      "category": "slot",
+      "name": "마이크로",
+      "shortName": "마이크로",
+      "vendor": "MICRO_Slot",
+      "route": "/lobby/slots?vendor=MICRO_Slot",
+      "logo": "/logo/logo_MicroGaming.png"
+    },
+    {
+      "id": "TOMHORN_SLOT",
+      "category": "slot",
+      "name": "톰혼",
+      "shortName": "톰혼",
+      "vendor": "TOMHORN_SLOT",
+      "route": "/lobby/slots?vendor=TOMHORN_SLOT"
+    },
+    {
+      "id": "habanero",
+      "category": "slot",
+      "name": "하바네로",
+      "shortName": "하바네로",
+      "vendor": "habanero",
+      "route": "/lobby/slots?vendor=habanero"
+    },
+    {
       "id": "booongo",
       "category": "slot",
       "name": "부운고",
@@ -58,14 +92,6 @@
       "route": "/lobby/slots?vendor=fc_slot"
     },
     {
-      "id": "habanero",
-      "category": "slot",
-      "name": "하바네로",
-      "shortName": "하바네로",
-      "vendor": "habanero",
-      "route": "/lobby/slots?vendor=habanero"
-    },
-    {
       "id": "hacksaw_slot",
       "category": "slot",
       "name": "핵소",
@@ -90,15 +116,6 @@
       "route": "/lobby/slots?vendor=jili"
     },
     {
-      "id": "MICRO_Slot",
-      "category": "slot",
-      "name": "마이크로",
-      "shortName": "마이크로",
-      "vendor": "MICRO_Slot",
-      "route": "/lobby/slots?vendor=MICRO_Slot",
-      "logo": "/logo/logo_MicroGaming.png"
-    },
-    {
       "id": "pgsoft",
       "category": "slot",
       "name": "PG소프트",
@@ -113,23 +130,6 @@
       "shortName": "플레이앤고",
       "vendor": "PLAYNGO",
       "route": "/lobby/slots?vendor=PLAYNGO"
-    },
-    {
-      "id": "pragmatic_slot",
-      "category": "slot",
-      "name": "프라그마틱",
-      "shortName": "프라그마틱",
-      "vendor": "pragmatic_slot",
-      "route": "/lobby/slots?vendor=pragmatic_slot",
-      "logo": "/logo/logo_Pragmatic.png"
-    },
-    {
-      "id": "TOMHORN_SLOT",
-      "category": "slot",
-      "name": "톰혼",
-      "shortName": "톰혼",
-      "vendor": "TOMHORN_SLOT",
-      "route": "/lobby/slots?vendor=TOMHORN_SLOT"
     },
     {
       "id": "kingmaker",
@@ -262,6 +262,36 @@
   ],
   "casino": [
     {
+      "id": "pragmatic_casino",
+      "category": "casino",
+      "name": "프라그마틱",
+      "shortName": "프라그마틱",
+      "vendor": "pragmatic_casino",
+      "route": "/lobby/live-casino?vendor=pragmatic_casino",
+      "logo": "/logo/logo_Pragmatic.png"
+    },
+    {
+      "id": "MICRO_Casino",
+      "category": "casino",
+      "name": "마이크로",
+      "shortName": "마이크로",
+      "vendor": "MICRO_Casino",
+      "route": "/lobby/live-casino?vendor=MICRO_Casino",
+      "logo": "/logo/logo_MicroGaming.png"
+    },
+    {
+      "id": "evolution",
+      "category": "casino",
+      "name": "에볼루션",
+      "shortName": "에볼루션",
+      "vendor": "evolution",
+      "route": "/lobby/live-casino?vendor=evolution",
+      "logo": "/logo/logo_Evolution.png",
+      "headline": "에볼루션은 현재 미계약 상태라서 노출만 유지하고 입장은 막아둡니다.",
+      "description": "계약 전 상태라서 회사명과 라인업은 보이지만 입장은 준비중으로 표시됩니다.",
+      "status": "paused"
+    },
+    {
       "id": "cq9_casino",
       "category": "casino",
       "name": "CQ9",
@@ -290,42 +320,12 @@
       "entryStyle": "card"
     },
     {
-      "id": "evolution",
-      "category": "casino",
-      "name": "에볼루션",
-      "shortName": "에볼루션",
-      "vendor": "evolution",
-      "route": "/lobby/live-casino?vendor=evolution",
-      "logo": "/logo/logo_Evolution.png",
-      "headline": "에볼루션은 현재 미계약 상태라서 노출만 유지하고 입장은 막아둡니다.",
-      "description": "계약 전 상태라서 회사명과 라인업은 보이지만 입장은 준비중으로 표시됩니다.",
-      "status": "paused"
-    },
-    {
-      "id": "MICRO_Casino",
-      "category": "casino",
-      "name": "마이크로",
-      "shortName": "마이크로",
-      "vendor": "MICRO_Casino",
-      "route": "/lobby/live-casino?vendor=MICRO_Casino",
-      "logo": "/logo/logo_MicroGaming.png"
-    },
-    {
       "id": "oriental",
       "category": "casino",
       "name": "오리엔탈",
       "shortName": "오리엔탈",
       "vendor": "oriental",
       "route": "/lobby/live-casino?vendor=oriental"
-    },
-    {
-      "id": "pragmatic_casino",
-      "category": "casino",
-      "name": "프라그마틱",
-      "shortName": "프라그마틱",
-      "vendor": "pragmatic_casino",
-      "route": "/lobby/live-casino?vendor=pragmatic_casino",
-      "logo": "/logo/logo_Pragmatic.png"
     },
     {
       "id": "sa",
@@ -427,20 +427,20 @@
   ],
   "arcade": [
     {
-      "id": "fc_arcade",
-      "category": "arcade",
-      "name": "FC",
-      "shortName": "FC",
-      "vendor": "fc_arcade",
-      "route": "/lobby/minigame?vendor=fc_arcade"
-    },
-    {
       "id": "hacksaw_arcade",
       "category": "arcade",
       "name": "핵소",
       "shortName": "핵소",
       "vendor": "hacksaw_arcade",
       "route": "/lobby/minigame?vendor=hacksaw_arcade"
+    },
+    {
+      "id": "fc_arcade",
+      "category": "arcade",
+      "name": "FC",
+      "shortName": "FC",
+      "vendor": "fc_arcade",
+      "route": "/lobby/minigame?vendor=fc_arcade"
     },
     {
       "id": "jdb_arcade",
