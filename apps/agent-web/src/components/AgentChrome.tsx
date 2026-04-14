@@ -47,6 +47,38 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function SessionExpiredOverlay() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    function onExpired() { setShow(true); }
+    window.addEventListener("tosino:session-expired", onExpired);
+    return () => window.removeEventListener("tosino:session-expired", onExpired);
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-8 text-center shadow-2xl">
+        <div className="mb-4 text-4xl">🔒</div>
+        <h2 className="mb-2 text-lg font-semibold text-zinc-100">세션이 만료되었습니다</h2>
+        <p className="mb-6 text-sm text-zinc-400">
+          보안을 위해 자동으로 로그아웃되었습니다.<br />
+          다시 로그인해 주세요.
+        </p>
+        <button
+          type="button"
+          onClick={() => { window.location.href = "/login"; }}
+          className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition-opacity hover:opacity-90"
+        >
+          다시 로그인
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type Stats = {
   platformName: string;
   platformSlug: string;
@@ -183,6 +215,8 @@ export function AgentChrome({ children }: { children: React.ReactNode }) {
   );
 
   return (
+    <>
+    <SessionExpiredOverlay />
     <div
       className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100"
       style={
@@ -275,5 +309,6 @@ export function AgentChrome({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </div>
+    </>
   );
 }

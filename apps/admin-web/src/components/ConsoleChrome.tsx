@@ -7,6 +7,7 @@ import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 import { useAdminConsoleMode } from "@/context/AdminConsoleModeContext";
 
+/** 테마·플랫폼 관리·서버상태는 슈퍼관리자 통합 후 재추가 예정 */
 const NAV = [
   {
     href: "/console/users",
@@ -29,11 +30,6 @@ const NAV = [
     hint: "충전·출금 요청",
   },
   {
-    href: "/console/sync",
-    label: "서버 상태",
-    hint: "연결·작업 점검",
-  },
-  {
     href: "/console/operational",
     label: "운영 설정",
     hint: "롤링 · 콤프 · 포인트",
@@ -47,11 +43,6 @@ const NAV = [
     href: "/console/announcements",
     label: "공지 팝업",
     hint: "모바일 이미지 최대 4장",
-  },
-  {
-    href: "/console/theme",
-    label: "테마·UI",
-    hint: "색상·레이아웃·미리보기",
   },
 ] as const;
 
@@ -116,6 +107,46 @@ type InquiryPendingSummary = {
   }>;
 };
 
+/** 세션 만료 오버레이 — 깜박임 없이 전체화면 블로킹 */
+function SessionExpiredOverlay() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    function onExpired() {
+      setShow(true);
+    }
+    window.addEventListener("tosino:session-expired", onExpired);
+    return () => window.removeEventListener("tosino:session-expired", onExpired);
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-8 text-center shadow-2xl">
+        <div className="mb-4 text-4xl">🔒</div>
+        <h2 className="mb-2 text-lg font-semibold text-zinc-100">
+          세션이 만료되었습니다
+        </h2>
+        <p className="mb-6 text-sm text-zinc-400">
+          보안을 위해 자동으로 로그아웃되었습니다.
+          <br />
+          다시 로그인해 주세요.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/login";
+          }}
+          className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition-opacity hover:opacity-90"
+        >
+          다시 로그인
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ConsoleChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -127,15 +158,15 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
   const {
     platforms,
     selectedPlatformId,
-    setSelectedPlatformId,
     loading,
     error,
   } = usePlatform();
   const { mode, setMode } = useAdminConsoleMode();
   const userRole = getStoredUser()?.role;
-  const isSuper = userRole === "SUPER_ADMIN";
   const isMaster = userRole === "MASTER_AGENT";
   const navItems = isMaster ? NAV_MASTER : mode === "semiVirtual" ? NAV_SEMI : NAV;
+
+  const selected = platforms.find((p) => p.id === selectedPlatformId);
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -153,9 +184,8 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
     setMobileNavOpen(false);
   }, [pathname]);
 
-  const selected = platforms.find((p) => p.id === selectedPlatformId);
   const canSeeRegistrations =
-    isSuper || userRole === "PLATFORM_ADMIN";
+    userRole === "SUPER_ADMIN" || userRole === "PLATFORM_ADMIN";
 
   useEffect(() => {
     if (
@@ -209,35 +239,22 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
 
   const sidebar = (
     <div className="flex h-full min-h-0 flex-1 flex-col">
+      {/* 플랫폼 정보 (선택 없이 표시만) */}
       <div className="border-b border-zinc-800/80 p-4">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          작업 플랫폼
+          플랫폼
         </p>
-        <select
-          value={selectedPlatformId ?? ""}
-          disabled={loading || platforms.length === 0}
-          onChange={(e) => setSelectedPlatformId(e.target.value)}
-          className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-amber-600 focus:outline-none disabled:opacity-50"
-        >
-          {platforms.length === 0 ? (
-            <option value="">플랫폼 없음</option>
-          ) : (
-            platforms.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))
-          )}
-        </select>
-        {selected && (
-          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-zinc-500">
-            {selected.slug}
-            <br />
-            <span className="text-zinc-600">
-              {selected.domains.map((d) => d.host).join(", ") || "도메인 없음"}
-            </span>
+        {selected ? (
+          <p className="mt-2 truncate text-sm font-medium text-zinc-100">
+            {selected.name}
+            <span className="ml-2 text-xs text-zinc-600">{selected.slug}</span>
           </p>
+        ) : loading ? (
+          <p className="mt-2 text-xs text-zinc-600">로딩 중…</p>
+        ) : (
+          <p className="mt-2 text-xs text-zinc-600">플랫폼 없음</p>
         )}
+
         {!isMaster && (
           <div className="mt-3 flex gap-0.5 rounded-lg bg-zinc-950 p-0.5 ring-1 ring-zinc-800">
             <button
@@ -249,7 +266,7 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              일반
+              플랫폼
             </button>
             <button
               type="button"
@@ -335,109 +352,82 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
             </Link>
           );
         })}
-
-        {!isMaster && (
-          <>
-            <div className="my-3 border-t border-zinc-800/80" />
-
-            <Link
-              href="/console/platforms"
-              className={`block rounded-lg px-3 py-2.5 transition ${
-                isActive(pathname, "/console/platforms")
-                  ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
-                  : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
-              }`}
-            >
-              <span className="block text-sm font-medium">플랫폼</span>
-              <span className="mt-0.5 block text-[11px] text-zinc-500">
-                목록 · 바로가기
-              </span>
-            </Link>
-            {isSuper && (
-              <Link
-                href="/console/platforms/new"
-                className={`mt-0.5 block rounded-lg px-3 py-2.5 transition ${
-                  pathname === "/console/platforms/new"
-                    ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
-                    : "text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200"
-                }`}
-              >
-                <span className="text-sm font-medium">+ 새 플랫폼</span>
-              </Link>
-            )}
-          </>
-        )}
       </nav>
     </div>
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-      {/* 모바일: 메뉴 열기 바 (헤더 바로 아래) */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-3 py-2.5 md:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileNavOpen(true)}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
-          aria-label="메뉴 열기"
-        >
-          <span className="text-lg leading-none">☰</span>
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs text-zinc-500">작업 플랫폼</p>
-          <p className="truncate text-sm font-medium text-zinc-200">
-            {selected?.name ?? "선택 필요"}
-          </p>
-        </div>
-      </div>
-
-      {/* 모바일 딤 */}
-      {mobileNavOpen && (
-        <button
-          type="button"
-          className="fixed inset-0 z-40 bg-black/70 md:hidden"
-          style={{ top: "var(--admin-header-h, 3.25rem)" }}
-          aria-label="메뉴 닫기"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
-
-      {/* 좌측 사이드바 (데스크톱 고정 / 모바일 드로어) */}
-      <aside
-        className={`fixed z-50 flex w-[min(17.5rem,88vw)] flex-col border-r border-zinc-800 bg-zinc-900 shadow-xl transition-transform duration-200 md:static md:h-auto md:min-h-[calc(100vh-3.25rem)] md:w-60 md:shrink-0 md:translate-x-0 md:shadow-none ${
-          mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        } bottom-0 left-0 top-[3.25rem] h-[calc(100vh-3.25rem)] md:top-auto md:h-auto`}
-      >
-        <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2 md:hidden">
-          <span className="text-sm font-semibold text-zinc-200">메뉴</span>
+    <>
+      <SessionExpiredOverlay />
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        {/* 모바일: 메뉴 열기 바 */}
+        <div className="flex shrink-0 items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-3 py-2.5 md:hidden">
           <button
             type="button"
-            onClick={() => setMobileNavOpen(false)}
-            className="rounded p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-            aria-label="닫기"
+            onClick={() => setMobileNavOpen(true)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+            aria-label="메뉴 열기"
           >
-            ✕
+            <span className="text-lg leading-none">☰</span>
           </button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs text-zinc-500">
+              {mode === "semiVirtual" ? "반가상" : "플랫폼"}
+            </p>
+            <p className="truncate text-sm font-medium text-zinc-200">
+              {selected?.name ?? "선택 필요"}
+            </p>
+          </div>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{sidebar}</div>
-      </aside>
 
-      {/* 본문 */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:min-h-[calc(100vh-3.25rem)]">
-        {error && (
-          <div className="shrink-0 border-b border-red-900/40 bg-red-950/30 px-4 py-2 text-sm text-red-300">
-            {error}
-          </div>
+        {/* 모바일 딤 */}
+        {mobileNavOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/70 md:hidden"
+            style={{ top: "var(--admin-header-h, 3.25rem)" }}
+            aria-label="메뉴 닫기"
+            onClick={() => setMobileNavOpen(false)}
+          />
         )}
-        {!loading && platforms.length > 0 && !selectedPlatformId && (
-          <div className="shrink-0 border-b border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
-            왼쪽에서 작업할 플랫폼을 선택하세요.
+
+        {/* 좌측 사이드바 */}
+        <aside
+          className={`fixed z-50 flex w-[min(17.5rem,88vw)] flex-col border-r border-zinc-800 bg-zinc-900 shadow-xl transition-transform duration-200 md:static md:h-auto md:min-h-[calc(100vh-3.25rem)] md:w-60 md:shrink-0 md:translate-x-0 md:shadow-none ${
+            mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          } bottom-0 left-0 top-[3.25rem] h-[calc(100vh-3.25rem)] md:top-auto md:h-auto`}
+        >
+          <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2 md:hidden">
+            <span className="text-sm font-semibold text-zinc-200">메뉴</span>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(false)}
+              className="rounded p-2 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              aria-label="닫기"
+            >
+              ✕
+            </button>
           </div>
-        )}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
-          <div className="mx-auto max-w-6xl">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{sidebar}</div>
+        </aside>
+
+        {/* 본문 */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col md:min-h-[calc(100vh-3.25rem)]">
+          {error && (
+            <div className="shrink-0 border-b border-red-900/40 bg-red-950/30 px-4 py-2 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+          {!loading && platforms.length > 0 && !selectedPlatformId && (
+            <div className="shrink-0 border-b border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
+              플랫폼을 불러오는 중입니다…
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
+            <div className="mx-auto max-w-6xl">{children}</div>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

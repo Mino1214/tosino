@@ -23,6 +23,7 @@ import { isSportsBettingPath } from "@/lib/sports-lobby-path";
 import { MandatoryAnnouncementGate } from "@/components/MandatoryAnnouncementGate";
 import { AuthRequiredGate } from "@/components/AuthRequiredGate";
 import { isUserOnlyRoute } from "@/lib/protected-routes";
+import { HomeQuickAction } from "@/components/HomeQuickAction";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -70,6 +71,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* 하단 탭바 */}
       <BottomNav />
+
+      {/* 데스크톱 전용: 홈 우측 퀵 액션 카드 */}
+      {isHome && <HomeQuickAction />}
 
       <AppModalsRoot />
       </AppModalsProvider>

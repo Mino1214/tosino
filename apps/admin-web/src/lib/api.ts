@@ -120,7 +120,7 @@ export async function apiFetch<T = unknown>(
   if (res.status === 401) {
     clearSession();
     if (typeof window !== "undefined" && !path.startsWith("/auth/")) {
-      window.location.href = "/login";
+      window.dispatchEvent(new Event("tosino:session-expired"));
     }
   }
   if (!res.ok) {
