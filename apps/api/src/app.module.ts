@@ -18,6 +18,7 @@ import { AgentModule } from './agent/agent.module';
 import { AgentInquiriesModule } from './agent-inquiries/agent-inquiries.module';
 import { RateRevisionModule } from './rate-revision/rate-revision.module';
 import { DepositEventsModule } from './deposit-events/deposit-events.module';
+import { UsdtDepositModule } from './usdt-deposit/usdt-deposit.module';
 @Module({
   controllers: [HealthController],
   imports: [
@@ -53,6 +54,7 @@ import { DepositEventsModule } from './deposit-events/deposit-events.module';
     AgentInquiriesModule,
     AgentModule,
     DepositEventsModule,
+    UsdtDepositModule,
   ],
 })
 export class AppModule {}

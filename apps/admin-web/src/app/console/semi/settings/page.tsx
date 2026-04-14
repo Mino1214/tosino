@@ -10,6 +10,7 @@ type Semi = {
   semiVirtualEnabled: boolean;
   semiVirtualRecipientPhone: string | null;
   semiVirtualAccountHint: string | null;
+  settlementUsdtWallet: string | null;
 };
 
 export default function SemiVirtualSettingsPage() {
@@ -19,6 +20,7 @@ export default function SemiVirtualSettingsPage() {
   const [enabled, setEnabled] = useState(false);
   const [phone, setPhone] = useState("");
   const [hint, setHint] = useState("");
+  const [usdtWallet, setUsdtWallet] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -41,6 +43,7 @@ export default function SemiVirtualSettingsPage() {
         setEnabled(d.semiVirtualEnabled);
         setPhone(d.semiVirtualRecipientPhone ?? "");
         setHint(d.semiVirtualAccountHint ?? "");
+        setUsdtWallet(d.settlementUsdtWallet ?? "");
       })
       .catch((e) =>
         setErr(e instanceof Error ? e.message : "설정을 불러오지 못했습니다"),
@@ -62,6 +65,7 @@ export default function SemiVirtualSettingsPage() {
             enabled,
             recipientPhone: phone.trim() || undefined,
             accountHint: hint.trim() || undefined,
+            settlementUsdtWallet: usdtWallet.trim() || undefined,
           }),
         },
       );
@@ -153,6 +157,22 @@ export default function SemiVirtualSettingsPage() {
               className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 disabled:opacity-50"
             />
           </label>
+
+          <div className="rounded-lg border border-amber-900/40 bg-amber-950/20 p-4 space-y-2">
+            <p className="text-xs font-semibold text-amber-300">
+              USDT(TRC20) 정산 수취 지갑
+            </p>
+            <p className="text-xs text-zinc-500">
+              무기명 회원이 USDT를 보낼 마스터 수취 주소. 입력 시 TronGrid가
+              1분마다 입금을 감지해 자동 크레딧합니다.
+            </p>
+            <input
+              value={usdtWallet}
+              onChange={(e) => setUsdtWallet(e.target.value)}
+              placeholder="T로 시작하는 TRC20 주소 (예: TXyz…)"
+              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-amber-100"
+            />
+          </div>
 
           <p className="text-xs text-zinc-600">
             사용 시{" "}

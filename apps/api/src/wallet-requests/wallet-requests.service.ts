@@ -17,6 +17,7 @@ import { JwtPayload } from '../auth/auth.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { DepositEventsService } from '../deposit-events/deposit-events.service';
 import { PointsService } from '../points/points.service';
+import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
 
 @Injectable()
 export class WalletRequestsService {
@@ -25,28 +26,19 @@ export class WalletRequestsService {
     private rolling: RollingObligationService,
     private depositEvents: DepositEventsService,
     private points: PointsService,
+    private upbit: UpbitRateService,
   ) {}
 
-  private getUsdtKrwRate(): Prisma.Decimal {
-    const raw =
-      process.env.USDT_KRW_RATE?.trim() ||
-      process.env.NEXT_PUBLIC_USDT_KRW_RATE?.trim() ||
-      '1488';
-    try {
-      const rate = new Prisma.Decimal(raw);
-      if (!rate.gt(0)) throw new Error('invalid');
-      return rate;
-    } catch {
-      return new Prisma.Decimal(1488);
-    }
+  private async getUsdtKrwRate(): Promise<Prisma.Decimal> {
+    return this.upbit.getKrwPerUsdt();
   }
 
-  private toWalletKrwAmount(
+  private async toWalletKrwAmount(
     amount: Prisma.Decimal,
     currency: 'KRW' | 'USDT',
-  ): Prisma.Decimal {
+  ): Promise<Prisma.Decimal> {
     if (currency === 'USDT') {
-      return amount.times(this.getUsdtKrwRate());
+      return amount.times(await this.getUsdtKrwRate());
     }
     return amount;
   }
@@ -102,7 +94,7 @@ export class WalletRequestsService {
       },
     });
     const amt = new Prisma.Decimal(amount);
-    const walletKrwAmount = this.toWalletKrwAmount(amt, currency);
+    const walletKrwAmount = await this.toWalletKrwAmount(amt, currency);
     const isAnonymous = user.signupMode === 'anonymous';
 
     if (isAnonymous && currency !== 'USDT') {
@@ -209,12 +201,14 @@ export class WalletRequestsService {
     platformId: string,
     actor: JwtPayload,
     status?: WalletRequestStatus,
+    currency?: string,
   ) {
     this.assertPlatformAdmin(actor, platformId);
     return this.prisma.walletRequest.findMany({
       where: {
         platformId,
         ...(status ? { status } : {}),
+        ...(currency ? { currency } : {}),
       },
       include: {
         user: {
@@ -259,7 +253,7 @@ export class WalletRequestsService {
       const amount = req.amount;
       const requestCurrency =
         req.currency === 'USDT' ? ('USDT' as const) : ('KRW' as const);
-      const walletDeltaBase = this.toWalletKrwAmount(amount, requestCurrency);
+      const walletDeltaBase = await this.toWalletKrwAmount(amount, requestCurrency);
       let delta: Prisma.Decimal;
       if (req.type === WalletRequestType.DEPOSIT) {
         delta = walletDeltaBase;

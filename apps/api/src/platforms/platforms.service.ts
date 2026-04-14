@@ -545,6 +545,7 @@ export class PlatformsService {
         semiVirtualBankName: true,
         semiVirtualAccountNumber: true,
         semiVirtualAccountHolder: true,
+        settlementUsdtWallet: true,
       },
     });
     if (!p) throw new NotFoundException('Platform not found');
@@ -580,6 +581,9 @@ export class PlatformsService {
         );
       }
     }
+    const settlementUsdtWallet =
+      dto.settlementUsdtWallet?.trim() || null;
+
     await this.prisma.platform.update({
       where: { id: platformId },
       data: dto.enabled
@@ -590,6 +594,7 @@ export class PlatformsService {
             semiVirtualBankName: bankName,
             semiVirtualAccountNumber: accountNumber,
             semiVirtualAccountHolder: accountHolder,
+            settlementUsdtWallet,
           }
         : {
             semiVirtualEnabled: false,
@@ -598,6 +603,7 @@ export class PlatformsService {
             semiVirtualBankName: null,
             semiVirtualAccountNumber: null,
             semiVirtualAccountHolder: null,
+            settlementUsdtWallet,
           },
     });
     return this.getSemiVirtual(platformId, actor);

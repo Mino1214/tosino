@@ -37,6 +37,18 @@ enum SyncJobType {
   ODDS
   CASINO
   AFFILIATE
+  USDT_DEPOSIT
+}
+
+enum UsdtDepositTxStatus {
+  /** 최소 입금액 미달 — 관리자 수동 처리 대기 */
+  PENDING
+  /** 최소 입금액 이상 — 자동 크레딧 완료 */
+  AUTO_CREDITED
+  /** 관리자가 거절 */
+  REJECTED
+  /** 보낸 주소와 일치하는 유저 없음 */
+  UNMATCHED
 }
 
 enum RegistrationStatus {
@@ -86,6 +98,8 @@ model Platform {
   flagsJson Json     @default("{}")
   /** Sports / third-party feed wiring (no secrets — use credentialEnvKey → process.env) */
   integrationsJson Json @default("{}")
+  /** 테더(TRC20) 정산 지갑 — 회원이 USDT를 보내는 마스터 수취 주소 */
+  settlementUsdtWallet         String?
   /** 반가상: 은행 문자로 입금 자동 확인 (일반 결제 플로우와 분리) */
   semiVirtualEnabled           Boolean @default(false)
   /** 수신 단말에 등록된 번호(숫자만). 앱에서 전달한 recipientPhone 과 매칭 */
@@ -127,6 +141,7 @@ model Platform {
   announcements        PlatformAnnouncement[]
   announcementAssets   PlatformAnnouncementAsset[]
   bankSmsIngests       BankSmsIngest[]
+  usdtDepositTxs       UsdtDepositTx[]
   agentInquiries       AgentInquiry[]
   vinusSessionTokens   VinusSessionToken[]
   casinoVinusTxs       CasinoVinusTx[]
@@ -430,6 +445,7 @@ model User {
   announcementReads          AnnouncementRead[]
   pointLedgerEntries         PointLedgerEntry[]
   depositEventClaims         UserDepositEventClaim[]
+  usdtDepositTxs             UsdtDepositTx[]
 
   @@index([platformId])
   @@index([parentUserId])
@@ -540,10 +556,47 @@ model WalletRequest {
   createdAt    DateTime            @default(now())
   resolvedAt   DateTime?
 
-  bankSmsIngests BankSmsIngest[]
+  bankSmsIngests  BankSmsIngest[]
+  usdtDepositTx   UsdtDepositTx?
 
   @@index([platformId, status])
+  @@index([platformId, status, currency])
   @@index([userId, createdAt])
+}
+
+/// TronGrid TRC20 USDT 입금 트랜잭션 추적 (중복 처리 방지 + 대기 관리)
+model UsdtDepositTx {
+  id              String               @id @default(cuid())
+  /** TronGrid transaction_id (on-chain hash) */
+  txHash          String               @unique
+  platformId      String
+  platform        Platform             @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  /** USDT를 보낸 지갑 주소 (user.usdtWalletAddress 와 매칭) */
+  fromAddress     String
+  /** 정산 지갑 주소 (platform.settlementUsdtWallet) */
+  toAddress       String
+  /** 입금된 USDT 수량 */
+  usdtAmount      Decimal              @db.Decimal(18, 8)
+  /** 처리 시점 업비트 환율 (원/USDT) */
+  krwRate         Decimal              @db.Decimal(18, 2)
+  /** 환산 원화 금액 */
+  krwAmount       Decimal              @db.Decimal(18, 2)
+  status          UsdtDepositTxStatus
+  /** 매칭된 유저 (UNMATCHED이면 null) */
+  userId          String?
+  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /** 생성된 WalletRequest */
+  walletRequestId String?              @unique
+  walletRequest   WalletRequest?       @relation(fields: [walletRequestId], references: [id], onDelete: SetNull)
+  /** 온체인 블록 타임스탬프 */
+  blockTimestamp  DateTime?
+  /** 관리자 처리 메모 */
+  resolverNote    String?
+  createdAt       DateTime             @default(now())
+
+  @@index([platformId, status])
+  @@index([platformId, createdAt])
+  @@index([fromAddress])
 }
 
 /// 은행 웹발신 문자 수신 기록 (sms-ingest 서버가 적재)

@@ -80,6 +80,11 @@ const NAV_SEMI = [
     hint: "은행 문자 처리 기록",
   },
   {
+    href: "/console/semi/usdt-deposits",
+    label: "USDT 입금",
+    hint: "온체인 입금 감지·수동승인",
+  },
+  {
     href: "/console/wallet-requests",
     label: "입·출금",
     hint: "대기 건 · 수동 승인",

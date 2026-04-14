@@ -28,8 +28,9 @@ export class WalletRequestsAdminController {
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
     @Query('status') status?: WalletRequestStatus,
+    @Query('currency') currency?: string,
   ) {
-    return this.walletRequests.listForPlatform(platformId, user, status);
+    return this.walletRequests.listForPlatform(platformId, user, status, currency);
   }
 
   @Post(':requestId/approve')

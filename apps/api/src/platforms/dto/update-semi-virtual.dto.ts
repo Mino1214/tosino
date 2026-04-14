@@ -1,4 +1,10 @@
-import { IsBoolean, IsOptional, IsString, ValidateIf } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Length,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpdateSemiVirtualDto {
   @IsBoolean()
@@ -27,4 +33,10 @@ export class UpdateSemiVirtualDto {
   @IsOptional()
   @IsString()
   accountHolder?: string;
+
+  /** TRC20 정산 수취 지갑 주소 (T로 시작하는 34자) */
+  @IsOptional()
+  @IsString()
+  @Length(30, 50)
+  settlementUsdtWallet?: string;
 }
