@@ -32,7 +32,7 @@ function VendorTabs({
   onSelect: (vendorId: string) => void;
 }) {
   return (
-    <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-y border-white/8 bg-black/45">
+    <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-y border-white/8 bg-black/45 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div
         className="flex min-w-max gap-2 py-3"
         style={{

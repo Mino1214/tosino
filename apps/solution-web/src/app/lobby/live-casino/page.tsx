@@ -47,7 +47,7 @@ function VendorTabs({
   onSelect: (vendorId: string) => void;
 }) {
   return (
-    <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-y border-white/8 bg-black/45">
+    <div className="-mx-[var(--content-pad-phi)] overflow-x-auto border-y border-white/8 bg-black/45 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div
         className="flex min-w-max gap-2 py-3"
         style={{
@@ -352,16 +352,7 @@ export default function LiveCasinoPage() {
 
       <div className="content-pad-phi mx-auto w-full min-w-0 max-w-[90rem]">
         <div className="border-b border-[rgba(218,174,87,0.2)] bg-black py-5">
-          <p className="text-xs uppercase tracking-[0.22em] text-main-gold-solid/55">
-            Live Casino
-          </p>
-          <h1 className="mt-2 text-lg font-bold text-main-gold sm:text-2xl">
-            카지노 회사 탭
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-main-gold-solid/72">
-            슬롯처럼 회사를 누르면 전체 입장 카드가 먼저 나오고, 그 아래에
-            바카라/룰렛 같은 카테고리별 게임 카드가 정사각형으로 펼쳐집니다.
-          </p>
+          <h1 className="text-xl font-bold text-main-gold">카지노</h1>
         </div>
 
         {loading ? (
