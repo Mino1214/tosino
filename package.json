@@ -43,8 +43,15 @@
     "deploy:nginx": "bash scripts/deploy-nginx.sh",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
     "pm2:status": "pm2 status",
     "pm2:logs": "pm2 logs",
+    "tunnel:setup": "bash scripts/setup-cloudflared.sh",
+    "tunnel:start": "pm2 start ecosystem.config.js --only cloudflared",
+    "tunnel:stop": "pm2 stop cloudflared",
+    "tunnel:logs": "pm2 logs cloudflared",
+    "tunnel:status": "cloudflared tunnel info tosino",
+    "tunnel:check": "curl -s https://apisgate.org/health && curl -sv -H 'Origin: https://i-on.bet' https://apisgate.org/health 2>&1 | grep -E 'access-control|HTTP/'",
     "start:api": "pnpm --filter @tosino/api run start:prod",
     "start:admin": "bash scripts/serve-fixed-port.sh 3000 apps/admin-web/out",
     "start:solution": "bash scripts/serve-fixed-port.sh 3002 apps/solution-web/out",
@@ -55,7 +62,8 @@
     "smoke:webhooks": "bash scripts/smoke-webhooks.sh",
     "vinus:callback-smoke": "pnpm --filter @tosino/api run vinus:callback-smoke",
     "vinus:flows-smoke": "pnpm --filter @tosino/api run vinus:flows-smoke",
-    "nginx:enable": "echo 'nginx: scripts/nginx-migrate-to-tosino.sh | scripts/nginx-quick-https-selfsigned.sh | 점검: scripts/nginx-doctor.sh'"
+    "nginx:enable": "echo 'nginx: scripts/nginx-migrate-to-tosino.sh | scripts/nginx-quick-https-selfsigned.sh | 점검: scripts/nginx-doctor.sh'",
+    "deploy:all:tunnel": "pnpm install && pnpm build:apps && pm2 reload ecosystem.config.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────
+# Tosino — Cloudflare Tunnel 설정
+# ─────────────────────────────────────────────────────────────
+#
+# ── 도메인 → 서비스 매핑 ────────────────────────────────────
+#   apisgate.org           → API (NestJS :4001) + sms-ingest (:4050)
+#   i-on.bet               → solution-web  :3002
+#   www.i-on.bet           → solution-web  :3002
+#   mod.i-on.bet           → admin-web     :3000
+#   agent.i-on.bet         → agent-web     :3003
+# ─────────────────────────────────────────────────────────────
+
+tunnel: 50a78d10-c684-4f59-a74e-6385131744d1
+credentials-file: /home/user1/.cloudflared/50a78d10-c684-4f59-a74e-6385131744d1.json
+
+originRequest:
+  noTLSVerify: true
+  connectTimeout: 30s
+
+ingress:
+  # ══════════════════════════════════════════════════
+  # apisgate.org — API 전용 도메인
+  #   /webhook/sms   → sms-ingest (4050)
+  #   나머지 전체     → NestJS API (4001)
+  # ══════════════════════════════════════════════════
+  - hostname: apisgate.org
+    path: "^/webhook/sms$"
+    service: http://localhost:4050
+
+  - hostname: apisgate.org
+    service: http://localhost:4001
+
+  # ══════════════════════════════════════════════════
+  # i-on.bet — 솔루션 메인 (solution-web :3002)
+  # ══════════════════════════════════════════════════
+  - hostname: i-on.bet
+    service: http://localhost:3002
+
+  - hostname: www.i-on.bet
+    service: http://localhost:3002
+
+  # ══════════════════════════════════════════════════
+  # mod.i-on.bet — 관리자 (admin-web :3000)
+  # ══════════════════════════════════════════════════
+  - hostname: mod.i-on.bet
+    service: http://localhost:3000
+
+  # ══════════════════════════════════════════════════
+  # agent.i-on.bet — 총판 (agent-web :3003)
+  # ══════════════════════════════════════════════════
+  - hostname: agent.i-on.bet
+    service: http://localhost:3003
+
+  # 미매칭 → 404
+  - service: http_status:404
