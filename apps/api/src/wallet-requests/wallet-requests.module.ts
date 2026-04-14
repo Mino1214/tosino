@@ -3,9 +3,10 @@ import { WalletRequestsService } from './wallet-requests.service';
 import { WalletRequestsAdminController } from './wallet-requests-admin.controller';
 import { RollingModule } from '../rolling/rolling.module';
 import { DepositEventsCoreModule } from '../deposit-events/deposit-events-core.module';
+import { PointsModule } from '../points/points.module';
 
 @Module({
-  imports: [RollingModule, DepositEventsCoreModule],
+  imports: [RollingModule, DepositEventsCoreModule, PointsModule],
   controllers: [WalletRequestsAdminController],
   providers: [WalletRequestsService],
   exports: [WalletRequestsService],

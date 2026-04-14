@@ -38,11 +38,12 @@ export default function LoginPage() {
       });
       if (
         data.user.role !== "SUPER_ADMIN" &&
-        data.user.role !== "PLATFORM_ADMIN"
+        data.user.role !== "PLATFORM_ADMIN" &&
+        data.user.role !== "MASTER_AGENT"
       ) {
         clearSession();
         setError(
-          "이 주소는 슈퍼관리자·플랫폼관리자만 사용할 수 있습니다. 총판은 총판 전용 주소에서, 회원은 솔루션(회원) 사이트에서 로그인하세요.",
+          "이 주소는 슈퍼관리자·플랫폼관리자·총판만 사용할 수 있습니다. 회원은 솔루션(회원) 사이트에서 로그인하세요.",
         );
         return;
       }
@@ -52,7 +53,9 @@ export default function LoginPage() {
       localStorage.setItem("accessToken", data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
       localStorage.setItem("user", JSON.stringify(data.user));
-      router.push("/console/users");
+      router.push(
+        data.user.role === "MASTER_AGENT" ? "/console/operational" : "/console/users",
+      );
     } catch (err) {
       clearSession();
       setError(err instanceof Error ? err.message : "로그인 실패");
@@ -68,7 +71,7 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-8 shadow-xl"
       >
         <h1 className="text-center text-xl font-semibold text-zinc-100">
-          관리자 로그인
+          운영 콘솔 로그인
         </h1>
         {error && (
           <p className="rounded bg-red-950/80 px-3 py-2 text-sm text-red-200">

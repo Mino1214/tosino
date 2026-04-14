@@ -36,7 +36,7 @@ const NAV = [
   {
     href: "/console/operational",
     label: "운영 설정",
-    hint: "입출금 한도 · 롤링 · 포인트",
+    hint: "롤링 · 콤프 · 포인트",
   },
   {
     href: "/console/deposit-events",
@@ -52,6 +52,19 @@ const NAV = [
     href: "/console/theme",
     label: "테마·UI",
     hint: "색상·레이아웃·미리보기",
+  },
+] as const;
+
+const NAV_MASTER = [
+  {
+    href: "/console/operational",
+    label: "운영 설정",
+    hint: "롤링 · 콤프 · 포인트",
+  },
+  {
+    href: "/console/users",
+    label: "유저",
+    hint: "직속 회원 · 총판 목록",
   },
 ] as const;
 
@@ -114,7 +127,10 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
     error,
   } = usePlatform();
   const { mode, setMode } = useAdminConsoleMode();
-  const navItems = mode === "semiVirtual" ? NAV_SEMI : NAV;
+  const userRole = getStoredUser()?.role;
+  const isSuper = userRole === "SUPER_ADMIN";
+  const isMaster = userRole === "MASTER_AGENT";
+  const navItems = isMaster ? NAV_MASTER : mode === "semiVirtual" ? NAV_SEMI : NAV;
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -123,13 +139,18 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   useEffect(() => {
+    if (isMaster && mode !== "standard") {
+      setMode("standard");
+    }
+  }, [isMaster, mode, setMode]);
+
+  useEffect(() => {
     setMobileNavOpen(false);
   }, [pathname]);
 
   const selected = platforms.find((p) => p.id === selectedPlatformId);
-  const isSuper = getStoredUser()?.role === "SUPER_ADMIN";
   const canSeeRegistrations =
-    isSuper || getStoredUser()?.role === "PLATFORM_ADMIN";
+    isSuper || userRole === "PLATFORM_ADMIN";
 
   useEffect(() => {
     if (
@@ -212,30 +233,32 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
             </span>
           </p>
         )}
-        <div className="mt-3 flex gap-0.5 rounded-lg bg-zinc-950 p-0.5 ring-1 ring-zinc-800">
-          <button
-            type="button"
-            onClick={() => setMode("standard")}
-            className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
-              mode === "standard"
-                ? "bg-zinc-800 text-zinc-100"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            일반
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("semiVirtual")}
-            className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
-              mode === "semiVirtual"
-                ? "bg-violet-950/80 text-violet-200 ring-1 ring-violet-800/60"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            반가상
-          </button>
-        </div>
+        {!isMaster && (
+          <div className="mt-3 flex gap-0.5 rounded-lg bg-zinc-950 p-0.5 ring-1 ring-zinc-800">
+            <button
+              type="button"
+              onClick={() => setMode("standard")}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                mode === "standard"
+                  ? "bg-zinc-800 text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              일반
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("semiVirtual")}
+              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                mode === "semiVirtual"
+                  ? "bg-violet-950/80 text-violet-200 ring-1 ring-violet-800/60"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              반가상
+            </button>
+          </div>
+        )}
       </div>
 
       <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-3">
@@ -308,32 +331,36 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
           );
         })}
 
-        <div className="my-3 border-t border-zinc-800/80" />
+        {!isMaster && (
+          <>
+            <div className="my-3 border-t border-zinc-800/80" />
 
-        <Link
-          href="/console/platforms"
-          className={`block rounded-lg px-3 py-2.5 transition ${
-            isActive(pathname, "/console/platforms")
-              ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
-              : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
-          }`}
-        >
-          <span className="block text-sm font-medium">플랫폼</span>
-          <span className="mt-0.5 block text-[11px] text-zinc-500">
-            목록 · 바로가기
-          </span>
-        </Link>
-        {isSuper && (
-          <Link
-            href="/console/platforms/new"
-            className={`mt-0.5 block rounded-lg px-3 py-2.5 transition ${
-              pathname === "/console/platforms/new"
-                ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
-                : "text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200"
-            }`}
-          >
-            <span className="text-sm font-medium">+ 새 플랫폼</span>
-          </Link>
+            <Link
+              href="/console/platforms"
+              className={`block rounded-lg px-3 py-2.5 transition ${
+                isActive(pathname, "/console/platforms")
+                  ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
+                  : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
+              }`}
+            >
+              <span className="block text-sm font-medium">플랫폼</span>
+              <span className="mt-0.5 block text-[11px] text-zinc-500">
+                목록 · 바로가기
+              </span>
+            </Link>
+            {isSuper && (
+              <Link
+                href="/console/platforms/new"
+                className={`mt-0.5 block rounded-lg px-3 py-2.5 transition ${
+                  pathname === "/console/platforms/new"
+                    ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
+                    : "text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200"
+                }`}
+              >
+                <span className="text-sm font-medium">+ 새 플랫폼</span>
+              </Link>
+            )}
+          </>
         )}
       </nav>
     </div>

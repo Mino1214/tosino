@@ -29,7 +29,12 @@ export class PlatformsService {
   assertPlatformScope(actor: JwtPayload, platformId: string) {
     if (actor.role === UserRole.SUPER_ADMIN) return;
     if (actor.platformId !== platformId) throw new ForbiddenException();
-    if (actor.role !== UserRole.PLATFORM_ADMIN) throw new ForbiddenException();
+    if (
+      actor.role !== UserRole.PLATFORM_ADMIN &&
+      actor.role !== UserRole.MASTER_AGENT
+    ) {
+      throw new ForbiddenException();
+    }
   }
 
   list(user: JwtPayload) {
@@ -40,6 +45,12 @@ export class PlatformsService {
       });
     }
     if (user.role === UserRole.PLATFORM_ADMIN && user.platformId) {
+      return this.prisma.platform.findMany({
+        where: { id: user.platformId },
+        include: { domains: true },
+      });
+    }
+    if (user.role === UserRole.MASTER_AGENT && user.platformId) {
       return this.prisma.platform.findMany({
         where: { id: user.platformId },
         include: { domains: true },
@@ -296,6 +307,12 @@ export class PlatformsService {
       !Array.isArray(p.flagsJson)
         ? (p.flagsJson as Record<string, unknown>)
         : {};
+    const compPolicy =
+      flags.compPolicy &&
+      typeof flags.compPolicy === 'object' &&
+      !Array.isArray(flags.compPolicy)
+        ? (flags.compPolicy as Record<string, unknown>)
+        : {};
     return {
       ...p,
       rollingTurnoverMultiplier: p.rollingTurnoverMultiplier?.toString() ?? '1',
@@ -313,6 +330,21 @@ export class PlatformsService {
         typeof flags.defaultSignupReferrerUserId === 'string'
           ? flags.defaultSignupReferrerUserId
           : null,
+      compPolicy: {
+        enabled: compPolicy.enabled === true,
+        settlementCycle:
+          compPolicy.settlementCycle === 'DAILY_MIDNIGHT' ||
+          compPolicy.settlementCycle === 'BET_DAY_PLUS'
+            ? compPolicy.settlementCycle
+            : 'INSTANT',
+        settlementOffsetDays:
+          typeof compPolicy.settlementOffsetDays === 'number' &&
+          Number.isFinite(compPolicy.settlementOffsetDays)
+            ? Math.max(0, Math.trunc(compPolicy.settlementOffsetDays))
+            : null,
+        ratePct:
+          typeof compPolicy.ratePct === 'string' ? compPolicy.ratePct : null,
+      },
     };
   }
 
@@ -386,6 +418,34 @@ export class PlatformsService {
     }
     if (dto.pointRulesJson !== undefined) {
       data.pointRulesJson = dto.pointRulesJson as Prisma.InputJsonValue;
+    }
+    if (dto.compPolicy !== undefined) {
+      const raw = dto.compPolicy;
+      const cycleRaw =
+        typeof raw.settlementCycle === 'string' ? raw.settlementCycle : '';
+      const settlementCycle =
+        cycleRaw === 'DAILY_MIDNIGHT' || cycleRaw === 'BET_DAY_PLUS'
+          ? cycleRaw
+          : 'INSTANT';
+      const offsetRaw =
+        typeof raw.settlementOffsetDays === 'number'
+          ? raw.settlementOffsetDays
+          : Number(raw.settlementOffsetDays ?? 0);
+      const settlementOffsetDays =
+        settlementCycle === 'BET_DAY_PLUS' && Number.isFinite(offsetRaw)
+          ? Math.max(0, Math.trunc(offsetRaw))
+          : null;
+      const ratePct =
+        typeof raw.ratePct === 'string'
+          ? raw.ratePct.trim()
+          : String(raw.ratePct ?? '').trim();
+      nextFlags.compPolicy = {
+        enabled: raw.enabled === true,
+        settlementCycle,
+        settlementOffsetDays,
+        ratePct: ratePct || null,
+      };
+      data.flagsJson = nextFlags as Prisma.InputJsonValue;
     }
     if (dto.publicSignupCode !== undefined) {
       const code = dto.publicSignupCode.trim().toUpperCase();

@@ -21,14 +21,19 @@ import { CreatePlatformDto } from './dto/create-platform.dto';
 import { UpdatePlatformThemeDto } from './dto/update-platform-theme.dto';
 import { UpdateSemiVirtualDto } from './dto/update-semi-virtual.dto';
 import { UpdatePlatformOperationalDto } from './dto/update-platform-operational.dto';
+import { GrantPlatformPointsDto } from './dto/grant-platform-points.dto';
+import { PointsService } from '../points/points.service';
 
 @Controller('platforms')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class PlatformsController {
-  constructor(private platforms: PlatformsService) {}
+  constructor(
+    private platforms: PlatformsService,
+    private points: PointsService,
+  ) {}
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
   list(@CurrentUser() user: JwtPayload) {
     return this.platforms.list(user);
   }
@@ -89,7 +94,7 @@ export class PlatformsController {
 
   @Get(':platformId')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
   getDetail(
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
@@ -110,12 +115,24 @@ export class PlatformsController {
 
   @Patch(':platformId/operational')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
   updateOperational(
     @Param('platformId') platformId: string,
     @Body() dto: UpdatePlatformOperationalDto,
     @CurrentUser() user: JwtPayload,
   ) {
     return this.platforms.updateOperational(platformId, user, dto);
+  }
+
+  @Post(':platformId/points/grant-all')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
+  grantAllPoints(
+    @Param('platformId') platformId: string,
+    @Body() dto: GrantPlatformPointsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    this.platforms.assertPlatformScope(user, platformId);
+    return this.points.grantAllForPlatform(platformId, dto.amount, dto.note);
   }
 }

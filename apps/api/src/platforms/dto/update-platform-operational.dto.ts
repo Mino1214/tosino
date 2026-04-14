@@ -60,6 +60,10 @@ export class UpdatePlatformOperationalDto {
   pointRulesJson?: Record<string, unknown>;
 
   @IsOptional()
+  @IsObject()
+  compPolicy?: Record<string, unknown>;
+
+  @IsOptional()
   @IsString()
   publicSignupCode?: string;
 

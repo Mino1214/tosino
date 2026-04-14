@@ -3,6 +3,7 @@ import {
   LedgerEntryType,
   PointLedgerEntryType,
   Prisma,
+  RegistrationStatus,
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,6 +24,39 @@ function readRules(json: unknown): Record<string, unknown> {
     : {};
 }
 
+function decimalFromUnknown(value: unknown): Prisma.Decimal | null {
+  if (value === undefined || value === null || value === '') return null;
+  try {
+    return new Prisma.Decimal(String(value));
+  } catch {
+    return null;
+  }
+}
+
+function numberFromUnknown(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function readDepositPointTiers(
+  json: unknown,
+): Array<{ minAmount: Prisma.Decimal; points: Prisma.Decimal }> {
+  if (!Array.isArray(json)) return [];
+  return json
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null;
+      const item = row as Record<string, unknown>;
+      const minAmount = decimalFromUnknown(item.minAmount);
+      const points = decimalFromUnknown(item.points);
+      if (!minAmount || !points) return null;
+      if (minAmount.lt(0) || points.lte(0)) return null;
+      return { minAmount, points };
+    })
+    .filter((row): row is { minAmount: Prisma.Decimal; points: Prisma.Decimal } =>
+      Boolean(row),
+    );
+}
+
 @Injectable()
 export class PointsService {
   constructor(private prisma: PrismaService) {}
@@ -40,11 +74,20 @@ export class PointsService {
       select: { pointRulesJson: true },
     });
     const rules = readRules(platform?.pointRulesJson);
-    const daily = Number(rules.attendDailyPoints ?? 0);
-    const streakDays = Number(rules.attendStreakDays ?? 0);
-    const streakBonus = Number(rules.attendStreakBonusPoints ?? 0);
+    const attendMode = rules.attendMode === 'batch' ? 'batch' : 'instant';
+    const daily = numberFromUnknown(rules.attendDailyPoints);
+    const batchCount =
+      numberFromUnknown(rules.attendBatchCount) ||
+      numberFromUnknown(rules.attendStreakDays);
+    const batchPoints =
+      numberFromUnknown(rules.attendBatchPoints) ||
+      numberFromUnknown(rules.attendStreakBonusPoints);
 
-    if (!Number.isFinite(daily) || daily <= 0) {
+    if (attendMode === 'batch') {
+      if (batchCount <= 0 || batchPoints <= 0) {
+        throw new BadRequestException('출석 일괄 수령 규칙이 설정되어 있지 않습니다');
+      }
+    } else if (daily <= 0) {
       throw new BadRequestException('출석 포인트가 설정되어 있지 않습니다');
     }
 
@@ -109,8 +152,13 @@ export class PointsService {
       const w = await tx.wallet.findUnique({ where: { userId } });
       if (!w) throw new BadRequestException('지갑을 찾을 수 없습니다');
       let bal = w.pointBalance;
-      const addDaily = new Prisma.Decimal(daily);
-      bal = bal.plus(addDaily);
+      const addDaily =
+        attendMode === 'batch'
+          ? new Prisma.Decimal(0)
+          : new Prisma.Decimal(daily);
+      if (addDaily.gt(0)) {
+        bal = bal.plus(addDaily);
+      }
       await tx.pointLedgerEntry.create({
         data: {
           userId,
@@ -124,12 +172,8 @@ export class PointsService {
       });
 
       let extra = new Prisma.Decimal(0);
-      if (
-        streakDays > 0 &&
-        streakBonus > 0 &&
-        (streakCount + 1) % streakDays === 0
-      ) {
-        extra = new Prisma.Decimal(streakBonus);
+      if (batchCount > 0 && batchPoints > 0 && (streakCount + 1) % batchCount === 0) {
+        extra = new Prisma.Decimal(batchPoints);
         bal = bal.plus(extra);
         await tx.pointLedgerEntry.create({
           data: {
@@ -138,8 +182,11 @@ export class PointsService {
             type: PointLedgerEntryType.ATTENDANCE_STREAK,
             amount: extra,
             balanceAfter: bal,
-            reference: `streak:${streakDays}d`,
-            metaJson: { streakDays },
+            reference:
+              attendMode === 'batch'
+                ? `attend-batch:${batchCount}d`
+                : `streak:${batchCount}d`,
+            metaJson: { streakDays: batchCount, attendMode },
           },
         });
       }
@@ -377,6 +424,172 @@ export class PointsService {
     await tx.wallet.update({
       where: { userId: referrerId },
       data: { pointBalance: bal },
+    });
+  }
+
+  async maybeCreditDepositPoints(
+    tx: Prisma.TransactionClient,
+    params: {
+      userId: string;
+      platformId: string;
+      depositAmount: Prisma.Decimal;
+      ledgerRefPrefix: string;
+    },
+  ) {
+    const { userId, platformId, depositAmount, ledgerRefPrefix } = params;
+    if (depositAmount.lte(0)) return;
+
+    const platform = await tx.platform.findUnique({
+      where: { id: platformId },
+      select: { pointRulesJson: true },
+    });
+    const rules = readRules(platform?.pointRulesJson);
+
+    const firstChargePoints = decimalFromUnknown(rules.firstChargePoints);
+    if (firstChargePoints && firstChargePoints.gt(0)) {
+      const existingFirstCharge = await tx.pointLedgerEntry.findFirst({
+        where: {
+          userId,
+          type: PointLedgerEntryType.ADJUSTMENT,
+          reference: 'deposit-point:first-charge',
+        },
+        select: { id: true },
+      });
+      if (!existingFirstCharge) {
+        await this.creditPoints(tx, {
+          userId,
+          platformId,
+          amount: firstChargePoints,
+          type: PointLedgerEntryType.ADJUSTMENT,
+          reference: 'deposit-point:first-charge',
+          metaJson: {
+            depositPoint: true,
+            trigger: 'FIRST_CHARGE',
+            depositAmount: depositAmount.toFixed(2),
+            ledgerRefPrefix,
+          },
+        });
+      }
+    }
+
+    const tiers = readDepositPointTiers(rules.depositPointTiers).sort((a, b) =>
+      a.minAmount.comparedTo(b.minAmount),
+    );
+    let matchedTier: { minAmount: Prisma.Decimal; points: Prisma.Decimal } | null =
+      null;
+    for (const tier of tiers) {
+      if (depositAmount.gte(tier.minAmount)) {
+        matchedTier = tier;
+      }
+    }
+    if (!matchedTier) return;
+
+    await this.creditPoints(tx, {
+      userId,
+      platformId,
+      amount: matchedTier.points,
+      type: PointLedgerEntryType.ADJUSTMENT,
+      reference: `deposit-point:tier:${matchedTier.minAmount.toFixed(2)}`,
+      metaJson: {
+        depositPoint: true,
+        trigger: 'DEPOSIT_TIER',
+        minAmount: matchedTier.minAmount.toFixed(2),
+        depositAmount: depositAmount.toFixed(2),
+        ledgerRefPrefix,
+      },
+    });
+  }
+
+  async grantAllForPlatform(
+    platformId: string,
+    amount: number,
+    note?: string,
+  ) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('지급할 포인트를 확인해주세요');
+    }
+
+    const pts = new Prisma.Decimal(amount);
+    const targets = await this.prisma.wallet.findMany({
+      where: {
+        platformId,
+        user: {
+          role: UserRole.USER,
+          registrationStatus: RegistrationStatus.APPROVED,
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+        pointBalance: true,
+      },
+    });
+
+    if (targets.length === 0) {
+      return { ok: true, count: 0, amount: pts.toFixed(2) };
+    }
+
+    const issuedAt = new Date().toISOString();
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const wallet of targets) {
+        const newBalance = wallet.pointBalance.plus(pts);
+        await tx.wallet.update({
+          where: { id: wallet.id },
+          data: { pointBalance: newBalance },
+        });
+        await tx.pointLedgerEntry.create({
+          data: {
+            userId: wallet.userId,
+            platformId,
+            type: PointLedgerEntryType.ADJUSTMENT,
+            amount: pts,
+            balanceAfter: newBalance,
+            reference: `platform-point-grant:${issuedAt}`,
+            metaJson: {
+              bulkGrant: true,
+              note: note?.trim() || null,
+            },
+          },
+        });
+      }
+    });
+
+    return {
+      ok: true,
+      count: targets.length,
+      amount: pts.toFixed(2),
+    };
+  }
+
+  private async creditPoints(
+    tx: Prisma.TransactionClient,
+    params: {
+      userId: string;
+      platformId: string;
+      amount: Prisma.Decimal;
+      type: PointLedgerEntryType;
+      reference: string;
+      metaJson?: Record<string, unknown>;
+    },
+  ) {
+    const wallet = await tx.wallet.findUnique({ where: { userId: params.userId } });
+    if (!wallet) return;
+    const nextBalance = wallet.pointBalance.plus(params.amount);
+    await tx.pointLedgerEntry.create({
+      data: {
+        userId: params.userId,
+        platformId: params.platformId,
+        type: params.type,
+        amount: params.amount,
+        balanceAfter: nextBalance,
+        reference: params.reference,
+        metaJson: (params.metaJson ?? {}) as Prisma.InputJsonValue,
+      },
+    });
+    await tx.wallet.update({
+      where: { userId: params.userId },
+      data: { pointBalance: nextBalance },
     });
   }
 

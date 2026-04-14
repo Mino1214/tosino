@@ -9,6 +9,7 @@ import { LedgerEntryType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { DepositEventsService } from '../deposit-events/deposit-events.service';
+import { PointsService } from '../points/points.service';
 
 export interface PaymentWebhookPayload {
   eventId: string;
@@ -26,6 +27,7 @@ export class PaymentService {
     private config: ConfigService,
     private rolling: RollingObligationService,
     private depositEvents: DepositEventsService,
+    private points: PointsService,
   ) {}
 
   verifySignature(rawBody: Buffer, signatureHeader: string | undefined) {
@@ -108,6 +110,12 @@ export class PaymentService {
           sourceRef: `pay:${idemKey}:principal`,
         });
         await this.depositEvents.applyEligibleBonus(tx, {
+          userId: payload.userId,
+          platformId: payload.platformId,
+          depositAmount: amount,
+          ledgerRefPrefix: `pay:${idemKey}`,
+        });
+        await this.points.maybeCreditDepositPoints(tx, {
           userId: payload.userId,
           platformId: payload.platformId,
           depositAmount: amount,

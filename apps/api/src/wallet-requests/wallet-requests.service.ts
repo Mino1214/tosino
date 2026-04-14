@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { DepositEventsService } from '../deposit-events/deposit-events.service';
+import { PointsService } from '../points/points.service';
 
 @Injectable()
 export class WalletRequestsService {
@@ -23,6 +24,7 @@ export class WalletRequestsService {
     private prisma: PrismaService,
     private rolling: RollingObligationService,
     private depositEvents: DepositEventsService,
+    private points: PointsService,
   ) {}
 
   private getUsdtKrwRate(): Prisma.Decimal {
@@ -295,6 +297,12 @@ export class WalletRequestsService {
           sourceRef: `wr:${req.id}:principal`,
         });
         await this.depositEvents.applyEligibleBonus(tx, {
+          userId: req.userId,
+          platformId,
+          depositAmount: walletDeltaBase,
+          ledgerRefPrefix: `wr:${req.id}`,
+        });
+        await this.points.maybeCreditDepositPoints(tx, {
           userId: req.userId,
           platformId,
           depositAmount: walletDeltaBase,
