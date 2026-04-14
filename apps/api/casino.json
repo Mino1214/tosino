@@ -1,0 +1,413 @@
+{
+  "updatedAt": "2026-04-14",
+  "casino": [
+    {
+      "id": "asia-gaming",
+      "category": "casino",
+      "name": "아시아게이밍",
+      "shortName": "아시아",
+      "vendor": "AGIN",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=asia-gaming",
+      "status": "live",
+      "logo": "/logo/logo_Asia.png",
+      "headline": "빠른 바카라 중심으로 진입하기 좋은 메인 라이브 로비",
+      "description": "심리스 지갑으로 바로 연결되는 AG 계열 로비입니다. 바카라 중심으로 진입하면서 드래곤타이거, 룰렛, 식보까지 한 번에 둘러보기 좋게 구성합니다.",
+      "tags": ["바카라", "드래곤타이거", "룰렛", "식보", "라이브"],
+      "gameCount": null,
+      "featuredLabels": ["스피드 바카라", "드래곤타이거", "룰렛", "식보"],
+      "sampleGames": [
+        { "game": "lobby", "title": "메인 바카라 라운지", "group": "바카라" },
+        { "game": "lobby", "title": "스피드 바카라", "group": "바카라" },
+        { "game": "lobby", "title": "드래곤타이거", "group": "라이브" },
+        { "game": "lobby", "title": "식보", "group": "주사위" }
+      ]
+    },
+    {
+      "id": "pragmatic-casino",
+      "category": "casino",
+      "name": "프라그마틱 플레이",
+      "shortName": "프라그마틱",
+      "vendor": "pragmatic_casino",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=pragmatic-casino",
+      "status": "live",
+      "logo": "/logo/logo_Pragmatic.png",
+      "headline": "한국어 바카라와 메가 게임쇼 라인업이 강한 대표 라이브 벤더",
+      "description": "스피드 바카라, 메가 휠, 메가 식보처럼 회전이 빠른 테이블과 게임쇼 계열이 같이 묶여 있어 메인 카지노 탭에서 가장 풍성하게 보이도록 구성하기 좋은 벤더입니다.",
+      "tags": ["바카라", "룰렛", "식보", "게임쇼", "한국어"],
+      "gameCount": 399,
+      "featuredLabels": ["스피드 바카라", "메가 휠", "메가 식보", "드래곤 타이거"],
+      "sampleGames": [
+        {
+          "game": "402",
+          "title": "스피드 바카라 1",
+          "group": "바카라",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/402/402_200x200_NB.png"
+        },
+        {
+          "game": "403",
+          "title": "스피드 바카라 2",
+          "group": "바카라",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/403/403_200x200_NB.png"
+        },
+        {
+          "game": "801",
+          "title": "메가 휠",
+          "group": "게임쇼",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/801/801_200x200_NB.png"
+        },
+        {
+          "game": "1001",
+          "title": "드래곤 타이거",
+          "group": "라이브",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/1001/1001_200x200_NB.png"
+        }
+      ]
+    },
+    {
+      "id": "microgaming-casino",
+      "category": "casino",
+      "name": "마이크로게이밍 카지노",
+      "shortName": "마이크로",
+      "vendor": "MICRO_Casino",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=microgaming-casino",
+      "status": "live",
+      "logo": "/logo/logo_MicroGaming.png",
+      "headline": "올인 바카라와 블랙잭 비중이 높은 마이크로 라이브 로비",
+      "description": "코리안 올인 바카라 계열과 플레이보이 VIP 블랙잭처럼 룸 성격이 분명한 테이블이 많아서, 선택 회사 상세 영역에서 라인업을 보여주기 좋은 구성입니다.",
+      "tags": ["바카라", "블랙잭", "올인", "VIP", "라이브"],
+      "gameCount": 57,
+      "featuredLabels": ["올인 바카라", "VIP 블랙잭", "맥스 스피드", "코리안 테이블"],
+      "sampleGames": [
+        {
+          "game": "P1_MaxSpeedBaccarat",
+          "title": "맥스 스피드 바카라",
+          "group": "바카라",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/P1_MaxSpeedBaccarat.png"
+        },
+        {
+          "game": "P1_PlayboyVIPBlackjack",
+          "title": "플레이보이 VIP 블랙잭",
+          "group": "블랙잭",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/P1_PlayboyVIPBlackjack.png"
+        },
+        {
+          "game": "P1_KoreanAllinBaccarat1",
+          "title": "코리안 올인 바카라 1",
+          "group": "바카라",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/P1_KoreanAllinBaccarat1.png"
+        },
+        {
+          "game": "P1_KoreanAllinSpeedBaccarat1",
+          "title": "코리안 올인 스피드 바카라 1",
+          "group": "바카라",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/P1_KoreanAllinSpeedBaccarat1.png"
+        }
+      ]
+    },
+    {
+      "id": "wm",
+      "category": "casino",
+      "name": "WM게이밍",
+      "shortName": "WM",
+      "vendor": "wm",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=wm",
+      "status": "live",
+      "logo": "/logo/logo_Wm.png",
+      "headline": "바카라, 룰렛, 식보를 안정적으로 묶어 보여주기 좋은 기본 로비",
+      "description": "운영 화면에서 가장 기본 로비로 쓰기 편한 WM 계열입니다. 상세 영역에서는 바카라 중심 구성과 함께 룰렛, 식보, 블랙잭 계열을 정돈해 보여주는 용도로 맞춥니다.",
+      "tags": ["바카라", "룰렛", "식보", "블랙잭", "라이브"],
+      "gameCount": null,
+      "featuredLabels": ["메인 바카라", "룰렛", "식보", "블랙잭"],
+      "sampleGames": [
+        { "game": "lobby", "title": "프리미엄 바카라", "group": "바카라" },
+        { "game": "lobby", "title": "스피드 바카라", "group": "바카라" },
+        { "game": "lobby", "title": "WM 룰렛", "group": "룰렛" },
+        { "game": "lobby", "title": "WM 식보", "group": "주사위" }
+      ]
+    },
+    {
+      "id": "betgames-tv",
+      "category": "casino",
+      "name": "벳게임TV",
+      "shortName": "벳게임TV",
+      "vendor": "betgames",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=betgames-tv",
+      "status": "live",
+      "logo": "/logo/logo_Betgames.png",
+      "headline": "일반 테이블보다 쇼 형식 콘텐츠를 앞세우는 라이브 로비",
+      "description": "딜러형 테이블보다 TV 쇼 스타일 콘텐츠가 강해서 다른 카지노 회사와 성격이 명확히 갈립니다. 선택 카드 아래에 대표 쇼 라인업을 보여주면 화면이 훨씬 덜 비어 보입니다.",
+      "tags": ["게임쇼", "라이브딜러", "TV", "특수게임"],
+      "gameCount": null,
+      "featuredLabels": ["워 오브 베트", "라이브 쇼", "특수 테이블", "TV형 콘텐츠"],
+      "sampleGames": [
+        { "game": "lobby", "title": "워 오브 베트", "group": "게임쇼" },
+        { "game": "lobby", "title": "럭키 6", "group": "게임쇼" },
+        { "game": "lobby", "title": "베트온 포커", "group": "카드" },
+        { "game": "lobby", "title": "딜러 쇼 라인업", "group": "라이브" }
+      ]
+    },
+    {
+      "id": "skywind",
+      "category": "casino",
+      "name": "스카이윈드",
+      "shortName": "스카이윈드",
+      "vendor": "skywind",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=skywind",
+      "status": "live",
+      "logo": "/logo/logo_Skywind.png",
+      "headline": "클래식 테이블과 모던 UI 성격을 같이 보여주는 보조 라이브 로비",
+      "description": "메인 벤더 옆에 보조 라인업처럼 두기 좋은 스카이윈드 계열입니다. 바카라, 룰렛, 블랙잭 등 기본 테이블을 균형 있게 노출하는 용도로 사용합니다.",
+      "tags": ["바카라", "룰렛", "블랙잭", "라이브", "보조로비"],
+      "gameCount": null,
+      "featuredLabels": ["클래식 바카라", "룰렛", "블랙잭", "드래곤타이거"],
+      "sampleGames": [
+        { "game": "lobby", "title": "클래식 바카라", "group": "바카라" },
+        { "game": "lobby", "title": "스피드 룰렛", "group": "룰렛" },
+        { "game": "lobby", "title": "라이브 블랙잭", "group": "블랙잭" },
+        { "game": "lobby", "title": "드래곤타이거", "group": "라이브" }
+      ]
+    },
+    {
+      "id": "vivo-gaming",
+      "category": "casino",
+      "name": "비보 게이밍",
+      "shortName": "비보",
+      "vendor": "TOMHORN_VIVO",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=vivo-gaming",
+      "status": "live",
+      "logo": null,
+      "headline": "바카라 라운지가 두텁게 구성된 비보 라이브 딜러 로비",
+      "description": "토마혼 비보 계열은 바카라 룸 수가 많고, 오토 룰렛도 같이 보여줄 수 있어 회사 선택 시 표와 샘플 카드가 풍성하게 들어갑니다.",
+      "tags": ["바카라", "오토룰렛", "라이브딜러", "로얄룸"],
+      "gameCount": 37,
+      "featuredLabels": ["로얄 바카라", "플래티넘 바카라", "오토 룰렛", "프레스티지 룸"],
+      "sampleGames": [
+        {
+          "game": "VG_355",
+          "title": "로얄 바카라",
+          "group": "바카라",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_VIVO/VG_355.png"
+        },
+        {
+          "game": "VG_354",
+          "title": "플래티넘 홀 바카라",
+          "group": "바카라",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_VIVO/VG_354.png"
+        },
+        {
+          "game": "VG_353",
+          "title": "블루 크리스탈 바카라",
+          "group": "바카라",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_VIVO/VG_353.png"
+        },
+        {
+          "game": "VG_410",
+          "title": "아프리카 오토 룰렛",
+          "group": "룰렛",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_VIVO/VG_410.png"
+        }
+      ]
+    },
+    {
+      "id": "cq9-casino",
+      "category": "casino",
+      "name": "CQ9 카지노",
+      "shortName": "CQ9",
+      "vendor": "cq9_casino",
+      "game": "lobby",
+      "route": "/lobby/live-casino?vendor=cq9-casino",
+      "status": "live",
+      "logo": null,
+      "headline": "간결하게 묶인 CQ9 라이브 진입 로비",
+      "description": "현재 카탈로그 기준 확인된 항목은 많지 않지만, CQ9 벤더를 별도로 노출하면 회사 선택 구성이 더 정돈되어 보입니다. 추후 `casino.json`만 업데이트하면 바로 확장됩니다.",
+      "tags": ["CQ9", "라이브", "확장예정"],
+      "gameCount": 1,
+      "featuredLabels": ["CQ9 메인 로비", "라이브 진입", "후속 확장 대응"],
+      "sampleGames": [
+        {
+          "game": "GINKGO03",
+          "title": "GINKGO03",
+          "group": "메인 로비",
+          "icon": "https://icon.vinus-gaming.com/cq9_casino/GINKGO03.png"
+        }
+      ]
+    }
+  ],
+  "slot": [
+    {
+      "id": "pragmatic-slot",
+      "category": "slot",
+      "name": "프라그마틱 슬롯",
+      "shortName": "프라그마틱",
+      "vendor": "pragmatic_slot",
+      "game": "lobby",
+      "route": "/lobby/slots?vendor=pragmatic-slot",
+      "status": "live",
+      "logo": "/logo/logo_Pragmatic.png",
+      "headline": "가장 볼륨이 큰 슬롯 메인 로비",
+      "description": "메가웨이즈, 슈가 러시, 올림푸스 계열처럼 이름 있는 타이틀이 많아서 슬롯 탭의 기준 벤더로 쓰기 좋습니다. 상단 벤더 표와 아래 실제 게임 그리드를 자연스럽게 연결합니다.",
+      "tags": ["메가웨이즈", "슈가 러시", "올림푸스", "홀드앤윈", "대형카탈로그"],
+      "gameCount": 670,
+      "featuredLabels": ["슈가 러시", "올림푸스", "메가웨이즈", "신작 다수"],
+      "sampleGames": [
+        {
+          "game": "vs20sugarrushx",
+          "title": "슈가 러시 1000",
+          "group": "달콤한 시리즈",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/vs20sugarrushx/vs20sugarrushx_200x200_NB.png"
+        },
+        {
+          "game": "vs20olympgold",
+          "title": "게이트 오브 올림푸스 슈퍼 스캐터",
+          "group": "올림푸스",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/vs20olympgold/vs20olympgold_200x200_NB.png"
+        },
+        {
+          "game": "vswayslions",
+          "title": "5 라이언즈 메가웨이즈",
+          "group": "메가웨이즈",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/vswayslions/vswayslions_200x200_NB.png"
+        },
+        {
+          "game": "vs20payanyvol",
+          "title": "젤리 익스프레스",
+          "group": "신작",
+          "icon": "https://common-static.ppgames.net/gs2c/common/lobby/v1/apps/slots-lobby-assets/vs20payanyvol/vs20payanyvol_200x200_NB.png"
+        }
+      ]
+    },
+    {
+      "id": "habanero-slot",
+      "category": "slot",
+      "name": "하바네로 슬롯",
+      "shortName": "하바네로",
+      "vendor": "habanero",
+      "game": "lobby",
+      "route": "/lobby/slots?vendor=habanero-slot",
+      "status": "live",
+      "logo": null,
+      "headline": "모바일 대응이 좋은 중형 슬롯 카탈로그",
+      "description": "프라그마틱보다 게임 수는 적지만, 중간 볼륨 벤더로 화면을 채우기 좋습니다. 상세 영역에서는 대표 타이틀과 장르 키워드를 먼저 보여주고 아래 실제 게임 그리드로 이어지게 구성합니다.",
+      "tags": ["중형카탈로그", "클래식슬롯", "동양테마", "모바일"],
+      "gameCount": 194,
+      "featuredLabels": ["동양 테마", "클래식 슬롯", "신작 라인업", "모바일 친화"],
+      "sampleGames": [
+        {
+          "game": "SGFortuneDragonJoy",
+          "title": "포춘 드래곤 조이",
+          "group": "동양 테마",
+          "icon": "https://app-a.hbsecure.com/img/rectangle/200/SGFortuneDragonJoy.png"
+        },
+        {
+          "game": "SGRacingRoyalty",
+          "title": "레이싱 로열티",
+          "group": "레이싱",
+          "icon": "https://app-a.hbsecure.com/img/rectangle/200/SGRacingRoyalty.png"
+        },
+        {
+          "game": "SGGoldKoiFortune",
+          "title": "골드 코이 포춘",
+          "group": "동양 테마",
+          "icon": "https://app-a.hbsecure.com/img/rectangle/200/SGGoldKoiFortune.png"
+        },
+        {
+          "game": "SGGeniesShowtime",
+          "title": "지니의 쇼타임",
+          "group": "판타지",
+          "icon": "https://app-a.hbsecure.com/img/rectangle/200/SGGeniesShowtime.png"
+        }
+      ]
+    },
+    {
+      "id": "microgaming-slot",
+      "category": "slot",
+      "name": "마이크로게이밍 슬롯",
+      "shortName": "마이크로",
+      "vendor": "MICRO_Slot",
+      "game": "lobby",
+      "route": "/lobby/slots?vendor=microgaming-slot",
+      "status": "live",
+      "logo": "/logo/logo_MicroGaming.png",
+      "headline": "브랜드 인지도가 좋은 클래식 슬롯 라인업",
+      "description": "플레이보이, 메두사, 멀린 시리즈처럼 친숙한 이름들이 많아서 벤더 선택 시 눈에 잘 들어옵니다. 상단 정보 카드와 실제 그리드 연결용으로 적합한 로비입니다.",
+      "tags": ["클래식", "브랜드IP", "판타지", "중대형카탈로그"],
+      "gameCount": 91,
+      "featuredLabels": ["플레이보이", "멀린", "메두사", "파워 콤보"],
+      "sampleGames": [
+        {
+          "game": "SMG_playboyVT",
+          "title": "플레이보이",
+          "group": "브랜드",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/SMG_playboyVT.png"
+        },
+        {
+          "game": "SMG_curseOfMedusaVT",
+          "title": "메두사의 저주",
+          "group": "판타지",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/SMG_curseOfMedusaVT.png"
+        },
+        {
+          "game": "SMG_merlinsSecretMaxwaysVT",
+          "title": "멀린스 시크릿 맥스웨이즈",
+          "group": "메가웨이즈",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/SMG_merlinsSecretMaxwaysVT.png"
+        },
+        {
+          "game": "SMG_sugarMania8000VT",
+          "title": "슈가 매니아 8000",
+          "group": "캔디",
+          "icon": "https://eiIPIpzCKLl0RRY7z5mY7VWyOaFcWyvcinzP5dpMAyA.bithe.net/ImageBuilder/v1/images/en/square/SMG_sugarMania8000VT.png"
+        }
+      ]
+    },
+    {
+      "id": "tomhorn-slot",
+      "category": "slot",
+      "name": "톰혼 슬롯",
+      "shortName": "톰혼",
+      "vendor": "TOMHORN_SLOT",
+      "game": "lobby",
+      "route": "/lobby/slots?vendor=tomhorn-slot",
+      "status": "live",
+      "logo": null,
+      "headline": "보조 슬롯 벤더로 구색을 채우기 좋은 톰혼 로비",
+      "description": "대형 메인 벤더 아래에서 보조 카탈로그처럼 자연스럽게 붙일 수 있는 슬롯 로비입니다. 회사 선택 영역이 너무 비어 보이지 않도록 네 번째 벤더로 배치합니다.",
+      "tags": ["보조카탈로그", "유럽풍", "클래식", "확장용"],
+      "gameCount": 101,
+      "featuredLabels": ["크리스탈 북", "캔디 코인즈", "트리플 업", "와일드 트라이브"],
+      "sampleGames": [
+        {
+          "game": "VSBookCF_TNP",
+          "title": "북 오브 크리스탈 프루츠",
+          "group": "북 시리즈",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_SLOT/VSBookCF_TNP.png"
+        },
+        {
+          "game": "VSCandyCoinz_TNP",
+          "title": "캔디 코인즈",
+          "group": "캔디",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_SLOT/VSCandyCoinz_TNP.png"
+        },
+        {
+          "game": "VSTriplUp_TNP",
+          "title": "트리플 업",
+          "group": "클래식",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_SLOT/VSTriplUp_TNP.png"
+        },
+        {
+          "game": "VSWildTribeW_TNP",
+          "title": "와일드 트라이브 월",
+          "group": "와일드",
+          "icon": "https://icon.vinus-gaming.com/TOMHORN_SLOT/VSWildTribeW_TNP.png"
+        }
+      ]
+    }
+  ]
+}
