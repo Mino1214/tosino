@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -165,5 +166,59 @@ export class UsersController {
       userId,
       user,
     );
+  }
+
+  @Get(':userId/ledger')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getUserLedger(
+    @Param('platformId') platformId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ) {
+    return this.users.getUserLedger(platformId, userId, user, limit);
+  }
+
+  @Get(':userId/wallet-requests-history')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getUserWalletRequests(
+    @Param('platformId') platformId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ) {
+    return this.users.getUserWalletRequests(platformId, userId, user, limit);
+  }
+
+  @Get(':userId/usdt-txs')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getUserUsdtTxs(
+    @Param('platformId') platformId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ) {
+    return this.users.getUserUsdtTxs(platformId, userId, user, limit);
+  }
+
+  @Get(':userId/points-history')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getUserPoints(
+    @Param('platformId') platformId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limit?: string,
+  ) {
+    return this.users.getUserPoints(platformId, userId, user, limit);
+  }
+
+  @Get(':userId/rolling-obligations')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getUserRollingObligations(
+    @Param('platformId') platformId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.users.getUserRollingObligations(platformId, userId, user);
   }
 }

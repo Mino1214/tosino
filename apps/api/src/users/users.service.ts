@@ -969,4 +969,158 @@ export class UsersService {
     );
     return user;
   }
+
+  // ─── 어드민 유저 상세 조회 ─────────────────────────────────
+
+  private assertAdminForPlatform(actor: JwtPayload, platformId: string) {
+    if (
+      actor.role !== UserRole.SUPER_ADMIN &&
+      actor.role !== UserRole.PLATFORM_ADMIN
+    ) {
+      throw new ForbiddenException();
+    }
+    if (actor.role === UserRole.PLATFORM_ADMIN && actor.platformId !== platformId) {
+      throw new ForbiddenException();
+    }
+  }
+
+  async getUserLedger(
+    platformId: string,
+    userId: string,
+    actor: JwtPayload,
+    limitRaw?: string,
+  ) {
+    this.assertAdminForPlatform(actor, platformId);
+    const limit = Math.min(500, Math.max(1, Number.parseInt(limitRaw ?? '100', 10) || 100));
+    const rows = await this.prisma.ledgerEntry.findMany({
+      where: { platformId, userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        amount: r.amount.toFixed(2),
+        balanceAfter: r.balanceAfter.toFixed(2),
+        reference: r.reference,
+        note: (r.metaJson as Record<string, unknown> | null)?.note ?? null,
+        vertical: (r.metaJson as Record<string, unknown> | null)?.vertical ?? null,
+        createdAt: r.createdAt,
+      })),
+    };
+  }
+
+  async getUserWalletRequests(
+    platformId: string,
+    userId: string,
+    actor: JwtPayload,
+    limitRaw?: string,
+  ) {
+    this.assertAdminForPlatform(actor, platformId);
+    const limit = Math.min(500, Math.max(1, Number.parseInt(limitRaw ?? '100', 10) || 100));
+    const rows = await this.prisma.walletRequest.findMany({
+      where: { platformId, userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        status: r.status,
+        amount: r.amount.toFixed(2),
+        currency: r.currency,
+        depositorName: r.depositorName,
+        note: r.note,
+        resolverNote: r.resolverNote,
+        createdAt: r.createdAt,
+        resolvedAt: r.resolvedAt,
+      })),
+    };
+  }
+
+  async getUserUsdtTxs(
+    platformId: string,
+    userId: string,
+    actor: JwtPayload,
+    limitRaw?: string,
+  ) {
+    this.assertAdminForPlatform(actor, platformId);
+    const limit = Math.min(200, Math.max(1, Number.parseInt(limitRaw ?? '50', 10) || 50));
+    const rows = await this.prisma.usdtDepositTx.findMany({
+      where: { platformId, userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        txHash: r.txHash,
+        fromAddress: r.fromAddress,
+        usdtAmount: r.usdtAmount.toFixed(8),
+        krwRate: r.krwRate.toFixed(2),
+        krwAmount: r.krwAmount.toFixed(2),
+        status: r.status,
+        resolverNote: r.resolverNote,
+        createdAt: r.createdAt,
+      })),
+    };
+  }
+
+  async getUserPoints(
+    platformId: string,
+    userId: string,
+    actor: JwtPayload,
+    limitRaw?: string,
+  ) {
+    this.assertAdminForPlatform(actor, platformId);
+    const limit = Math.min(500, Math.max(1, Number.parseInt(limitRaw ?? '100', 10) || 100));
+    const [rows, wallet] = await Promise.all([
+      this.prisma.pointLedgerEntry.findMany({
+        where: { platformId, userId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+      this.prisma.wallet.findUnique({ where: { userId }, select: { pointBalance: true } }),
+    ]);
+    return {
+      currentBalance: wallet?.pointBalance.toFixed(2) ?? '0.00',
+      items: rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        amount: r.amount.toFixed(2),
+        balanceAfter: r.balanceAfter.toFixed(2),
+        reference: r.reference,
+        createdAt: r.createdAt,
+      })),
+    };
+  }
+
+  async getUserRollingObligations(
+    platformId: string,
+    userId: string,
+    actor: JwtPayload,
+  ) {
+    this.assertAdminForPlatform(actor, platformId);
+    const rows = await this.prisma.rollingObligation.findMany({
+      where: { platformId, userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        sourceRef: r.sourceRef,
+        principalAmount: r.principalAmount.toFixed(2),
+        requiredTurnover: r.requiredTurnover.toFixed(2),
+        appliedTurnover: r.appliedTurnover.toFixed(2),
+        pct: r.requiredTurnover.gt(0)
+          ? Math.round((r.appliedTurnover.toNumber() / r.requiredTurnover.toNumber()) * 100)
+          : 100,
+        satisfiedAt: r.satisfiedAt,
+        createdAt: r.createdAt,
+      })),
+    };
+  }
 }

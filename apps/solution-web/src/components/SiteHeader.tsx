@@ -64,6 +64,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
   const { openLogin, openSignup, openWallet } = useAppModals();
   const [logged, setLogged] = useState(false);
   const [money, setMoney] = useState<number | null>(null);
+  const [points, setPoints] = useState<number | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [row1Hidden, setRow1Hidden] = useState(false);
 
@@ -80,16 +81,19 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
 
       if (!ok) {
         setMoney(null);
+        setPoints(null);
         return;
       }
 
       try {
-        const w = await apiFetch<{ balance: string }>("/me/wallet");
+        const w = await apiFetch<{ balance: string; pointBalance: string }>("/me/wallet");
         if (!alive) return;
         setMoney(Number(w.balance));
+        setPoints(Number(w.pointBalance));
       } catch {
         if (!alive) return;
         setMoney(null);
+        setPoints(null);
       }
     }
 
@@ -123,6 +127,7 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
     clearSession();
     setLogged(false);
     setMoney(null);
+    setPoints(null);
     router.push("/");
   }
 
@@ -219,7 +224,11 @@ export function SiteHeader({ onDrawerOpen }: { onDrawerOpen?: () => void }) {
                       </span>
 
                       <span className="shrink-0 whitespace-nowrap text-zinc-400">
-                        POINT <span className="font-mono font-bold text-pink-400">0</span> ₱
+                        POINT{" "}
+                        <span className="font-mono font-bold text-emerald-400">
+                          {points !== null ? points.toLocaleString("ko-KR") : "—"}
+                        </span>{" "}
+                        ₱
                       </span>
 
                       <div className="h-3 w-px shrink-0 bg-white/15" />

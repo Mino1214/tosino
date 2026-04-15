@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -227,27 +228,73 @@ export class MeController {
   @Get('betting-history')
   async bettingHistory(@CurrentUser() user: JwtPayload) {
     this.assertEndUser(user);
-    const rows = await this.prisma.ledgerEntry.findMany({
+    // BET 엔트리 최대 80건
+    const bets = await this.prisma.ledgerEntry.findMany({
       where: { userId: user.sub, type: LedgerEntryType.BET },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 80,
     });
-    return rows.map((r) => {
-      const meta = (r.metaJson as Record<string, unknown>) || {};
+    if (bets.length === 0) return [];
+
+    // 같은 reference 의 WIN 엔트리를 한 번에 조회
+    const refs = bets.map((b) => b.reference).filter(Boolean) as string[];
+    const wins = refs.length > 0
+      ? await this.prisma.ledgerEntry.findMany({
+          where: {
+            userId: user.sub,
+            type: LedgerEntryType.WIN,
+            reference: { in: refs },
+          },
+        })
+      : [];
+    const winMap = new Map<string, typeof wins[0]>();
+    for (const w of wins) {
+      if (w.reference) winMap.set(w.reference, w);
+    }
+
+    const now = Date.now();
+    return bets.map((b) => {
+      const meta = (b.metaJson as Record<string, unknown>) || {};
       const cmd = typeof meta.command === 'string' ? meta.command : '';
+      const vertical = typeof meta.vertical === 'string' ? meta.vertical : '';
       const category =
-        cmd === 'sports-bet'
+        cmd === 'sports-bet' || vertical === 'sports'
           ? 'sports'
-          : cmd === 'bet-win' || cmd === 'bet'
-            ? 'casino'
-            : 'other';
+          : vertical === 'minigame' || cmd === 'minigame-bet'
+            ? 'minigame'
+            : 'casino';
+
+      const gameLabel =
+        typeof meta.gameName === 'string'
+          ? meta.gameName
+          : typeof meta.providerName === 'string'
+            ? `${meta.providerName}`
+            : cmd || '카지노 게임';
+
+      const win = b.reference ? winMap.get(b.reference) : undefined;
+      const betAmt = b.amount.abs().toNumber();
+      const winAmt = win ? win.amount.toNumber() : 0;
+
+      // 5분 이내이고 WIN 없으면 pending, 이후면 lose
+      const isRecent = now - b.createdAt.getTime() < 5 * 60 * 1000;
+      let status: 'pending' | 'win' | 'lose' | 'cancel' = 'pending';
+      if (win) {
+        status = winAmt > 0 ? 'win' : 'lose';
+      } else if (!isRecent) {
+        status = 'lose';
+      }
+
       return {
-        id: r.id,
-        createdAt: r.createdAt.toISOString(),
-        betAmount: r.amount.abs().toFixed(2),
-        reference: r.reference,
+        id: b.id,
+        createdAt: b.createdAt.toISOString(),
+        betAmount: betAmt.toFixed(2),
+        winAmount: win ? winAmt.toFixed(2) : null,
+        netResult: win ? (winAmt - betAmt).toFixed(2) : (-betAmt).toFixed(2),
+        reference: b.reference,
         category,
-        meta,
+        gameLabel,
+        status,
+        vertical,
       };
     });
   }
@@ -356,6 +403,22 @@ export class MeController {
   listRequests(@CurrentUser() user: JwtPayload) {
     this.assertEndUser(user);
     return this.walletRequests.listMine(user.sub);
+  }
+
+  @Get('wallet-requests/active-deposit')
+  getActiveDeposit(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    if (!user.platformId) throw new ForbiddenException();
+    return this.walletRequests.getActivePendingDeposit(user.sub, user.platformId);
+  }
+
+  @Delete('wallet-requests/:id')
+  cancelRequest(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertEndUser(user);
+    return this.walletRequests.cancelMine(user.sub, id);
   }
 
   /** Vinus Gaming 라이브 카지노 실행 URL (토큰 발급 후 play-game 호출) */

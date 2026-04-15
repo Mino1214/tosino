@@ -41,6 +41,9 @@ type Sales = {
   ledgerBetSum: string;
   ledgerBetStakeAbs: string;
   ledgerWinSum: string;
+  estGgr?: string;
+  effectiveAgentSharePct?: number;
+  myEstimatedSettlement?: string;
   gameSales: GameSales;
   gameSalesMeta?: string;
   members?: MemberSalesRow[];
@@ -511,6 +514,20 @@ export default function AgentSalesPage() {
                     value={data.ledgerWinSum}
                     accent="text-violet-300/90"
                   />
+                  {data.estGgr !== undefined && (
+                    <StatCard
+                      label="GGR (배팅액 − 당첨)"
+                      value={data.estGgr}
+                      accent="text-orange-300"
+                    />
+                  )}
+                  {data.myEstimatedSettlement !== undefined && (
+                    <StatCard
+                      label={`내 정산금 (GGR × ${data.effectiveAgentSharePct ?? 0}%)`}
+                      value={data.myEstimatedSettlement}
+                      accent="text-amber-400 font-bold"
+                    />
+                  )}
                 </div>
                 {memberRows.length > 0 && (
                   <TopMembersStrip

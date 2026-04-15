@@ -135,4 +135,43 @@ export class PlatformsController {
     this.platforms.assertPlatformScope(user, platformId);
     return this.points.grantAllForPlatform(platformId, dto.amount, dto.note);
   }
+
+  // ─── 매출 현황 API ───────────────────────────────────────
+
+  @Get(':platformId/sales/summary')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getSalesSummary(
+    @Param('platformId') platformId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.platforms.getSalesSummary(platformId, user, from, to);
+  }
+
+  @Get(':platformId/sales/agents')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getSalesAgents(
+    @Param('platformId') platformId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.platforms.getSalesAgents(platformId, user, from, to);
+  }
+
+  @Get(':platformId/sales/ledger')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  getSalesLedger(
+    @Param('platformId') platformId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.platforms.getSalesLedger(platformId, user, from, to, limit);
+  }
 }

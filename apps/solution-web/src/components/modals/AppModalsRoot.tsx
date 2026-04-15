@@ -60,7 +60,7 @@ export function AppModalsRoot() {
         open={walletOpen}
         onClose={closeWallet}
         title="입금 · 출금"
-        xwide
+        wide
       >
         <WalletPanel
           key={walletOpenVersion}

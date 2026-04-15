@@ -8,9 +8,12 @@ import {
 import { UpdateSemiVirtualDto } from './dto/update-semi-virtual.dto';
 import {
   BankSmsIngestStatus,
+  LedgerEntryType,
   Prisma,
   SyncJobType,
   UserRole,
+  WalletRequestStatus,
+  WalletRequestType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlatformDto } from './dto/create-platform.dto';
@@ -586,25 +589,15 @@ export class PlatformsService {
 
     await this.prisma.platform.update({
       where: { id: platformId },
-      data: dto.enabled
-        ? {
-            semiVirtualEnabled: true,
-            semiVirtualRecipientPhone: phone,
-            semiVirtualAccountHint: hint,
-            semiVirtualBankName: bankName,
-            semiVirtualAccountNumber: accountNumber,
-            semiVirtualAccountHolder: accountHolder,
-            settlementUsdtWallet,
-          }
-        : {
-            semiVirtualEnabled: false,
-            semiVirtualRecipientPhone: null,
-            semiVirtualAccountHint: null,
-            semiVirtualBankName: null,
-            semiVirtualAccountNumber: null,
-            semiVirtualAccountHolder: null,
-            settlementUsdtWallet,
-          },
+      data: {
+        semiVirtualEnabled: dto.enabled,
+        semiVirtualRecipientPhone: dto.enabled ? phone : null,
+        semiVirtualAccountHint: dto.enabled ? hint : null,
+        semiVirtualBankName: bankName,
+        semiVirtualAccountNumber: accountNumber,
+        semiVirtualAccountHolder: accountHolder,
+        settlementUsdtWallet,
+      },
     });
     return this.getSemiVirtual(platformId, actor);
   }
@@ -773,5 +766,354 @@ export class PlatformsService {
       await tx.platform.delete({ where: { id: platformId } });
     });
     return { ok: true };
+  }
+
+  // ─── 매출 현황 ────────────────────────────────────────────
+
+  private assertPlatformAdmin(actor: JwtPayload, platformId: string) {
+    if (actor.role !== UserRole.SUPER_ADMIN && actor.role !== UserRole.PLATFORM_ADMIN)
+      throw new ForbiddenException();
+    if (actor.role === UserRole.PLATFORM_ADMIN && actor.platformId !== platformId)
+      throw new ForbiddenException();
+  }
+
+  async getSalesSummary(platformId: string, actor: JwtPayload, from?: string, to?: string) {
+    this.assertPlatformAdmin(actor, platformId);
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (from) dateFilter.gte = new Date(from);
+    if (to) dateFilter.lte = new Date(to);
+    const hasDate = Object.keys(dateFilter).length > 0;
+
+    const [betAgg, winAgg, depositAgg, withdrawAgg, userCnt, agentCnt] = await Promise.all([
+      this.prisma.ledgerEntry.aggregate({
+        where: { platformId, type: LedgerEntryType.BET, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: { platformId, type: LedgerEntryType.WIN, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.walletRequest.aggregate({
+        where: { platformId, type: WalletRequestType.DEPOSIT, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.walletRequest.aggregate({
+        where: { platformId, type: WalletRequestType.WITHDRAWAL, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      this.prisma.user.count({ where: { platformId, role: UserRole.USER } }),
+      this.prisma.user.count({ where: { platformId, role: UserRole.MASTER_AGENT } }),
+    ]);
+
+    const betStake = betAgg._sum.amount ? Math.abs(betAgg._sum.amount.toNumber()) : 0;
+    const winTotal = winAgg._sum.amount?.toNumber() ?? 0;
+    const ggr = betStake - winTotal;
+    const depositTotal = depositAgg._sum.amount?.toNumber() ?? 0;
+    const withdrawTotal = withdrawAgg._sum.amount?.toNumber() ?? 0;
+
+    // per-vertical breakdown
+    const verticals = ['casino', 'sports', 'minigame', 'slot'] as const;
+    const vertBreakdown: Record<string, { betStake: string; winTotal: string; ggr: string; rounds: number }> = {};
+    for (const v of verticals) {
+      const [vBet, vWin] = await Promise.all([
+        this.prisma.ledgerEntry.aggregate({
+          where: {
+            platformId,
+            type: LedgerEntryType.BET,
+            ...(hasDate ? { createdAt: dateFilter } : {}),
+            metaJson: { path: ['vertical'], equals: v },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        this.prisma.ledgerEntry.aggregate({
+          where: {
+            platformId,
+            type: LedgerEntryType.WIN,
+            ...(hasDate ? { createdAt: dateFilter } : {}),
+            metaJson: { path: ['vertical'], equals: v },
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+      const vStake = Math.abs(vBet._sum.amount?.toNumber() ?? 0);
+      const vWinTotal = vWin._sum.amount?.toNumber() ?? 0;
+      vertBreakdown[v] = {
+        betStake: vStake.toFixed(2),
+        winTotal: vWinTotal.toFixed(2),
+        ggr: (vStake - vWinTotal).toFixed(2),
+        rounds: vBet._count,
+      };
+    }
+
+    // 낙첨금액 = 총입금 - 총출금 (유저가 실제로 잃은 현금)
+    const houseEdge = depositTotal - withdrawTotal;
+
+    return {
+      period: { from: from ?? null, to: to ?? null },
+      platform: { userCnt, agentCnt },
+      betting: {
+        rounds: betAgg._count,
+        betStake: betStake.toFixed(2),
+        winTotal: winTotal.toFixed(2),
+        ggr: ggr.toFixed(2),
+        rtp: betStake > 0 ? ((winTotal / betStake) * 100).toFixed(2) : '0.00',
+      },
+      wallet: {
+        depositCount: depositAgg._count,
+        depositTotal: depositTotal.toFixed(2),
+        withdrawCount: withdrawAgg._count,
+        withdrawTotal: withdrawTotal.toFixed(2),
+        netInflow: (depositTotal - withdrawTotal).toFixed(2),
+        houseEdge: houseEdge.toFixed(2),
+      },
+      verticals: vertBreakdown,
+    };
+  }
+
+  async getSalesAgents(platformId: string, actor: JwtPayload, from?: string, to?: string) {
+    this.assertPlatformAdmin(actor, platformId);
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (from) dateFilter.gte = new Date(from);
+    if (to) dateFilter.lte = new Date(to);
+    const hasDate = Object.keys(dateFilter).length > 0;
+
+    const agents = await this.prisma.user.findMany({
+      where: { platformId, role: UserRole.MASTER_AGENT },
+      select: {
+        id: true, loginId: true, displayName: true, agentMemo: true,
+        agentPlatformSharePct: true, agentSplitFromParentPct: true,
+        parentUserId: true,
+        children: { select: { id: true, role: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // BFS helper to get all downline USER ids
+    const getDownlineUserIds = async (agentId: string): Promise<string[]> => {
+      const userIds: string[] = [];
+      const queue = [agentId];
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        const ch = await this.prisma.user.findMany({
+          where: { platformId, parentUserId: cur },
+          select: { id: true, role: true },
+        });
+        for (const c of ch) {
+          if (c.role === UserRole.USER) userIds.push(c.id);
+          else if (c.role === UserRole.MASTER_AGENT) queue.push(c.id);
+        }
+      }
+      return userIds;
+    };
+
+    // Direct users (parentUserId = agent): period deposit/withdraw + current wallet balance
+    const agentIds = agents.map((x) => x.id);
+    const directUsersAll =
+      agentIds.length === 0
+        ? []
+        : await this.prisma.user.findMany({
+            where: {
+              platformId,
+              role: UserRole.USER,
+              parentUserId: { in: agentIds },
+            },
+            select: {
+              id: true,
+              loginId: true,
+              displayName: true,
+              parentUserId: true,
+              wallet: { select: { balance: true } },
+            },
+          });
+    const duIds = directUsersAll.map((u) => u.id);
+    const duByParent = new Map<string, typeof directUsersAll>();
+    for (const u of directUsersAll) {
+      const pid = u.parentUserId as string;
+      const arr = duByParent.get(pid) ?? [];
+      arr.push(u);
+      duByParent.set(pid, arr);
+    }
+    let depByUser = new Map<string, number>();
+    let wdrByUser = new Map<string, number>();
+    if (duIds.length > 0) {
+      const [depGroups, wdrGroups] = await Promise.all([
+        this.prisma.walletRequest.groupBy({
+          by: ['userId'],
+          where: {
+            userId: { in: duIds },
+            type: WalletRequestType.DEPOSIT,
+            status: WalletRequestStatus.APPROVED,
+            ...(hasDate ? { createdAt: dateFilter } : {}),
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.walletRequest.groupBy({
+          by: ['userId'],
+          where: {
+            userId: { in: duIds },
+            type: WalletRequestType.WITHDRAWAL,
+            status: WalletRequestStatus.APPROVED,
+            ...(hasDate ? { createdAt: dateFilter } : {}),
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+      depByUser = new Map(
+        depGroups.map((g) => [g.userId, g._sum.amount?.toNumber() ?? 0]),
+      );
+      wdrByUser = new Map(
+        wdrGroups.map((g) => [g.userId, g._sum.amount?.toNumber() ?? 0]),
+      );
+    }
+
+    const buildDirectUsers = (agentId: string) => {
+      const list = duByParent.get(agentId) ?? [];
+      return list.map((u) => {
+        const dep = depByUser.get(u.id) ?? 0;
+        const wdr = wdrByUser.get(u.id) ?? 0;
+        return {
+          userId: u.id,
+          loginId: u.loginId ?? '',
+          displayName: u.displayName ?? '',
+          depositTotal: dep.toFixed(2),
+          withdrawTotal: wdr.toFixed(2),
+          houseEdge: (dep - wdr).toFixed(2),
+          balance: (u.wallet?.balance?.toNumber() ?? 0).toFixed(2),
+        };
+      });
+    };
+
+    const rows = await Promise.all(
+      agents.map(async (a) => {
+        const userIds = await getDownlineUserIds(a.id);
+        const directUsers = buildDirectUsers(a.id);
+        if (userIds.length === 0) {
+          return {
+          agentId: a.id,
+          parentAgentId: a.parentUserId ?? null,
+          loginId: a.loginId ?? '',
+          displayName: a.displayName ?? '',
+          memo: a.agentMemo ?? '',
+          isTopAgent: !a.parentUserId,
+          platformSharePct: Number(a.agentPlatformSharePct ?? 0),
+          splitFromParentPct: Number(a.agentSplitFromParentPct ?? 0),
+          effectivePct: 0,
+          downlineUsers: 0,
+          betStake: '0.00',
+          winTotal: '0.00',
+          ggr: '0.00',
+          depositTotal: '0.00',
+          withdrawTotal: '0.00',
+          houseEdge: '0.00',
+          myEstimatedSettlement: '0.00',
+          directUsers,
+        };
+        }
+
+        const [betAgg, winAgg, depAgg, wdrAgg] = await Promise.all([
+          this.prisma.ledgerEntry.aggregate({
+            where: { userId: { in: userIds }, type: LedgerEntryType.BET, ...(hasDate ? { createdAt: dateFilter } : {}) },
+            _sum: { amount: true },
+          }),
+          this.prisma.ledgerEntry.aggregate({
+            where: { userId: { in: userIds }, type: LedgerEntryType.WIN, ...(hasDate ? { createdAt: dateFilter } : {}) },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletRequest.aggregate({
+            where: { userId: { in: userIds }, type: WalletRequestType.DEPOSIT, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletRequest.aggregate({
+            where: { userId: { in: userIds }, type: WalletRequestType.WITHDRAWAL, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+            _sum: { amount: true },
+          }),
+        ]);
+
+        const stake = Math.abs(betAgg._sum.amount?.toNumber() ?? 0);
+        const win = winAgg._sum.amount?.toNumber() ?? 0;
+        const ggr = stake - win;
+        const dep = depAgg._sum.amount?.toNumber() ?? 0;
+        const wdr = wdrAgg._sum.amount?.toNumber() ?? 0;
+        // 낙첨금액 = 입금 - 출금 (총판 정산의 기준)
+        const houseEdge = dep - wdr;
+        // effectivePct: how much of platform houseEdge this agent keeps
+        const effPct = Number(a.agentPlatformSharePct ?? 0) * Number(a.agentSplitFromParentPct ?? 0) / 100;
+        const settlement = (houseEdge * effPct) / 100;
+
+        return {
+          agentId: a.id,
+          parentAgentId: a.parentUserId ?? null,
+          loginId: a.loginId ?? '',
+          displayName: a.displayName ?? '',
+          memo: a.agentMemo ?? '',
+          isTopAgent: !a.parentUserId,
+          platformSharePct: Number(a.agentPlatformSharePct ?? 0),
+          splitFromParentPct: Number(a.agentSplitFromParentPct ?? 0),
+          effectivePct: Math.round(effPct * 1e4) / 1e4,
+          downlineUsers: userIds.length,
+          betStake: stake.toFixed(2),
+          winTotal: win.toFixed(2),
+          ggr: ggr.toFixed(2),
+          depositTotal: dep.toFixed(2),
+          withdrawTotal: wdr.toFixed(2),
+          houseEdge: houseEdge.toFixed(2),
+          myEstimatedSettlement: settlement.toFixed(2),
+          directUsers,
+        };
+      }),
+    );
+
+    const byId = new Map(rows.map((r) => [r.agentId, r]));
+    return rows.map((r) => {
+      const childSum = agents
+        .filter((ag) => ag.parentUserId === r.agentId)
+        .reduce((s, ag) => s + Number(byId.get(ag.id)?.myEstimatedSettlement ?? 0), 0);
+      return {
+        ...r,
+        childrenSettlementTotal: childSum.toFixed(2),
+      };
+    });
+  }
+
+  async getSalesLedger(platformId: string, actor: JwtPayload, from?: string, to?: string, limitRaw?: string) {
+    this.assertPlatformAdmin(actor, platformId);
+    const limit = Math.min(500, Math.max(1, Number.parseInt(limitRaw ?? '100', 10) || 100));
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (from) dateFilter.gte = new Date(from);
+    if (to) dateFilter.lte = new Date(to);
+    const hasDate = Object.keys(dateFilter).length > 0;
+
+    const rows = await this.prisma.ledgerEntry.findMany({
+      where: {
+        platformId,
+        type: { in: [LedgerEntryType.BET, LedgerEntryType.WIN] },
+        ...(hasDate ? { createdAt: dateFilter } : {}),
+      },
+      include: { user: { select: { loginId: true, displayName: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    return rows.map((r) => {
+      const meta = (r.metaJson as Record<string, unknown>) || {};
+      return {
+        id: r.id,
+        userId: r.userId,
+        userLoginId: r.user.loginId ?? '',
+        userDisplayName: r.user.displayName ?? '',
+        type: r.type,
+        amount: r.amount.toFixed(2),
+        balanceAfter: r.balanceAfter.toFixed(2),
+        reference: r.reference,
+        vertical: (meta.vertical as string | undefined) ?? 'casino',
+        gameName: (meta.gameName as string | undefined) ?? (meta.providerName as string | undefined) ?? '',
+        createdAt: r.createdAt.toISOString(),
+      };
+    });
   }
 }

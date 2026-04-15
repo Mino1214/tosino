@@ -10,6 +10,11 @@ import { useAdminConsoleMode } from "@/context/AdminConsoleModeContext";
 /** 테마·플랫폼 관리·서버상태는 슈퍼관리자 통합 후 재추가 예정 */
 const NAV = [
   {
+    href: "/console/sales",
+    label: "매출 현황",
+    hint: "하우스수익 · 배팅내역 · 총판정산",
+  },
+  {
     href: "/console/users",
     label: "유저",
     hint: "계정 · 총판 · 추천코드",
@@ -164,6 +169,7 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
   const { mode, setMode } = useAdminConsoleMode();
   const userRole = getStoredUser()?.role;
   const isMaster = userRole === "MASTER_AGENT";
+  const isSuperAdmin = userRole === "SUPER_ADMIN";
   const navItems = isMaster ? NAV_MASTER : mode === "semiVirtual" ? NAV_SEMI : NAV;
 
   const selected = platforms.find((p) => p.id === selectedPlatformId);
@@ -287,6 +293,28 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
         <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
           {mode === "semiVirtual" ? "반가상 메뉴" : "메뉴"}
         </p>
+        {isSuperAdmin && (
+          <>
+            <p className="mb-1 mt-4 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+              슈퍼관리자
+            </p>
+            <Link
+              href="/console/test-scenario"
+              className={`block rounded-lg px-3 py-2.5 transition ${
+                isActive(pathname, "/console/test-scenario")
+                  ? "bg-violet-600/20 text-violet-200 ring-1 ring-violet-600/40"
+                  : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
+              }`}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium">
+                🧪 테스트 시나리오
+              </span>
+              <span className="mt-0.5 block text-[11px] text-zinc-500">
+                단계별 전체 플로우 테스트
+              </span>
+            </Link>
+          </>
+        )}
         {navItems.map((item) => {
           const active = isActive(pathname, item.href);
           const isReg = item.href === "/console/registrations";

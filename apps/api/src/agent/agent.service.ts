@@ -174,15 +174,31 @@ export class AgentService {
 
   private async downlineUserIds(actor: JwtPayload): Promise<string[]> {
     this.assertMaster(actor);
-    const rows = await this.prisma.user.findMany({
-      where: {
-        platformId: actor.platformId!,
-        parentUserId: actor.sub,
-        role: UserRole.USER,
-      },
-      select: { id: true },
-    });
-    return rows.map((r) => r.id);
+    return this.collectDownlineUserIds(actor.platformId!, actor.sub);
+  }
+
+  /** 전체 트리를 BFS로 탐색해 모든 하위 USER id를 반환 */
+  private async collectDownlineUserIds(
+    platformId: string,
+    agentId: string,
+  ): Promise<string[]> {
+    const userIds: string[] = [];
+    const queue: string[] = [agentId];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const children = await this.prisma.user.findMany({
+        where: { platformId, parentUserId: currentId },
+        select: { id: true, role: true },
+      });
+      for (const child of children) {
+        if (child.role === UserRole.USER) {
+          userIds.push(child.id);
+        } else if (child.role === UserRole.MASTER_AGENT) {
+          queue.push(child.id);
+        }
+      }
+    }
+    return userIds;
   }
 
   private parseRange(fromStr?: string, toStr?: string): { start: Date; end: Date } {
@@ -346,6 +362,7 @@ export class AgentService {
     const { start, end } = this.parseRange(fromStr, toStr);
     const ids = await this.downlineUserIds(actor);
     const platformId = actor.platformId!;
+    const effPct = await this.effectiveShareForAgentUser(platformId, actor.sub);
     if (ids.length === 0) {
       return {
         from: start.toISOString(),
@@ -356,6 +373,9 @@ export class AgentService {
         ledgerBetSum: '0.00',
         ledgerBetStakeAbs: '0.00',
         ledgerWinSum: '0.00',
+        estGgr: '0.00',
+        effectiveAgentSharePct: Math.round(effPct * 1e4) / 1e4,
+        myEstimatedSettlement: '0.00',
         gameSales: emptyGameSales(),
         gameSalesMeta:
           '원장 BET/WIN의 metaJson.vertical (LIVE_CASINO|SPORTS|MINIGAME|SLOT) · metaJson.subVertical(라이브 종류 등)',
@@ -579,6 +599,10 @@ export class AgentService {
       members = rows.slice(0, 400).map(({ _sortStake: _s, ...rest }) => rest);
     }
 
+    const totalWin = Number(sumDec(winAgg._sum.amount));
+    const ggr = stakeAbs - totalWin;
+    const mySettlement = (ggr * effPct) / 100;
+
     return {
       from: start.toISOString(),
       to: end.toISOString(),
@@ -588,6 +612,9 @@ export class AgentService {
       ledgerBetSum: sumDec(betAgg._sum.amount),
       ledgerBetStakeAbs: stakeAbs.toFixed(2),
       ledgerWinSum: sumDec(winAgg._sum.amount),
+      estGgr: ggr.toFixed(2),
+      effectiveAgentSharePct: Math.round(effPct * 1e4) / 1e4,
+      myEstimatedSettlement: mySettlement.toFixed(2),
       gameSales,
       gameSalesMeta:
         '원장 BET/WIN의 metaJson.vertical (LIVE_CASINO|SPORTS|MINIGAME|SLOT) · metaJson.subVertical(라이브 종류 등)',

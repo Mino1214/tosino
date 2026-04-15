@@ -842,16 +842,26 @@ export default function ConsoleOperationalPage() {
               <h3 className="text-sm font-medium text-zinc-200">낙첨 / 추천 적립</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className="text-xs text-zinc-500">낙첨 포인트률</label>
+                  <label className="text-xs text-zinc-500">낙첨 포인트 적립률</label>
                   <input
                     type="text"
                     value={pointRules.loseBetPointsPerStake}
                     onChange={(e) =>
                       patchPoint("loseBetPointsPerStake", e.target.value)
                     }
-                    placeholder="배팅금액당 비율"
+                    placeholder="예: 0.01 (1만원 → 100P)"
                     className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
                   />
+                  <div className="mt-1.5 rounded-lg bg-amber-950/40 border border-amber-800/40 px-2.5 py-2 text-xs space-y-0.5">
+                    <p className="text-amber-300 font-semibold">📌 공식: 적립P = 패배 배팅금 × 이 값</p>
+                    <p className="text-amber-200/70">
+                      현재 <span className="font-mono text-amber-300">{pointRules.loseBetPointsPerStake || "미설정"}</span>
+                      {pointRules.loseBetPointsPerStake ? (
+                        <> → 1만원 패배 시 <span className="font-mono text-amber-300">{(Number(pointRules.loseBetPointsPerStake) * 10000).toLocaleString("ko-KR")}P</span> 적립</>
+                      ) : null}
+                    </p>
+                    <p className="text-zinc-500">권장: <span className="font-mono">0.01</span> ~ <span className="font-mono">0.1</span> (1만원 → 100~1000P)</p>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-zinc-500">추천 첫베팅 고정 P</label>

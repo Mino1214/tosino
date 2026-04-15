@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import {
   LedgerEntryType,
@@ -171,8 +172,26 @@ export class WalletRequestsService {
           '원화 입금은 등록 계좌 예금주명으로만 신청할 수 있습니다',
         );
       }
+      // 1시간 이내 중복 PENDING 입금 신청 차단
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const existing = await this.prisma.walletRequest.findFirst({
+        where: {
+          userId,
+          platformId,
+          type: WalletRequestType.DEPOSIT,
+          status: WalletRequestStatus.PENDING,
+          currency: 'KRW',
+          createdAt: { gte: oneHourAgo },
+        },
+      });
+      if (existing) {
+        throw new ConflictException(
+          '진행 중인 입금 신청이 있습니다. 취소 후 다시 신청하세요.',
+        );
+      }
     }
-    return this.prisma.walletRequest.create({
+
+    const created = await this.prisma.walletRequest.create({
       data: {
         platformId,
         userId,
@@ -187,6 +206,81 @@ export class WalletRequestsService {
         status: WalletRequestStatus.PENDING,
       },
     });
+
+    // KRW 입금 신청 시 플랫폼 입금 계좌 정보 함께 반환
+    if (type === WalletRequestType.DEPOSIT && currency === 'KRW') {
+      const plat = await this.prisma.platform.findUnique({
+        where: { id: platformId },
+        select: {
+          semiVirtualBankName: true,
+          semiVirtualAccountNumber: true,
+          semiVirtualAccountHolder: true,
+        },
+      });
+      return {
+        ...created,
+        depositAccount: {
+          bankName: plat?.semiVirtualBankName ?? null,
+          accountNumber: plat?.semiVirtualAccountNumber ?? null,
+          accountHolder: plat?.semiVirtualAccountHolder ?? null,
+        },
+        expiresAt: new Date(created.createdAt.getTime() + 60 * 60 * 1000).toISOString(),
+      };
+    }
+
+    return created;
+  }
+
+  /** 유저가 자신의 PENDING 입금 신청 취소 */
+  async cancelMine(userId: string, requestId: string) {
+    const req = await this.prisma.walletRequest.findFirst({
+      where: {
+        id: requestId,
+        userId,
+        status: WalletRequestStatus.PENDING,
+        type: WalletRequestType.DEPOSIT,
+      },
+    });
+    if (!req) throw new NotFoundException('취소할 수 있는 신청 내역이 없습니다');
+    await this.prisma.walletRequest.update({
+      where: { id: requestId },
+      data: { status: WalletRequestStatus.REJECTED, note: '회원 취소' },
+    });
+    return { ok: true };
+  }
+
+  /** 1시간 이내 PENDING KRW 입금 신청 + 플랫폼 계좌 반환 */
+  async getActivePendingDeposit(userId: string, platformId: string) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const req = await this.prisma.walletRequest.findFirst({
+      where: {
+        userId,
+        platformId,
+        type: WalletRequestType.DEPOSIT,
+        status: WalletRequestStatus.PENDING,
+        currency: 'KRW',
+        createdAt: { gte: oneHourAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!req) return null;
+    const plat = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: {
+        semiVirtualBankName: true,
+        semiVirtualAccountNumber: true,
+        semiVirtualAccountHolder: true,
+      },
+    });
+    return {
+      request: req,
+      depositAccount: {
+        bankName: plat?.semiVirtualBankName ?? null,
+        accountNumber: plat?.semiVirtualAccountNumber ?? null,
+        accountHolder: plat?.semiVirtualAccountHolder ?? null,
+      },
+      expiresAt: new Date(req.createdAt.getTime() + 60 * 60 * 1000).toISOString(),
+    };
   }
 
   listMine(userId: string) {
