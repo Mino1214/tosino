@@ -81,6 +81,7 @@ type DirectUserRow = {
 type AgentRow = {
   agentId: string;
   parentAgentId: string | null;
+  treeParentAgentId?: string | null;
   loginId: string;
   displayName: string;
   memo: string;
@@ -101,6 +102,11 @@ type AgentRow = {
   /** Users with parentUserId = this agent */
   directUsers?: DirectUserRow[];
 };
+
+function salesAgentTreeParentId(a: AgentRow): string | null {
+  if (a.treeParentAgentId !== undefined) return a.treeParentAgentId;
+  return a.parentAgentId;
+}
 
 type LedgerRow = {
   id: string;
@@ -778,7 +784,9 @@ export default function SalesPage() {
         };
 
         const renderAgent = (agent: AgentRow, depth: number): React.ReactNode => {
-          const childAgents = agents.filter(a => a.parentAgentId === agent.agentId);
+          const childAgents = agents.filter(
+            (a) => salesAgentTreeParentId(a) === agent.agentId,
+          );
           const directUsers = agent.directUsers ?? [];
           const canExpand = childAgents.length > 0 || directUsers.length > 0;
           const isOpen = openIds.has(agent.agentId);
@@ -800,7 +808,7 @@ export default function SalesPage() {
                   depth === 1 ? "bg-violet-700/30 text-violet-300" :
                   "bg-zinc-700/40 text-zinc-400"
                 }`}>
-                  {depth === 0 ? "최상위" : depth === 1 ? "하위" : "3단"}
+                  {depth === 0 ? "최상위" : depth === 1 ? "하위" : `${depth + 1}단`}
                 </span>
                 <span className="font-mono text-sm font-semibold text-zinc-100 min-w-0 truncate">{agent.loginId}</span>
                 {agent.displayName && <span className="text-xs text-zinc-500 shrink-0 hidden sm:inline">{agent.displayName}</span>}

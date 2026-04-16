@@ -2372,6 +2372,58 @@ export class PlatformsService {
       roleById,
     );
 
+    /** 매출 트리: DB parent가 플랫폼 어드민 등(총판 목록 밖)이면 자식이 어디에도 안 붙는 문제를 막기 위해, 상위 체인을 따라 같은 플랫폼의 총판(MASTER_AGENT) 중 가장 가까운 조상을 부모로 쓴다. */
+    const agentIdSet = new Set(agents.map((x) => x.id));
+    const parentByUserId = new Map<string, string | null>();
+    for (const agent of agents) {
+      parentByUserId.set(agent.id, agent.parentUserId ?? null);
+    }
+    for (;;) {
+      const missing = new Set<string>();
+      for (const a of agents) {
+        let cur = a.parentUserId;
+        const seen = new Set<string>();
+        while (cur) {
+          if (agentIdSet.has(cur)) break;
+          if (!parentByUserId.has(cur)) {
+            missing.add(cur);
+            break;
+          }
+          if (seen.has(cur)) break;
+          seen.add(cur);
+          cur = parentByUserId.get(cur) ?? null;
+        }
+      }
+      if (missing.size === 0) break;
+      const chainRows = await this.prisma.user.findMany({
+        where: { platformId, id: { in: [...missing] } },
+        select: { id: true, parentUserId: true },
+      });
+      const found = new Set(chainRows.map((r) => r.id));
+      for (const id of missing) {
+        if (!found.has(id)) parentByUserId.set(id, null);
+      }
+      for (const cr of chainRows) {
+        parentByUserId.set(cr.id, cr.parentUserId ?? null);
+      }
+    }
+    const treeParentAgentIdFor = (a: (typeof agents)[0]): string | null => {
+      let cur = a.parentUserId;
+      const seen = new Set<string>();
+      while (cur) {
+        if (agentIdSet.has(cur)) return cur;
+        if (seen.has(cur)) return null;
+        seen.add(cur);
+        const next = parentByUserId.get(cur);
+        if (next === undefined) return null;
+        cur = next;
+      }
+      return null;
+    };
+    const treeParentByAgentId = new Map<string, string | null>(
+      agents.map((ag) => [ag.id, treeParentAgentIdFor(ag)] as const),
+    );
+
     // BFS helper to get all downline USER ids
     const getDownlineUserIds = async (agentId: string): Promise<string[]> => {
       const userIds: string[] = [];
@@ -2538,11 +2590,14 @@ export class PlatformsService {
 
     const byId = new Map(rows.map((r) => [r.agentId, r]));
     return rows.map((r) => {
+      const tp = treeParentByAgentId.get(r.agentId) ?? null;
       const childSum = agents
-        .filter((ag) => ag.parentUserId === r.agentId)
+        .filter((ag) => (treeParentByAgentId.get(ag.id) ?? null) === r.agentId)
         .reduce((s, ag) => s + Number(byId.get(ag.id)?.myEstimatedSettlement ?? 0), 0);
       return {
         ...r,
+        treeParentAgentId: tp,
+        isTopAgent: tp === null,
         childrenSettlementTotal: childSum.toFixed(2),
       };
     });
