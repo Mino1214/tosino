@@ -30,7 +30,7 @@ export type PlatformRow = {
 type Ctx = {
   platforms: PlatformRow[];
   selectedPlatformId: string | null;
-  setSelectedPlatformId: (id: string) => void;
+  setSelectedPlatformId: (id: string | null) => void;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -70,12 +70,8 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
       setSelectedPlatformIdState(saved);
       return;
     }
-    if (list[0]) {
-      setSelectedPlatformIdState(list[0].id);
-      sessionStorage.setItem(STORAGE_KEY, list[0].id);
-    } else {
-      setSelectedPlatformIdState(null);
-    }
+    setSelectedPlatformIdState(null);
+    sessionStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -102,10 +98,14 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const setSelectedPlatformId = useCallback((id: string) => {
+  const setSelectedPlatformId = useCallback((id: string | null) => {
     setSelectedPlatformIdState(id);
     if (typeof window !== "undefined") {
-      sessionStorage.setItem(STORAGE_KEY, id);
+      if (id) {
+        sessionStorage.setItem(STORAGE_KEY, id);
+      } else {
+        sessionStorage.removeItem(STORAGE_KEY);
+      }
     }
   }, []);
 
