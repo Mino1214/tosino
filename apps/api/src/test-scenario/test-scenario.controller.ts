@@ -97,11 +97,15 @@ export class TestScenarioController {
         { step: 5, name: 'ROLLING_FULFILL', desc: '롤링 잔여량만큼 추가 베팅해서 출금조건 충족' },
         { step: 6, name: 'COMP_POINTS', desc: '테스트 유저 전체에 500포인트 일괄지급' },
         { step: 7, name: 'WITHDRAWAL_REQUEST', desc: '출금신청 (잔액 80%, KRW/USDT 각각)' },
-        { step: 8, name: 'WITHDRAWAL_APPROVE', desc: '출금승인 + 업비트 시세 기준 USDT 환산금액 표기' },
+        {
+          step: 8,
+          name: 'WITHDRAWAL_APPROVE',
+          desc: '출금승인 + USDT 환산 표기. 실행 범위가 8까지면 이어서 총판 정산(9) 자동 실행',
+        },
         {
           step: 9,
           name: 'AGENT_SETTLEMENT',
-          desc: '총판 정산 시뮬(다운라인 승인 입금−출금 × 실효요율 → 총판 지갑 ADJUSTMENT)',
+          desc: '총판 정산 시뮬(입금−출금×실효요율→지갑). 단독 재실행·범위에 9 포함 시에도 실행',
         },
       ],
       usage:

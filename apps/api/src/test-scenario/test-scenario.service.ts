@@ -218,8 +218,10 @@ export class TestScenarioService {
       results.push(await this.step8_withdrawalApprove(platformId));
     }
 
-    // STEP 9: 총판 정산 시뮬 (매출 화면과 동일: 다운라인 승인 입금−출금 × 실효 요율)
-    if (runStep(9)) {
+    // STEP 9: 총판 정산 시뮬 — 범위에 9가 포함되거나, 출금(8)까지 돌렸을 때(end===8) 자동으로 이어서 실행
+    // (종료 Step을 9로 두지 않아도 1→8 전체 실행이면 요율 반영 적립이 되도록)
+    const runAgentSettlement = runStep(9) || (runStep(8) && end === 8);
+    if (runAgentSettlement) {
       results.push(await this.step9_agentSettlement(platformId));
     }
 

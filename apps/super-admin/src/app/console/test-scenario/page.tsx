@@ -108,8 +108,18 @@ const STEPS = [
   { step: 5, name: "ROLLING_FULFILL", emoji: "🔄", desc: "롤링 잔여량만큼 추가 베팅해서 출금조건 충족" },
   { step: 6, name: "COMP_POINTS", emoji: "🎁", desc: "테스트 유저 전체에 500포인트 일괄지급" },
   { step: 7, name: "WITHDRAWAL_REQUEST", emoji: "📤", desc: "출금신청 (잔액 80%, KRW/USDT 각각)" },
-  { step: 8, name: "WITHDRAWAL_APPROVE", emoji: "💸", desc: "출금승인 + 업비트 시세 기준 USDT 환산금액 표기" },
-  { step: 9, name: "AGENT_SETTLEMENT", emoji: "🏦", desc: "총판 정산 시뮬(다운라인 승인 입금−출금 × 실효요율 → 총판 지갑 반영)" },
+  {
+    step: 8,
+    name: "WITHDRAWAL_APPROVE",
+    emoji: "💸",
+    desc: "출금승인 + USDT 환산. 종료 Step이 8이면 직후 총판 정산(요율 적립)까지 자동 실행",
+  },
+  {
+    step: 9,
+    name: "AGENT_SETTLEMENT",
+    emoji: "🏦",
+    desc: "총판 정산만 다시 돌릴 때(또는 범위에 9 포함). Step8 직후 자동 실행이면 보통 생략 가능",
+  },
 ];
 
 // ─── 유틸 ───────────────────────────────────────────────────
@@ -582,6 +592,9 @@ export default function TestScenarioPage() {
         <h1 className="text-xl font-bold text-zinc-100">🧪 테스트 시나리오</h1>
         <p className="mt-1 text-sm text-zinc-500">
           단계별 전체 플로우를 버튼으로 실행합니다. 생성된 계정·잔액·베팅내역 등 모든 데이터를 아래에서 확인할 수 있습니다.
+          <span className="mt-1 block text-amber-200/90">
+            출금까지(종료 Step 8) 실행하면 총판 정산(Step 9)이 자동으로 이어집니다. API가 최신인지(배포) 확인하세요.
+          </span>
         </p>
       </div>
 
@@ -620,9 +633,9 @@ export default function TestScenarioPage() {
             { label: "② 입금+승인", from: 2, to: 3, color: "border-emerald-700 text-emerald-300 hover:border-emerald-500", hint: "잔액 충전" },
             { label: "③ 카지노 플레이", from: 4, to: 4, color: "border-violet-700 text-violet-300 hover:border-violet-500", hint: "배팅 시뮬" },
             { label: "④ 롤링+콤프", from: 5, to: 6, color: "border-blue-700 text-blue-300 hover:border-blue-500", hint: "보상 지급" },
-            { label: "⑤ 출금", from: 7, to: 8, color: "border-amber-700 text-amber-300 hover:border-amber-500", hint: "출금 처리" },
-            { label: "⑥ 총판정산", from: 9, to: 9, color: "border-lime-700 text-lime-300 hover:border-lime-500", hint: "Step9만" },
-            { label: "전체 (1→9)", from: 1, to: 9, color: "border-red-800 text-red-400 hover:border-red-600", hint: "완전 실행" },
+            { label: "⑤ 출금+총판적립", from: 7, to: 8, color: "border-amber-700 text-amber-300 hover:border-amber-500", hint: "8까지=정산 자동" },
+            { label: "⑥ 총판정산만", from: 9, to: 9, color: "border-lime-700 text-lime-300 hover:border-lime-500", hint: "재실행" },
+            { label: "전체 (1→9)", from: 1, to: 9, color: "border-red-800 text-red-400 hover:border-red-600", hint: "1~9 명시" },
           ].map((p) => (
             <button
               type="button"
