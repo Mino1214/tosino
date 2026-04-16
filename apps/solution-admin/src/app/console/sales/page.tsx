@@ -395,22 +395,64 @@ export default function SalesPage() {
         const houseEdge = Number(summary.wallet.houseEdge ?? (deposit - withdraw));
         const userProfit = withdraw - deposit;
         const rtp = Number(summary.betting.rtp);
+        const costs = summary.costs ?? {
+          money: {
+            depositBonus: "0.00",
+            pointRedeem: "0.00",
+            otherWalletCredits: "0.00",
+            total: "0.00",
+          },
+          pointAccrual: {
+            redeemKrwPerPoint: null,
+            attendancePoints: "0.00",
+            attendanceStreakPoints: "0.00",
+            loseBetPoints: "0.00",
+            referralPoints: "0.00",
+            depositPoints: "0.00",
+            bulkGrantPoints: "0.00",
+            otherAdjustmentPoints: "0.00",
+            totalPoints: "0.00",
+            estimatedKrw: null,
+          },
+          comp: {
+            enabled: false,
+            settlementCycle: "INSTANT" as const,
+            settlementOffsetDays: null,
+            ratePct: null,
+            estimatedKrw: "0.00",
+            actualSettledKrw: "0.00",
+            modeledBase: "HOUSE_EDGE",
+          },
+          solutionRates: {
+            upstreamCasinoPct: null,
+            upstreamSportsPct: null,
+            platformCasinoPct: null,
+            platformSportsPct: null,
+            autoMarginPct: null,
+            casinoBaseGgr: "0.00",
+            sportsBaseGgr: "0.00",
+            upstreamCostKrw: "0.00",
+            platformChargeKrw: "0.00",
+            solutionMarginKrw: "0.00",
+            modeledBase: "HIDDEN",
+          },
+        };
         const topAgents = (agents ?? []).filter((agent) => agent.isTopAgent);
         const totalSettle = topAgents.reduce(
           (sum, agent) => sum + Number(agent.myEstimatedSettlement ?? 0),
           0,
         );
-        const depositBonus = Number(summary.costs.money.depositBonus);
-        const pointRedeem = Number(summary.costs.money.pointRedeem);
-        const otherMoneyCredits = Number(summary.costs.money.otherWalletCredits);
-        const actualComp = Number(summary.costs.comp.actualSettledKrw ?? 0);
-        const realizedMoneyCost = Number(summary.costs.money.total);
-        const pointIssued = Number(summary.costs.pointAccrual.totalPoints);
-        const pointIssuedEstimated = Number(summary.costs.pointAccrual.estimatedKrw ?? 0);
-        const compEstimated = Number(summary.costs.comp.estimatedKrw ?? 0);
-        const upstreamCost = Number(summary.costs.solutionRates.upstreamCostKrw ?? 0);
-        const platformCharge = Number(summary.costs.solutionRates.platformChargeKrw ?? 0);
-        const solutionRateMargin = Number(summary.costs.solutionRates.solutionMarginKrw ?? 0);
+        const depositBonus = Number(costs.money.depositBonus);
+        const pointRedeem = Number(costs.money.pointRedeem);
+        const otherMoneyCredits = Number(costs.money.otherWalletCredits);
+        const actualComp = Number(costs.comp.actualSettledKrw ?? 0);
+        const realizedMoneyCost = Number(costs.money.total);
+        const pointIssued = Number(costs.pointAccrual.totalPoints);
+        const pointIssuedEstimated = Number(costs.pointAccrual.estimatedKrw ?? 0);
+        const compEstimated = Number(costs.comp.estimatedKrw ?? 0);
+        const upstreamCost = Number(costs.solutionRates.upstreamCostKrw ?? 0);
+        const platformCharge = Number(costs.solutionRates.platformChargeKrw ?? 0);
+        const solutionRateMargin = Number(costs.solutionRates.solutionMarginKrw ?? 0);
         const cashNet = houseEdge - totalSettle - realizedMoneyCost;
         const solutionCashNet = cashNet - upstreamCost;
         const policyEstimatedNet =
@@ -507,13 +549,13 @@ export default function SalesPage() {
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
               <p className="text-[10px] uppercase tracking-wider text-zinc-500">📌 포인트 충당 추정</p>
               <p className="mt-2 text-xl font-bold font-mono text-amber-200">
-                {summary.costs.pointAccrual.estimatedKrw != null
-                  ? `${krw(summary.costs.pointAccrual.estimatedKrw)}원`
+                {costs.pointAccrual.estimatedKrw != null
+                  ? `${krw(costs.pointAccrual.estimatedKrw)}원`
                   : "환산율 없음"}
               </p>
               <p className="mt-0.5 text-xs text-zinc-600">
-                {summary.costs.pointAccrual.redeemKrwPerPoint
-                  ? `1P = ${summary.costs.pointAccrual.redeemKrwPerPoint}원 기준`
+                {costs.pointAccrual.redeemKrwPerPoint
+                  ? `1P = ${costs.pointAccrual.redeemKrwPerPoint}원 기준`
                   : "KRW 전환율 미설정"}
               </p>
             </div>
@@ -521,11 +563,11 @@ export default function SalesPage() {
               <p className="text-[10px] uppercase tracking-wider text-zinc-500">🗓️ 콤프 추정</p>
               <p className="mt-2 text-xl font-bold font-mono text-amber-200">{krw(compEstimated)}원</p>
               <p className="mt-0.5 text-xs text-zinc-600">
-                {summary.costs.comp.enabled
+                {costs.comp.enabled
                   ? `${compCycleLabel(
-                      summary.costs.comp.settlementCycle,
-                      summary.costs.comp.settlementOffsetDays,
-                    )} · ${summary.costs.comp.ratePct ?? "0"}%`
+                      costs.comp.settlementCycle,
+                      costs.comp.settlementOffsetDays,
+                    )} · ${costs.comp.ratePct ?? "0"}%`
                   : "콤프 미사용"}
               </p>
             </div>
@@ -628,37 +670,37 @@ export default function SalesPage() {
                       <span className="text-zinc-500">출석/연속출석</span>
                       <span className="font-mono text-zinc-200">
                         {pointText(
-                          Number(summary.costs.pointAccrual.attendancePoints) +
-                            Number(summary.costs.pointAccrual.attendanceStreakPoints),
+                          Number(costs.pointAccrual.attendancePoints) +
+                            Number(costs.pointAccrual.attendanceStreakPoints),
                         )}P
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-zinc-500">낙첨 포인트</span>
-                      <span className="font-mono text-zinc-200">{pointText(summary.costs.pointAccrual.loseBetPoints)}P</span>
+                      <span className="font-mono text-zinc-200">{pointText(costs.pointAccrual.loseBetPoints)}P</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-zinc-500">추천 포인트</span>
-                      <span className="font-mono text-zinc-200">{pointText(summary.costs.pointAccrual.referralPoints)}P</span>
+                      <span className="font-mono text-zinc-200">{pointText(costs.pointAccrual.referralPoints)}P</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-zinc-500">충전형 포인트</span>
-                      <span className="font-mono text-zinc-200">{pointText(summary.costs.pointAccrual.depositPoints)}P</span>
+                      <span className="font-mono text-zinc-200">{pointText(costs.pointAccrual.depositPoints)}P</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-zinc-500">전체/기타 포인트</span>
                       <span className="font-mono text-zinc-200">
                         {pointText(
-                          Number(summary.costs.pointAccrual.bulkGrantPoints) +
-                            Number(summary.costs.pointAccrual.otherAdjustmentPoints),
+                          Number(costs.pointAccrual.bulkGrantPoints) +
+                            Number(costs.pointAccrual.otherAdjustmentPoints),
                         )}P
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-zinc-500">포인트 충당 추정</span>
                       <span className="font-mono text-amber-200">
-                        {summary.costs.pointAccrual.estimatedKrw != null
-                          ? `${krw(summary.costs.pointAccrual.estimatedKrw)}원`
+                        {costs.pointAccrual.estimatedKrw != null
+                          ? `${krw(costs.pointAccrual.estimatedKrw)}원`
                           : "환산율 없음"}
                       </span>
                     </div>
@@ -684,28 +726,28 @@ export default function SalesPage() {
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
                     <p className="text-[11px] text-zinc-500">카지노</p>
                     <p className="mt-1 text-sm text-zinc-200">
-                      상위 {summary.costs.solutionRates.upstreamCasinoPct ?? "0"}% / 플랫폼 {summary.costs.solutionRates.platformCasinoPct ?? "0"}%
+                      상위 {costs.solutionRates.upstreamCasinoPct ?? "0"}% / 플랫폼 {costs.solutionRates.platformCasinoPct ?? "0"}%
                     </p>
                     <p className="mt-1 text-[11px] text-zinc-600">
-                      기준 GGR {krw(summary.costs.solutionRates.casinoBaseGgr)}원
+                      기준 GGR {krw(costs.solutionRates.casinoBaseGgr)}원
                     </p>
                   </div>
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
                     <p className="text-[11px] text-zinc-500">스포츠</p>
                     <p className="mt-1 text-sm text-zinc-200">
-                      상위 {summary.costs.solutionRates.upstreamSportsPct ?? "0"}% / 플랫폼 {summary.costs.solutionRates.platformSportsPct ?? "0"}%
+                      상위 {costs.solutionRates.upstreamSportsPct ?? "0"}% / 플랫폼 {costs.solutionRates.platformSportsPct ?? "0"}%
                     </p>
                     <p className="mt-1 text-[11px] text-zinc-600">
-                      기준 GGR {krw(summary.costs.solutionRates.sportsBaseGgr)}원
+                      기준 GGR {krw(costs.solutionRates.sportsBaseGgr)}원
                     </p>
                   </div>
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
                     <p className="text-[11px] text-zinc-500">자동 마진</p>
                     <p className="mt-1 text-sm text-cyan-300">
-                      {summary.costs.solutionRates.autoMarginPct ?? "0"}%
+                      {costs.solutionRates.autoMarginPct ?? "0"}%
                     </p>
                     <p className="mt-1 text-[11px] text-zinc-600">
-                      기준: {summary.costs.solutionRates.modeledBase}
+                      기준: {costs.solutionRates.modeledBase}
                     </p>
                   </div>
                 </div>
