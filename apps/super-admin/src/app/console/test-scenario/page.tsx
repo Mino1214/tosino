@@ -58,8 +58,8 @@ interface UserDetail {
   signupMode: string;
   usdtWallet: string | null;
   parentLoginId: string | null;
-  /** 총판(MASTER_AGENT)만 */
-  agentCommission: {
+  /** 총판(MASTER_AGENT)만 — 구 API 호환을 위해 생략 가능 */
+  agentCommission?: {
     platformSharePct: number | null;
     splitFromParentPct: number | null;
     effectiveSharePct: number;
@@ -132,13 +132,15 @@ const dt = (s: string | null | undefined) => {
 type LogEntry = { ts: string; level: "info" | "error" | "success"; msg: string };
 
 // ─── 배지 색상 ───────────────────────────────────────────────
-function statusColor(s: string) {
+function statusColor(s: string | undefined) {
+  if (!s) return "text-zinc-400 bg-zinc-400/10";
   if (s === "APPROVED" || s === "CONFIRMED") return "text-green-400 bg-green-400/10";
   if (s === "PENDING") return "text-amber-400 bg-amber-400/10";
   if (s === "REJECTED" || s === "FAILED") return "text-red-400 bg-red-400/10";
   return "text-zinc-400 bg-zinc-400/10";
 }
-function typeColor(t: string) {
+function typeColor(t: string | undefined) {
+  if (!t) return "text-zinc-300";
   if (t === "BET") return "text-red-300";
   if (t === "WIN") return "text-green-300";
   if (t === "DEPOSIT" || t === "CREDIT") return "text-blue-300";
@@ -152,6 +154,22 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
   const [tab, setTab] = useState<"ledger" | "requests" | "usdt" | "rolling" | "points">("ledger");
 
   const isAgent = u.role === "MASTER_AGENT";
+
+  const ledger = u.ledger ?? [];
+  const walletRequests = u.walletRequests ?? [];
+  const usdtTxs = u.usdtTxs ?? [];
+  const rolling = u.rolling ?? [];
+  const points = u.points ?? [];
+  const summary = u.summary ?? {
+    totalBet: 0,
+    totalWin: 0,
+    netPnl: 0,
+    totalRollingAccum: 0,
+    totalRollingReq: 0,
+    rollingPct: 0,
+    totalPoints: 0,
+  };
+  const commission = u.agentCommission ?? null;
 
   const toggleOpen = () => setOpen((o) => !o);
 
@@ -193,22 +211,22 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                 <span>콤프 <b className="text-zinc-300">{krw(u.wallet.compBalance)}</b></span>
               </>
             )}
-            {isAgent && u.agentCommission && (
+            {isAgent && commission && (
               <span className="text-violet-400">
-                실효요율 <b>{u.agentCommission.effectiveSharePct}%</b>
-                {u.agentCommission.platformSharePct != null && (
-                  <> · 플랫폼부여 <b>{u.agentCommission.platformSharePct}%</b></>
+                실효요율 <b>{commission.effectiveSharePct}%</b>
+                {commission.platformSharePct != null && (
+                  <> · 플랫폼부여 <b>{commission.platformSharePct}%</b></>
                 )}
-                {u.agentCommission.splitFromParentPct != null && (
-                  <> · 상위대비 <b>{u.agentCommission.splitFromParentPct}%</b></>
+                {commission.splitFromParentPct != null && (
+                  <> · 상위대비 <b>{commission.splitFromParentPct}%</b></>
                 )}
               </span>
             )}
-            {!isAgent && u.summary && (
+            {!isAgent && (
               <>
-                <span>베팅 <b className="text-red-300">{krw(u.summary.totalBet)}원</b></span>
-                <span>수익 <b className={u.summary.netPnl >= 0 ? "text-green-300" : "text-red-300"}>{u.summary.netPnl >= 0 ? "+" : ""}{krw(u.summary.netPnl)}원</b></span>
-                <span>롤링 <b className={u.summary.rollingPct >= 100 ? "text-green-400" : "text-amber-400"}>{u.summary.rollingPct}%</b></span>
+                <span>베팅 <b className="text-red-300">{krw(summary.totalBet)}원</b></span>
+                <span>수익 <b className={summary.netPnl >= 0 ? "text-green-300" : "text-red-300"}>{summary.netPnl >= 0 ? "+" : ""}{krw(summary.netPnl)}원</b></span>
+                <span>롤링 <b className={summary.rollingPct >= 100 ? "text-green-400" : "text-amber-400"}>{summary.rollingPct}%</b></span>
               </>
             )}
             {u.usdtWallet && (
@@ -222,15 +240,15 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
       {open && (
         <div className="border-t border-zinc-800">
           {/* 요약 그리드 */}
-          {!isAgent && u.summary && (
+          {!isAgent && (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-zinc-800">
               {[
-                { label: "총 베팅", val: `${krw(u.summary.totalBet)}원`, color: "text-red-300" },
-                { label: "총 당첨", val: `${krw(u.summary.totalWin)}원`, color: "text-green-300" },
-                { label: "순손익", val: `${u.summary.netPnl >= 0 ? "+" : ""}${krw(u.summary.netPnl)}원`, color: u.summary.netPnl >= 0 ? "text-green-400" : "text-red-400" },
-                { label: "롤링", val: `${krw(u.summary.totalRollingAccum)} / ${krw(u.summary.totalRollingReq)}`, color: "text-amber-300" },
-                { label: "롤링충족", val: `${u.summary.rollingPct}%`, color: u.summary.rollingPct >= 100 ? "text-green-400" : "text-amber-400" },
-                { label: "포인트 합계", val: `${krw(u.summary.totalPoints)}P`, color: "text-violet-300" },
+                { label: "총 베팅", val: `${krw(summary.totalBet)}원`, color: "text-red-300" },
+                { label: "총 당첨", val: `${krw(summary.totalWin)}원`, color: "text-green-300" },
+                { label: "순손익", val: `${summary.netPnl >= 0 ? "+" : ""}${krw(summary.netPnl)}원`, color: summary.netPnl >= 0 ? "text-green-400" : "text-red-400" },
+                { label: "롤링", val: `${krw(summary.totalRollingAccum)} / ${krw(summary.totalRollingReq)}`, color: "text-amber-300" },
+                { label: "롤링충족", val: `${summary.rollingPct}%`, color: summary.rollingPct >= 100 ? "text-green-400" : "text-amber-400" },
+                { label: "포인트 합계", val: `${krw(summary.totalPoints)}P`, color: "text-violet-300" },
               ].map((item) => (
                 <div key={item.label} className="bg-zinc-950 px-3 py-2 text-center">
                   <p className="text-[10px] text-zinc-600">{item.label}</p>
@@ -244,11 +262,11 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
           <div className="flex gap-1 px-3 py-2 border-b border-zinc-800 overflow-x-auto">
             {(["ledger", "requests", "usdt", "rolling", "points"] as const).map((t) => {
               const labels: Record<string, string> = {
-                ledger: `원장(${u.ledger.length})`,
-                requests: `입출금신청(${u.walletRequests.length})`,
-                usdt: `USDT TX(${u.usdtTxs.length})`,
-                rolling: `롤링(${u.rolling.length})`,
-                points: `포인트(${u.points.length})`,
+                ledger: `원장(${ledger.length})`,
+                requests: `입출금신청(${walletRequests.length})`,
+                usdt: `USDT TX(${usdtTxs.length})`,
+                rolling: `롤링(${rolling.length})`,
+                points: `포인트(${points.length})`,
               };
               return (
                 <button
@@ -270,7 +288,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
           {/* 탭 내용 */}
           <div className="overflow-x-auto max-h-64 overflow-y-auto">
             {tab === "ledger" && (
-              u.ledger.length === 0 ? <EmptyMsg /> :
+              ledger.length === 0 ? <EmptyMsg /> :
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-zinc-900">
                   <tr className="text-zinc-500">
@@ -278,7 +296,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                   </tr>
                 </thead>
                 <tbody>
-                  {u.ledger.map((l) => (
+                  {ledger.map((l) => (
                     <tr key={l.id} className="border-t border-zinc-900 hover:bg-zinc-900/50">
                       <Td>{dt(l.createdAt)}</Td>
                       <Td>
@@ -292,8 +310,8 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                       </Td>
                       <Td className="text-zinc-300">{l.betAmount > 0 ? `${krw(l.betAmount)}원` : "-"}</Td>
                       <Td className={l.winAmount > 0 ? "text-emerald-300" : "text-zinc-600"}>{l.winAmount > 0 ? `+${krw(l.winAmount)}원` : "-"}</Td>
-                      <Td className={l.netResult >= 0 ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
-                        {l.netResult >= 0 ? "+" : ""}{krw(l.netResult)}원
+                      <Td className={(l.netResult ?? 0) >= 0 ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
+                        {(l.netResult ?? 0) >= 0 ? "+" : ""}{krw(l.netResult)}원
                       </Td>
                       <Td className="font-mono">{krw(l.balanceAfter)}원</Td>
                     </tr>
@@ -303,7 +321,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
             )}
 
             {tab === "requests" && (
-              u.walletRequests.length === 0 ? <EmptyMsg /> :
+              walletRequests.length === 0 ? <EmptyMsg /> :
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-zinc-900">
                   <tr className="text-zinc-500">
@@ -311,7 +329,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                   </tr>
                 </thead>
                 <tbody>
-                  {u.walletRequests.map((r) => (
+                  {walletRequests.map((r) => (
                     <tr key={r.id} className="border-t border-zinc-900 hover:bg-zinc-900/50">
                       <Td>{dt(r.createdAt)}</Td>
                       <Td><span className={typeColor(r.type)}>{r.type}</span></Td>
@@ -331,7 +349,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
             )}
 
             {tab === "usdt" && (
-              u.usdtTxs.length === 0 ? <EmptyMsg /> :
+              usdtTxs.length === 0 ? <EmptyMsg /> :
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-zinc-900">
                   <tr className="text-zinc-500">
@@ -339,7 +357,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                   </tr>
                 </thead>
                 <tbody>
-                  {u.usdtTxs.map((t) => (
+                  {usdtTxs.map((t) => (
                     <tr key={t.id} className="border-t border-zinc-900 hover:bg-zinc-900/50">
                       <Td>{dt(t.createdAt)}</Td>
                       <Td className="font-mono text-zinc-500 truncate max-w-[120px]">{t.txHash}</Td>
@@ -358,7 +376,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
             )}
 
             {tab === "rolling" && (
-              u.rolling.length === 0 ? <EmptyMsg /> :
+              rolling.length === 0 ? <EmptyMsg /> :
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-zinc-900">
                   <tr className="text-zinc-500">
@@ -366,7 +384,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                   </tr>
                 </thead>
                 <tbody>
-                  {u.rolling.map((r) => {
+                  {rolling.map((r) => {
                     const pct = r.required > 0 ? Math.round((r.accumulated / r.required) * 100) : 0;
                     return (
                       <tr key={r.id} className="border-t border-zinc-900 hover:bg-zinc-900/50">
@@ -397,7 +415,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
             )}
 
             {tab === "points" && (
-              u.points.length === 0 ? <EmptyMsg /> :
+              points.length === 0 ? <EmptyMsg /> :
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-zinc-900">
                   <tr className="text-zinc-500">
@@ -405,11 +423,11 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                   </tr>
                 </thead>
                 <tbody>
-                  {u.points.map((p) => (
+                  {points.map((p) => (
                     <tr key={p.id} className="border-t border-zinc-900 hover:bg-zinc-900/50">
                       <Td>{dt(p.createdAt)}</Td>
-                      <Td className={p.delta >= 0 ? "text-violet-300" : "text-red-300"}>
-                        {p.delta >= 0 ? "+" : ""}{krw(p.delta)}P
+                      <Td className={(p.delta ?? 0) >= 0 ? "text-violet-300" : "text-red-300"}>
+                        {(p.delta ?? 0) >= 0 ? "+" : ""}{krw(p.delta)}P
                       </Td>
                       <Td className="text-zinc-500">{p.reason ?? "-"}</Td>
                     </tr>
@@ -452,7 +470,11 @@ function AccountSection({ title, users, defaultOpen }: { title: string; users: U
 // ─── 메인 페이지 ─────────────────────────────────────────────
 export default function TestScenarioPage() {
   const { selectedPlatformId } = usePlatform();
-  const userRole = getStoredUser()?.role;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const userRole = mounted ? getStoredUser()?.role : undefined;
   const [fromStep, setFromStep] = useState(1);
   const [toStep, setToStep] = useState(4);
   const [currencies, setCurrencies] = useState<("KRW" | "USDT")[]>(["KRW", "USDT"]);
@@ -537,6 +559,14 @@ export default function TestScenarioPage() {
       setCleanupLoading(false);
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="flex h-full min-h-[40vh] items-center justify-center text-sm text-zinc-500">
+        불러오는 중…
+      </div>
+    );
+  }
 
   if (userRole !== "SUPER_ADMIN") {
     return (

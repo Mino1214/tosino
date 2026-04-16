@@ -54,9 +54,10 @@ function initialSelectedPlatformId(): string | null {
 
 export function PlatformProvider({ children }: { children: React.ReactNode }) {
   const [platforms, setPlatforms] = useState<PlatformRow[]>([]);
+  // SSR·첫 클라이언트 페인트를 동일하게 유지 (sessionStorage / localStorage는 useEffect 이후에 반영)
   const [selectedPlatformId, setSelectedPlatformIdState] = useState<
     string | null
-  >(initialSelectedPlatformId);
+  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,7 +109,11 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
   }, [applySelection]);
 
   useEffect(() => {
-    refresh();
+    setSelectedPlatformIdState(initialSelectedPlatformId());
+  }, []);
+
+  useEffect(() => {
+    void refresh();
   }, [refresh]);
 
   const setSelectedPlatformId = useCallback((id: string | null) => {
