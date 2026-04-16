@@ -2,7 +2,7 @@
 export function userRoleLabelKo(role: string | undefined | null): string {
   switch (role) {
     case "SUPER_ADMIN":
-      return "슈퍼 관리자";
+      return "본사 총괄";
     case "PLATFORM_ADMIN":
       return "플랫폼 관리자";
     case "MASTER_AGENT":

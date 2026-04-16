@@ -324,9 +324,11 @@ export default function SalesPage() {
     <div className="space-y-5 px-1">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-zinc-100">매출 현황</h1>
+          <h1 className="text-xl font-bold text-zinc-100">전체 매출 / 정산</h1>
           <p className="mt-1 text-xs text-zinc-500">
-            현금 순이익은 총판 정산과 실제 머니 지급을 차감한 값이고, 정책상 추정 순이익은 포인트 발행·콤프까지 당기 비용으로 가정한 참고값입니다.
+            선택한 솔루션의 현금 흐름, 총판 정산, 상위 알 원가, 플랫폼 청구액과
+            본사 마진을 함께 봅니다. 본사 총괄 대시보드의 drill-down 화면으로
+            생각하면 됩니다.
           </p>
         </div>
         {/* 기간 필터 */}

@@ -677,10 +677,11 @@ export default function ConsoleOperationalPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">운영 설정</h1>
+        <h1 className="text-2xl font-semibold text-zinc-100">알값 관리</h1>
         <p className="mt-2 text-sm text-zinc-500">
-          롤링, 콤프, 포인트 정책을 탭으로 나눠서 관리합니다. 기존 값은 유지한 채
-          폼으로 저장되고, 포인트 적립 규칙은 아래 미리보기 JSON에도 같이 반영됩니다.
+          본사 기준으로 솔루션별 롤링, 콤프, 포인트 정책과 상위업체 알값을 함께
+          관리합니다. 저장한 값은 해당 솔루션의 solution-admin 운영 화면에도 그대로
+          반영됩니다.
         </p>
       </div>
 

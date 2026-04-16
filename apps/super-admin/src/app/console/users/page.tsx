@@ -472,7 +472,13 @@ export default function ConsoleUsersPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold text-zinc-100">유저</h1>
+      <div>
+        <h1 className="text-2xl font-semibold text-zinc-100">운영 계정 · 회원</h1>
+        <p className="mt-2 text-sm text-zinc-500">
+          solution-admin, 총판, 회원까지 한 솔루션의 계정 구조를 본사에서 직접
+          관리합니다. 플랫폼 관리자 계정 생성과 총판 구조 점검도 여기서 처리합니다.
+        </p>
+      </div>
 
       {/* 비율 막대 (총판 vs 일반 유저) */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">

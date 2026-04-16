@@ -38,24 +38,24 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         >
           <nav className="flex min-w-0 flex-wrap items-center gap-3 text-sm md:gap-4">
             <Link
-              href="/console/users"
+              href="/console"
               className="shrink-0 font-semibold text-amber-400"
             >
-              Super Admin
+              Super Admin HQ
             </Link>
             {!isConsole && (
               <>
                 <Link
-                  href="/console/users"
+                  href="/console"
                   className="text-zinc-400 hover:text-zinc-100"
                 >
-                  콘솔
+                  대시보드
                 </Link>
                 <Link
                   href="/console/platforms"
                   className="text-zinc-400 hover:text-zinc-100"
                 >
-                  플랫폼
+                  솔루션
                 </Link>
               </>
             )}

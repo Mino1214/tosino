@@ -5,72 +5,93 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, clearSession, getAccessToken, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
-import { useAdminConsoleMode } from "@/context/AdminConsoleModeContext";
+import { inferRootHost } from "@/lib/platform-hosts";
 
-/** 테마·플랫폼 관리·서버상태는 슈퍼관리자 통합 후 재추가 예정 */
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  hint: string;
+  badgeType?: "registrations" | "inquiries";
+};
+
+const NAV_PRIMARY: NavItem[] = [
+  {
+    href: "/console",
+    label: "본사 대시보드",
+    hint: "전체 솔루션 통합 매출과 본사 순마진",
+  },
+  {
+    href: "/console/platforms",
+    label: "솔루션 관리",
+    hint: "도메인 · 상태 · 운영 진입점",
+  },
+  {
+    href: "/console/operational",
+    label: "알값 관리",
+    hint: "상위 알 · 자동 마진 · 플랫폼 정책",
+  },
   {
     href: "/console/sales",
-    label: "매출 현황",
-    hint: "낙첨금 · 비용 · 순이익",
+    label: "전체 매출 / 정산",
+    hint: "청구 · 원가 · 정산 원장",
+  },
+  {
+    href: "/console/assets",
+    label: "자산 관리",
+    hint: "반가상 · 테더 · 입출금 운영 허브",
   },
   {
     href: "/console/users",
-    label: "유저",
-    hint: "계정 · 총판 · 추천코드",
+    label: "운영 계정 · 회원",
+    hint: "solution-admin · 총판 · 회원 계정",
+  },
+] as const;
+
+const NAV_OPERATIONS: NavItem[] = [
+  {
+    href: "/console/wallet-requests",
+    label: "입출금 운영",
+    hint: "충전 · 환전 승인",
   },
   {
     href: "/console/registrations",
     label: "가입 승인",
-    hint: "대기 회원 처리",
+    hint: "솔루션별 승인 대기 회원",
+    badgeType: "registrations",
   },
   {
     href: "/console/agent-inquiries",
-    label: "총판 문의",
-    hint: "1:1 문의 · 답변",
-  },
-  {
-    href: "/console/wallet-requests",
-    label: "입·출금",
-    hint: "충전·출금 요청",
-  },
-  {
-    href: "/console/operational",
-    label: "운영 설정",
-    hint: "롤링 · 콤프 · 포인트",
+    label: "에이전트 문의",
+    hint: "총판 1:1 문의와 미답변 현황",
+    badgeType: "inquiries",
   },
   {
     href: "/console/deposit-events",
-    label: "입금 이벤트",
-    hint: "첫충 · 기간한정 · 보너스 구간",
+    label: "보너스 / 이벤트",
+    hint: "첫충 · 구간 보너스 · 캠페인",
   },
   {
     href: "/console/announcements",
     label: "공지 팝업",
-    hint: "모바일 이미지 최대 4장",
+    hint: "솔루션 공지와 팝업 이미지",
   },
 ] as const;
 
-const NAV_SEMI = [
+const NAV_SYSTEM: NavItem[] = [
   {
-    href: "/console/semi/settings",
-    label: "반가상 설정",
-    hint: "수신 번호·계좌 힌트",
+    href: "/console/theme",
+    label: "솔루션 테마",
+    hint: "메인 UI · 배너 · 브랜딩",
   },
   {
-    href: "/console/semi/sms-log",
-    label: "SMS 로그",
-    hint: "은행 문자 처리 기록",
+    href: "/console/sync",
+    label: "도메인 / 배포",
+    hint: "서버 상태 · 연동 체크",
   },
   {
-    href: "/console/semi/usdt-deposits",
-    label: "USDT 입금",
-    hint: "온체인 입금 감지·수동승인",
-  },
-  {
-    href: "/console/wallet-requests",
-    label: "입·출금",
-    hint: "대기 건 · 수동 승인",
+    href: "/console/test-scenario",
+    label: "테스트 시나리오",
+    hint: "내부 점검용 전체 플로우",
   },
 ] as const;
 
@@ -153,10 +174,7 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
     loading,
     error,
   } = usePlatform();
-  const { mode, setMode } = useAdminConsoleMode();
   const userRole = getStoredUser()?.role;
-  const isSuperAdmin = userRole === "SUPER_ADMIN";
-  const navItems = mode === "semiVirtual" ? NAV_SEMI : NAV;
 
   const selected = platforms.find((p) => p.id === selectedPlatformId);
 
@@ -172,24 +190,16 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
   }, [router, userRole]);
 
   useEffect(() => {
-    if (!isSuperAdmin && mode !== "standard") {
-      setMode("standard");
-    }
-  }, [isSuperAdmin, mode, setMode]);
-
-  useEffect(() => {
     setMobileNavOpen(false);
   }, [pathname]);
 
-  const canSeeRegistrations =
-    userRole === "SUPER_ADMIN" || userRole === "PLATFORM_ADMIN";
+  const canSeeRegistrations = userRole === "SUPER_ADMIN";
 
   useEffect(() => {
     if (
       !canSeeRegistrations ||
       !selectedPlatformId ||
-      !getAccessToken() ||
-      mode === "semiVirtual"
+      !getAccessToken()
     ) {
       setRegPendingSummary(null);
       return;
@@ -207,14 +217,13 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedPlatformId, canSeeRegistrations, mode, pathname]);
+  }, [selectedPlatformId, canSeeRegistrations, pathname]);
 
   useEffect(() => {
     if (
       !canSeeRegistrations ||
       !selectedPlatformId ||
-      !getAccessToken() ||
-      mode === "semiVirtual"
+      !getAccessToken()
     ) {
       setInqPendingSummary(null);
       return;
@@ -232,145 +241,116 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedPlatformId, canSeeRegistrations, mode, pathname]);
+  }, [selectedPlatformId, canSeeRegistrations, pathname]);
+
+  function renderNavItem(item: NavItem) {
+    const active = isActive(pathname, item.href);
+    const regTotal = item.badgeType === "registrations" ? regPendingSummary?.total ?? 0 : 0;
+    const inqTotal = item.badgeType === "inquiries" ? inqPendingSummary?.total ?? 0 : 0;
+    const regBreakdown =
+      item.badgeType === "registrations" &&
+      regPendingSummary &&
+      regPendingSummary.total > 0
+        ? regPendingSummary.groups
+            .map((g) =>
+              g.referralCode ? `${g.referralCode} ${g.count}명` : `${g.label} ${g.count}명`,
+            )
+            .join(" · ")
+        : null;
+    const inqBreakdown =
+      item.badgeType === "inquiries" && inqPendingSummary && inqPendingSummary.total > 0
+        ? inqPendingSummary.groups
+            .map((g) =>
+              g.referralCode ? `${g.referralCode} ${g.count}건` : `${g.label} ${g.count}건`,
+            )
+            .join(" · ")
+        : null;
+    const badgeTotal =
+      item.badgeType === "registrations"
+        ? regTotal
+        : item.badgeType === "inquiries"
+          ? inqTotal
+          : 0;
+    const badgeTitle =
+      item.badgeType === "registrations"
+        ? regBreakdown ?? ""
+        : item.badgeType === "inquiries"
+          ? inqBreakdown ?? ""
+          : "";
+    const hintLine =
+      item.badgeType === "registrations" && regBreakdown
+        ? `대기 ${regTotal}건 · ${regBreakdown}`
+        : item.badgeType === "inquiries" && inqBreakdown
+          ? `미답변 ${inqTotal}건 · ${inqBreakdown}`
+          : item.hint;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`block rounded-lg px-3 py-2.5 transition ${
+          active
+            ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
+            : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
+        }`}
+      >
+        <span className="flex items-center gap-2 text-sm font-medium">
+          {item.label}
+          {badgeTotal > 0 && (
+            <span
+              className="min-w-[1.25rem] rounded-full bg-amber-600 px-1.5 py-0.5 text-center text-[10px] font-bold text-zinc-950"
+              title={badgeTitle}
+            >
+              {badgeTotal > 99 ? "99+" : badgeTotal}
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 block line-clamp-2 text-[11px] leading-tight text-zinc-500">
+          {hintLine}
+        </span>
+      </Link>
+    );
+  }
 
   const sidebar = (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      {/* 플랫폼 정보 (선택 없이 표시만) */}
       <div className="border-b border-zinc-800/80 p-4">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          플랫폼
+          선택 솔루션
         </p>
         {selected ? (
-          <p className="mt-2 truncate text-sm font-medium text-zinc-100">
-            {selected.name}
-            <span className="ml-2 text-xs text-zinc-600">{selected.slug}</span>
-          </p>
+          <>
+            <p className="mt-2 truncate text-sm font-medium text-zinc-100">
+              {selected.name}
+              <span className="ml-2 text-xs text-zinc-600">{selected.slug}</span>
+            </p>
+            <p className="mt-1 truncate font-mono text-[11px] text-zinc-500">
+              {inferRootHost(selected) ?? "도메인 미지정"}
+            </p>
+          </>
         ) : loading ? (
           <p className="mt-2 text-xs text-zinc-600">로딩 중…</p>
         ) : (
-          <p className="mt-2 text-xs text-zinc-600">플랫폼 없음</p>
+          <p className="mt-2 text-xs text-zinc-600">선택된 솔루션 없음</p>
         )}
-
-        {isSuperAdmin && (
-          <div className="mt-3 flex gap-0.5 rounded-lg bg-zinc-950 p-0.5 ring-1 ring-zinc-800">
-            <button
-              type="button"
-              onClick={() => setMode("standard")}
-              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
-                mode === "standard"
-                  ? "bg-zinc-800 text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              플랫폼
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("semiVirtual")}
-              className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
-                mode === "semiVirtual"
-                  ? "bg-violet-950/80 text-violet-200 ring-1 ring-violet-800/60"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              반가상
-            </button>
-          </div>
-        )}
+        <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">
+          본사 총괄 메뉴는 모든 솔루션을 기준으로 보이고, 선택된 솔루션은 상세
+          운영 화면에서 바로 이어집니다.
+        </p>
       </div>
 
       <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-3">
         <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-          {mode === "semiVirtual" ? "반가상 메뉴" : "메뉴"}
+          본사 총괄
         </p>
-        {isSuperAdmin && (
-          <>
-            <p className="mb-1 mt-4 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-              슈퍼관리자
-            </p>
-            <Link
-              href="/console/test-scenario"
-              className={`block rounded-lg px-3 py-2.5 transition ${
-                isActive(pathname, "/console/test-scenario")
-                  ? "bg-violet-600/20 text-violet-200 ring-1 ring-violet-600/40"
-                  : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
-              }`}
-            >
-              <span className="flex items-center gap-2 text-sm font-medium">
-                🧪 테스트 시나리오
-              </span>
-              <span className="mt-0.5 block text-[11px] text-zinc-500">
-                단계별 전체 플로우 테스트
-              </span>
-            </Link>
-          </>
-        )}
-        {navItems.map((item) => {
-          const active = isActive(pathname, item.href);
-          const isReg = item.href === "/console/registrations";
-          const isInq = item.href === "/console/agent-inquiries";
-          const regTotal = isReg ? regPendingSummary?.total ?? 0 : 0;
-          const inqTotal = isInq ? inqPendingSummary?.total ?? 0 : 0;
-          const regBreakdown =
-            isReg && regPendingSummary && regPendingSummary.total > 0
-              ? regPendingSummary.groups
-                  .map((g) =>
-                    g.referralCode
-                      ? `${g.referralCode} ${g.count}명`
-                      : `${g.label} ${g.count}명`,
-                  )
-                  .join(" · ")
-              : null;
-          const inqBreakdown =
-            isInq && inqPendingSummary && inqPendingSummary.total > 0
-              ? inqPendingSummary.groups
-                  .map((g) =>
-                    g.referralCode
-                      ? `${g.referralCode} ${g.count}건`
-                      : `${g.label} ${g.count}건`,
-                  )
-                  .join(" · ")
-              : null;
-          const badgeTotal = isReg ? regTotal : isInq ? inqTotal : 0;
-          const badgeTitle = isReg
-            ? (regBreakdown ?? "")
-            : isInq
-              ? (inqBreakdown ?? "")
-              : "";
-          const hintLine =
-            isReg && regBreakdown
-              ? `대기 ${regTotal}건 · ${regBreakdown}`
-              : isInq && inqBreakdown
-                ? `미답변 ${inqTotal}건 · ${inqBreakdown}`
-                : item.hint;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`block rounded-lg px-3 py-2.5 transition ${
-                active
-                  ? "bg-amber-600/15 text-amber-200 ring-1 ring-amber-600/40"
-                  : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
-              }`}
-            >
-              <span className="flex items-center gap-2 text-sm font-medium">
-                {item.label}
-                {badgeTotal > 0 && (
-                  <span
-                    className="min-w-[1.25rem] rounded-full bg-amber-600 px-1.5 py-0.5 text-center text-[10px] font-bold text-zinc-950"
-                    title={badgeTitle}
-                  >
-                    {badgeTotal > 99 ? "99+" : badgeTotal}
-                  </span>
-                )}
-              </span>
-              <span className="mt-0.5 block line-clamp-2 text-[11px] leading-tight text-zinc-500">
-                {hintLine}
-              </span>
-            </Link>
-          );
-        })}
+        {NAV_PRIMARY.map(renderNavItem)}
+        <p className="mb-2 mt-5 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+          운영 도구
+        </p>
+        {NAV_OPERATIONS.map(renderNavItem)}
+        <p className="mb-2 mt-5 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+          시스템
+        </p>
+        {NAV_SYSTEM.map(renderNavItem)}
       </nav>
     </div>
   );
@@ -391,10 +371,10 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
           </button>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs text-zinc-500">
-              {mode === "semiVirtual" ? "반가상" : "플랫폼"}
+              Head Office
             </p>
             <p className="truncate text-sm font-medium text-zinc-200">
-              {selected?.name ?? "선택 필요"}
+              {selected?.name ?? "전체 솔루션"}
             </p>
           </div>
         </div>
@@ -439,11 +419,11 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
           )}
           {!loading && platforms.length > 0 && !selectedPlatformId && (
             <div className="shrink-0 border-b border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
-              플랫폼을 불러오는 중입니다…
+              선택된 솔루션이 없어서 총괄 화면 기준으로 표시됩니다.
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
-            <div className="mx-auto max-w-6xl">{children}</div>
+            <div className="mx-auto max-w-[92rem]">{children}</div>
           </div>
         </div>
       </div>
