@@ -9,6 +9,16 @@ import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+const DEFAULT_PLATFORM_HOSTS = [
+  'localhost',
+  '127.0.0.1',
+  'i-on.bet',
+  'www.i-on.bet',
+  'user.i-on.bet',
+  'mod.i-on.bet',
+  'agent.i-on.bet',
+];
+
 /** 모든 데모 계정 공통 비밀번호 */
 const DEMO_PASSWORD = 'Admin123!';
 
@@ -708,7 +718,9 @@ async function main() {
   }
 
   const extraHosts =
-    process.env.SEED_PLATFORM_HOSTS || process.env.SEED_DEMO_PLATFORM_HOSTS;
+    process.env.SEED_PLATFORM_HOSTS ||
+    process.env.SEED_DEMO_PLATFORM_HOSTS ||
+    DEFAULT_PLATFORM_HOSTS.join(',');
   await ensureHostsOnPlatform(platform.id, extraHosts);
 
   await ensureDemoSportsBroadcastSnapshots(platform.id);

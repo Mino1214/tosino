@@ -22,6 +22,7 @@
     "db:migrate": "pnpm --filter @tosino/api exec prisma migrate dev",
     "db:push": "pnpm --filter @tosino/api exec prisma db push",
     "db:seed": "pnpm --filter @tosino/api exec prisma db seed",
+    "db:seed:hosts": "SEED_PLATFORM_HOSTS=i-on.bet,www.i-on.bet,user.i-on.bet,mod.i-on.bet,agent.i-on.bet pnpm db:seed",
     "db:migrate:deploy": "pnpm --filter @tosino/api exec prisma migrate deploy",
     "db:up": "bash scripts/db-up.sh",
     "db:down": "bash scripts/db-down.sh",
@@ -37,12 +38,12 @@
     "dev:agent-web": "pnpm run dev:solution-agent",
     "build:web": "turbo run build --filter=super-admin --filter=solution-admin --filter=solution-user --filter=solution-agent",
     "build:apps": "pnpm db:generate && turbo run build --filter=@tosino/api --filter=super-admin --filter=solution-admin --filter=solution-user --filter=solution-agent --filter=@tosino/sms-ingest",
-    "deploy:web": "pnpm install && pnpm build:web && pm2 reload ecosystem.config.js --only super-admin,solution-admin,solution-user,solution-agent",
+    "deploy:web": "pnpm install && pnpm build:web && pnpm db:seed:hosts && pm2 reload ecosystem.config.js --only super-admin,solution-admin,solution-user,solution-agent",
     "deploy:api": "pnpm install && pnpm --filter @tosino/api build && pm2 reload ecosystem.config.js --only api",
     "deploy:sms-ingest": "bash scripts/deploy-sms-ingest.sh",
     "pm2:start:sms-ingest": "pm2 start ecosystem.config.js --only sms-ingest",
     "deploy:api:migrate": "pnpm install && pnpm db:migrate:deploy && pnpm db:generate && pnpm --filter @tosino/api build && pm2 reload ecosystem.config.js --only api",
-    "deploy:all": "pnpm install && pnpm build:apps && pm2 reload ecosystem.config.js",
+    "deploy:all": "pnpm install && pnpm build:apps && pnpm db:seed:hosts && pm2 reload ecosystem.config.js",
     "deploy:server": "bash scripts/deploy-prod-nexus.sh",
     "deploy:nginx": "bash scripts/deploy-nginx.sh",
     "pm2:start": "pm2 start ecosystem.config.js",
@@ -71,7 +72,7 @@
     "vinus:callback-smoke": "pnpm --filter @tosino/api run vinus:callback-smoke",
     "vinus:flows-smoke": "pnpm --filter @tosino/api run vinus:flows-smoke",
     "nginx:enable": "echo 'nginx: scripts/nginx-migrate-to-tosino.sh | scripts/nginx-quick-https-selfsigned.sh | 점검: scripts/nginx-doctor.sh'",
-    "deploy:all:tunnel": "pnpm install && pnpm build:apps && pm2 reload ecosystem.config.js"
+    "deploy:all:tunnel": "pnpm install && pnpm build:apps && pnpm db:seed:hosts && pm2 reload ecosystem.config.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

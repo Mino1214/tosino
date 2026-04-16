@@ -5,6 +5,9 @@
 # ── 도메인 → 서비스 매핑 ────────────────────────────────────
 #   apisgate.org           → API (NestJS :4001) + sms-ingest (:4050)
 #   mod.tozinosolution.com → super-admin   :3000
+#   mod.tozinosoltion.com  → super-admin   :3000
+#   tozinosolution.com     → super-admin   :3000
+#   user.i-on.bet          → solution-user :3002
 #   i-on.bet               → solution-user :3002
 #   www.i-on.bet           → solution-user :3002
 #   mod.i-on.bet           → solution-admin:3001
@@ -37,9 +40,18 @@ ingress:
   - hostname: mod.tozinosolution.com
     service: http://localhost:3000
 
+  - hostname: mod.tozinosoltion.com
+    service: http://localhost:3000
+
+  - hostname: tozinosolution.com
+    service: http://localhost:3000
+
   # ══════════════════════════════════════════════════
-  # i-on.bet — 솔루션 메인 (solution-user :3002)
+  # solution-user (3002)
   # ══════════════════════════════════════════════════
+  - hostname: user.i-on.bet
+    service: http://localhost:3002
+
   - hostname: i-on.bet
     service: http://localhost:3002
 
