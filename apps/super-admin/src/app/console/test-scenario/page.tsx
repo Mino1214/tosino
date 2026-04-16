@@ -103,6 +103,7 @@ const STEPS = [
   { step: 6, name: "COMP_POINTS", emoji: "🎁", desc: "테스트 유저 전체에 500포인트 일괄지급" },
   { step: 7, name: "WITHDRAWAL_REQUEST", emoji: "📤", desc: "출금신청 (잔액 80%, KRW/USDT 각각)" },
   { step: 8, name: "WITHDRAWAL_APPROVE", emoji: "💸", desc: "출금승인 + 업비트 시세 기준 USDT 환산금액 표기" },
+  { step: 9, name: "AGENT_SETTLEMENT", emoji: "🏦", desc: "총판 정산 시뮬(다운라인 승인 입금−출금 × 실효요율 → 총판 지갑 반영)" },
 ];
 
 // ─── 유틸 ───────────────────────────────────────────────────
@@ -139,12 +140,22 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
 
   const isAgent = u.role === "MASTER_AGENT";
 
+  const toggleOpen = () => setOpen((o) => !o);
+
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-      {/* 헤더 */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-900 transition"
+      {/* 헤더: <button> 대신 role="button" — 레이아웃/포커스 경계에서 클릭이 먹지 않는 경우 방지 */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={toggleOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleOpen();
+          }
+        }}
+        className="w-full flex cursor-pointer items-center gap-3 px-4 py-3 text-left outline-none transition hover:bg-zinc-900 focus-visible:ring-2 focus-visible:ring-amber-600/40"
       >
         <span className="text-lg">{isAgent ? "👤" : u.signupMode === "anonymous" ? "₿" : "🙋"}</span>
         <div className="flex-1 min-w-0">
@@ -182,7 +193,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
           </div>
         </div>
         <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
-      </button>
+      </div>
 
       {open && (
         <div className="border-t border-zinc-800">
@@ -217,6 +228,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
               };
               return (
                 <button
+                  type="button"
                   key={t}
                   onClick={() => setTab(t)}
                   className={`shrink-0 rounded px-2.5 py-1 text-[11px] font-medium transition ${
@@ -440,12 +452,16 @@ export default function TestScenarioPage() {
         `/test-scenario/state/detail?platformId=${selectedPlatformId}`
       );
       setDetail(data);
-    } catch {
+    } catch (e) {
       setDetail(null);
+      addLog(
+        "error",
+        `상세 조회 실패: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setDetailLoading(false);
     }
-  }, [selectedPlatformId]);
+  }, [selectedPlatformId, addLog]);
 
   useEffect(() => {
     loadDetail();
@@ -520,6 +536,7 @@ export default function TestScenarioPage() {
         <div className="mb-3 flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">실행 설정</p>
           <button
+            type="button"
             onClick={() => setShowSteps((v) => !v)}
             className="text-xs text-zinc-600 hover:text-zinc-400"
           >
@@ -550,9 +567,11 @@ export default function TestScenarioPage() {
             { label: "③ 카지노 플레이", from: 4, to: 4, color: "border-violet-700 text-violet-300 hover:border-violet-500", hint: "배팅 시뮬" },
             { label: "④ 롤링+콤프", from: 5, to: 6, color: "border-blue-700 text-blue-300 hover:border-blue-500", hint: "보상 지급" },
             { label: "⑤ 출금", from: 7, to: 8, color: "border-amber-700 text-amber-300 hover:border-amber-500", hint: "출금 처리" },
-            { label: "전체 (1→8)", from: 1, to: 8, color: "border-red-800 text-red-400 hover:border-red-600", hint: "완전 실행" },
+            { label: "⑥ 총판정산", from: 9, to: 9, color: "border-lime-700 text-lime-300 hover:border-lime-500", hint: "Step9만" },
+            { label: "전체 (1→9)", from: 1, to: 9, color: "border-red-800 text-red-400 hover:border-red-600", hint: "완전 실행" },
           ].map((p) => (
             <button
+              type="button"
               key={p.label}
               onClick={() => { setFromStep(p.from); setToStep(p.to); }}
               className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${fromStep === p.from && toStep === p.to ? p.color.replace("hover:", "").replace("border-", "border-2 border-") : `border-zinc-800 text-zinc-500 hover:${p.color.split(" ")[2]}`}`}
@@ -589,6 +608,7 @@ export default function TestScenarioPage() {
             <div className="flex gap-2">
               {(["KRW", "USDT"] as const).map((c) => (
                 <button
+                  type="button"
                   key={c}
                   onClick={() => toggleCurrency(c)}
                   className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${currencies.includes(c) ? "border-amber-600 bg-amber-600/20 text-amber-300" : "border-zinc-700 bg-zinc-950 text-zinc-500 hover:border-zinc-600"}`}
@@ -599,6 +619,7 @@ export default function TestScenarioPage() {
             </div>
           </div>
           <button
+            type="button"
             onClick={runScenario}
             disabled={loading || !selectedPlatformId}
             className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
@@ -616,7 +637,7 @@ export default function TestScenarioPage() {
         <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">실행 로그</p>
-            <button onClick={() => setLogs([])} className="text-xs text-zinc-600 hover:text-zinc-400">지우기</button>
+            <button type="button" onClick={() => setLogs([])} className="text-xs text-zinc-600 hover:text-zinc-400">지우기</button>
           </div>
           <div className="space-y-0.5 font-mono text-xs">
             {logs.map((l, i) => (
@@ -652,6 +673,7 @@ export default function TestScenarioPage() {
             )}
           </div>
           <button
+            type="button"
             onClick={loadDetail}
             disabled={detailLoading}
             className="text-xs text-zinc-500 hover:text-zinc-300"
@@ -689,6 +711,7 @@ export default function TestScenarioPage() {
             <code className="rounded bg-zinc-800 px-1 text-red-300">test_</code>로 시작하는 모든 테스트 유저 및 관련 데이터(원장, 입출금, 롤링, 포인트 등)를 전부 삭제합니다.
           </p>
           <button
+            type="button"
             onClick={runCleanup}
             disabled={cleanupLoading || !selectedPlatformId}
             className="shrink-0 rounded-lg border border-red-700 bg-red-900/30 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/60 disabled:cursor-not-allowed disabled:opacity-40"

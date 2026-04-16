@@ -23,7 +23,7 @@ export class TestScenarioController {
    * POST /api/test-scenario/run
    * 전체 시나리오 실행 (fromStep 지정 가능)
    *
-   * body: { fromStep: 1..8, platformId: string, currencies?: ("KRW"|"USDT")[] }
+   * body: { fromStep: 1..9, toStep?: 1..9, platformId: string, currencies?: ("KRW"|"USDT")[] }
    */
   @Post('run')
   async run(
@@ -31,14 +31,16 @@ export class TestScenarioController {
     @Body()
     dto: {
       fromStep?: number;
+      toStep?: number;
       platformId: string;
       currencies?: ('KRW' | 'USDT')[];
     },
   ) {
     this.assertAdmin(user);
-    const fromStep = Math.max(1, Math.min(8, dto.fromStep ?? 1));
+    const fromStep = Math.max(1, Math.min(9, dto.fromStep ?? 1));
+    const toStep = Math.max(fromStep, Math.min(9, dto.toStep ?? 9));
     const currencies = dto.currencies ?? ['KRW', 'USDT'];
-    return this.svc.run(fromStep, dto.platformId, currencies);
+    return this.svc.run(fromStep, toStep, dto.platformId, currencies);
   }
 
   /**
@@ -96,8 +98,14 @@ export class TestScenarioController {
         { step: 6, name: 'COMP_POINTS', desc: '테스트 유저 전체에 500포인트 일괄지급' },
         { step: 7, name: 'WITHDRAWAL_REQUEST', desc: '출금신청 (잔액 80%, KRW/USDT 각각)' },
         { step: 8, name: 'WITHDRAWAL_APPROVE', desc: '출금승인 + 업비트 시세 기준 USDT 환산금액 표기' },
+        {
+          step: 9,
+          name: 'AGENT_SETTLEMENT',
+          desc: '총판 정산 시뮬(다운라인 승인 입금−출금 × 실효요율 → 총판 지갑 ADJUSTMENT)',
+        },
       ],
-      usage: 'POST /api/test-scenario/run { "fromStep": 1, "platformId": "...", "currencies": ["KRW","USDT"] }',
+      usage:
+        'POST /api/test-scenario/run { "fromStep": 1, "toStep": 9, "platformId": "...", "currencies": ["KRW","USDT"] }',
       cleanup: 'DELETE /api/test-scenario/cleanup/:platformId',
     };
   }

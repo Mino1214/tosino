@@ -14,6 +14,7 @@ import { WalletRequestsService } from '../wallet-requests/wallet-requests.servic
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { PointsService } from '../points/points.service';
 import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
+import { computeEffectiveAgentShares } from '../common/agent-commission.util';
 
 const TAG = '[TEST]';
 const DEFAULT_PWD = 'Test1234!';
@@ -141,9 +142,16 @@ export class TestScenarioService {
   ) {}
 
   // ─── 메인 진입점 ─────────────────────────────────────────
-  async run(fromStep: number, platformId: string, currencies: ('KRW' | 'USDT')[]) {
+  async run(
+    fromStep: number,
+    toStep: number,
+    platformId: string,
+    currencies: ('KRW' | 'USDT')[],
+  ) {
     const results: StepResult[] = [];
-    const runStep = (n: number) => fromStep <= n;
+    const start = Math.max(1, Math.min(9, fromStep));
+    const end = Math.max(start, Math.min(9, toStep));
+    const runStep = (n: number) => start <= n && n <= end;
 
     // STEP 1: 테스트 데이터 셋업
     let state: ScenarioState;
@@ -208,6 +216,11 @@ export class TestScenarioService {
     // STEP 8: 출금 승인 (테더 환산 포함)
     if (runStep(8)) {
       results.push(await this.step8_withdrawalApprove(platformId));
+    }
+
+    // STEP 9: 총판 정산 시뮬 (매출 화면과 동일: 다운라인 승인 입금−출금 × 실효 요율)
+    if (runStep(9)) {
+      results.push(await this.step9_agentSettlement(platformId));
     }
 
     return { results, state };
@@ -807,6 +820,196 @@ export class TestScenarioService {
       return { step: 8, name: 'WITHDRAWAL_APPROVE', status: 'ok', data: { count: approved.length, usdtRate: rate.toFixed(2), approved } };
     } catch (e) {
       return { step: 8, name: 'WITHDRAWAL_APPROVE', status: 'error', error: String(e) };
+    }
+  }
+
+  /**
+   * 매출(청구) 화면의 총판 예상정산과 동일한 산식:
+   * 다운라인 회원 승인 입금 합 − 승인 출금 합 = houseEdge, 정산금 = houseEdge × 실효요율 / 100.
+   * (실제 운영 정산 배치가 아닌 QA용 지갑·원장 반영 시뮬레이션)
+   */
+  private async step9_agentSettlement(platformId: string): Promise<StepResult> {
+    try {
+      const agents = await this.prisma.user.findMany({
+        where: {
+          platformId,
+          role: UserRole.MASTER_AGENT,
+          loginId: { startsWith: 'test_' },
+        },
+        select: {
+          id: true,
+          loginId: true,
+          parentUserId: true,
+          agentPlatformSharePct: true,
+          agentSplitFromParentPct: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (agents.length === 0) {
+        return {
+          step: 9,
+          name: 'AGENT_SETTLEMENT',
+          status: 'skip',
+          data: { message: '테스트 총판 계정이 없습니다' },
+        };
+      }
+
+      const roleById = new Map<string, UserRole>(
+        agents.map((a) => [a.id, UserRole.MASTER_AGENT] as const),
+      );
+      const masters = agents.map((a) => ({
+        id: a.id,
+        parentUserId: a.parentUserId,
+        agentPlatformSharePct:
+          a.agentPlatformSharePct != null ? Number(a.agentPlatformSharePct) : null,
+        agentSplitFromParentPct:
+          a.agentSplitFromParentPct != null ? Number(a.agentSplitFromParentPct) : null,
+      }));
+      const effectiveMap = computeEffectiveAgentShares(masters, roleById);
+
+      const getDownlineUserIds = async (agentId: string): Promise<string[]> => {
+        const userIds: string[] = [];
+        const queue = [agentId];
+        while (queue.length > 0) {
+          const cur = queue.shift()!;
+          const ch = await this.prisma.user.findMany({
+            where: { platformId, parentUserId: cur },
+            select: { id: true, role: true },
+          });
+          for (const c of ch) {
+            if (c.role === UserRole.USER) userIds.push(c.id);
+            else if (c.role === UserRole.MASTER_AGENT) queue.push(c.id);
+          }
+        }
+        return userIds;
+      };
+
+      const payouts: unknown[] = [];
+
+      for (const agent of agents) {
+        const existing = await this.prisma.ledgerEntry.findFirst({
+          where: {
+            userId: agent.id,
+            platformId,
+            reference: { startsWith: 'testscenario:settlement:' },
+          },
+        });
+        if (existing) {
+          payouts.push({
+            agentId: agent.id,
+            loginId: agent.loginId,
+            status: 'already_settled',
+            reference: existing.reference,
+          });
+          continue;
+        }
+
+        const userIds = await getDownlineUserIds(agent.id);
+        if (userIds.length === 0) {
+          payouts.push({
+            agentId: agent.id,
+            loginId: agent.loginId,
+            status: 'no_downline',
+          });
+          continue;
+        }
+
+        const [depAgg, wdrAgg] = await Promise.all([
+          this.prisma.walletRequest.aggregate({
+            where: {
+              platformId,
+              userId: { in: userIds },
+              type: WalletRequestType.DEPOSIT,
+              status: WalletRequestStatus.APPROVED,
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletRequest.aggregate({
+            where: {
+              platformId,
+              userId: { in: userIds },
+              type: WalletRequestType.WITHDRAWAL,
+              status: WalletRequestStatus.APPROVED,
+            },
+            _sum: { amount: true },
+          }),
+        ]);
+
+        const dep = depAgg._sum.amount?.toNumber() ?? 0;
+        const wdr = wdrAgg._sum.amount?.toNumber() ?? 0;
+        const houseEdge = dep - wdr;
+        const effPct = effectiveMap.get(agent.id) ?? 0;
+        const settlementNum = (houseEdge * effPct) / 100;
+
+        if (!(settlementNum > 0)) {
+          payouts.push({
+            agentId: agent.id,
+            loginId: agent.loginId,
+            depositTotal: dep,
+            withdrawTotal: wdr,
+            houseEdge,
+            effectivePct: effPct,
+            settlement: settlementNum,
+            status: 'nothing_to_pay',
+          });
+          continue;
+        }
+
+        const amt = new Prisma.Decimal(settlementNum.toFixed(2));
+        const reference = `testscenario:settlement:${agent.id}`;
+
+        await this.prisma.$transaction(async (tx) => {
+          const wallet = await tx.wallet.findUnique({ where: { userId: agent.id } });
+          if (!wallet) throw new Error(`총판 지갑 없음: ${agent.loginId}`);
+          const nextBal = wallet.balance.plus(amt);
+          await tx.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: nextBal },
+          });
+          await tx.ledgerEntry.create({
+            data: {
+              userId: agent.id,
+              platformId,
+              type: LedgerEntryType.ADJUSTMENT,
+              amount: amt,
+              balanceAfter: nextBal,
+              reference,
+              metaJson: {
+                testScenarioAgentSettlement: true,
+                houseEdge: houseEdge.toFixed(2),
+                effectivePct: effPct,
+                depositTotal: dep.toFixed(2),
+                withdrawTotal: wdr.toFixed(2),
+              },
+            },
+          });
+        });
+
+        payouts.push({
+          agentId: agent.id,
+          loginId: agent.loginId,
+          depositTotal: dep,
+          withdrawTotal: wdr,
+          houseEdge,
+          effectivePct: effPct,
+          paid: settlementNum,
+          status: 'paid',
+        });
+      }
+
+      return {
+        step: 9,
+        name: 'AGENT_SETTLEMENT',
+        status: 'ok',
+        data: { payouts },
+      };
+    } catch (e) {
+      return {
+        step: 9,
+        name: 'AGENT_SETTLEMENT',
+        status: 'error',
+        error: String(e),
+      };
     }
   }
 
