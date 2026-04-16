@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type Row = {
@@ -88,6 +88,10 @@ export default function SemiSmsLogPage() {
   useEffect(() => {
     if (!getAccessToken()) {
       router.replace("/login");
+      return;
+    }
+    if (getStoredUser()?.role !== "SUPER_ADMIN") {
+      router.replace("/console/sales");
       return;
     }
     if (!selectedPlatformId || platformLoading) {

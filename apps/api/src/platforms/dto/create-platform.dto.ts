@@ -25,10 +25,19 @@ export class CreatePlatformDto {
   @IsObject()
   flagsJson?: Record<string, unknown>;
 
-  /** Initial domain host e.g. demo.localhost */
+  @IsOptional()
+  @IsString()
+  templateKey?: string;
+
+  /** Initial domain host e.g. brand-a.mod.tozinosolution.com */
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  primaryHost!: string;
+  primaryHost?: string;
+
+  @IsOptional()
+  @IsObject()
+  solutionRatePolicy?: Record<string, unknown>;
 
   /** 비우면 3200–3299 중 자동 할당 */
   @IsOptional()

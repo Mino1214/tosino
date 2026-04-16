@@ -64,6 +64,14 @@ export class UpdatePlatformOperationalDto {
   compPolicy?: Record<string, unknown>;
 
   @IsOptional()
+  @IsObject()
+  compAutomation?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsObject()
+  solutionRatePolicy?: Record<string, unknown>;
+
+  @IsOptional()
   @IsString()
   publicSignupCode?: string;
 

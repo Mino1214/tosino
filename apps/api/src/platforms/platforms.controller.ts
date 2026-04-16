@@ -22,7 +22,13 @@ import { UpdatePlatformThemeDto } from './dto/update-platform-theme.dto';
 import { UpdateSemiVirtualDto } from './dto/update-semi-virtual.dto';
 import { UpdatePlatformOperationalDto } from './dto/update-platform-operational.dto';
 import { GrantPlatformPointsDto } from './dto/grant-platform-points.dto';
+import { ExecuteCompSettlementDto, ListCompSettlementsDto } from './dto/execute-comp-settlement.dto';
+import {
+  ExecuteSolutionBillingDto,
+  ListSolutionBillingSettlementsDto,
+} from './dto/execute-solution-billing.dto';
 import { PointsService } from '../points/points.service';
+import { CompSettlementSchedulerService } from './comp-settlement-scheduler.service';
 
 @Controller('platforms')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -30,6 +36,7 @@ export class PlatformsController {
   constructor(
     private platforms: PlatformsService,
     private points: PointsService,
+    private readonly compSettlementScheduler: CompSettlementSchedulerService,
   ) {}
 
   @Get()
@@ -38,26 +45,36 @@ export class PlatformsController {
     return this.platforms.list(user);
   }
 
+  @Get('templates')
+  @Roles(UserRole.SUPER_ADMIN)
+  listTemplates() {
+    return this.platforms.listTemplates();
+  }
+
   @Post()
   @Roles(UserRole.SUPER_ADMIN)
-  create(@Body() dto: CreatePlatformDto) {
-    return this.platforms.create(dto);
+  async create(@Body() dto: CreatePlatformDto) {
+    const platform = await this.platforms.create(dto);
+    await this.compSettlementScheduler.syncPlatformSchedule(platform.id);
+    return platform;
   }
 
   /** 슈퍼관리자만. 쿼리 confirmSlug=플랫폼slug 로 오삭제 방지 */
   @Delete(':platformId')
   @Roles(UserRole.SUPER_ADMIN)
-  remove(
+  async remove(
     @Param('platformId') platformId: string,
     @Query('confirmSlug') confirmSlug: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.platforms.remove(platformId, confirmSlug, user);
+    const result = await this.platforms.remove(platformId, confirmSlug, user);
+    await this.compSettlementScheduler.clearPlatformSchedule(platformId);
+    return result;
   }
 
   @Get(':platformId/semi-virtual')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   getSemiVirtual(
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
@@ -67,7 +84,7 @@ export class PlatformsController {
 
   @Patch(':platformId/semi-virtual')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   updateSemiVirtual(
     @Param('platformId') platformId: string,
     @Body() dto: UpdateSemiVirtualDto,
@@ -78,7 +95,7 @@ export class PlatformsController {
 
   @Get(':platformId/bank-sms-ingests')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   listBankSms(
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
@@ -116,12 +133,14 @@ export class PlatformsController {
   @Patch(':platformId/operational')
   @UseGuards(PlatformScopeGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
-  updateOperational(
+  async updateOperational(
     @Param('platformId') platformId: string,
     @Body() dto: UpdatePlatformOperationalDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.platforms.updateOperational(platformId, user, dto);
+    const detail = await this.platforms.updateOperational(platformId, user, dto);
+    await this.compSettlementScheduler.syncPlatformSchedule(platformId);
+    return detail;
   }
 
   @Post(':platformId/points/grant-all')
@@ -134,6 +153,54 @@ export class PlatformsController {
   ) {
     this.platforms.assertPlatformScope(user, platformId);
     return this.points.grantAllForPlatform(platformId, dto.amount, dto.note);
+  }
+
+  @Get(':platformId/comp-settlements')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
+  listCompSettlements(
+    @Param('platformId') platformId: string,
+    @Query() query: ListCompSettlementsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.listCompSettlements(platformId, user, query.take);
+  }
+
+  @Post(':platformId/comp-settlements/run')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
+  runCompSettlement(
+    @Param('platformId') platformId: string,
+    @Body() dto: ExecuteCompSettlementDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.runCompSettlement(platformId, user, dto);
+  }
+
+  @Get(':platformId/solution-billing-settlements')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  listSolutionBillingSettlements(
+    @Param('platformId') platformId: string,
+    @Query() query: ListSolutionBillingSettlementsDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.listSolutionBillingSettlements(
+      platformId,
+      user,
+      query.take,
+    );
+  }
+
+  @Post(':platformId/solution-billing-settlements/run')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  runSolutionBillingSettlement(
+    @Param('platformId') platformId: string,
+    @Body() dto: ExecuteSolutionBillingDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.runSolutionBillingSettlement(platformId, user, dto);
   }
 
   // ─── 매출 현황 API ───────────────────────────────────────

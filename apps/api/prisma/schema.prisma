@@ -148,6 +148,8 @@ model Platform {
   sportsBetReservations SportsBetReservation[]
   rollingObligations   RollingObligation[]
   depositEvents        DepositEvent[]
+  compSettlements      CompSettlement[]
+  solutionBillingSettlements SolutionBillingSettlement[]
 }
 
 /// Vinus Gaming 게임 실행 시 회원 식별용(15~25자). 입장 시마다 재발급.
@@ -323,6 +325,56 @@ model PointLedgerEntry {
   @@index([platformId, userId])
 }
 
+model CompSettlement {
+  id                   String   @id @default(cuid())
+  platformId           String
+  platform             Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodFrom           DateTime
+  periodTo             DateTime
+  baseAmount           Decimal  @db.Decimal(18, 2)
+  ratePct              Decimal  @db.Decimal(7, 4)
+  amount               Decimal  @db.Decimal(18, 2)
+  settlementCycle      String   @db.VarChar(32)
+  settlementOffsetDays Int?
+  note                 String?
+  settledByUserId      String?
+  settledByLoginId     String?
+  ledgerReference      String?
+  createdAt            DateTime @default(now())
+
+  @@unique([platformId, userId, periodFrom, periodTo])
+  @@index([platformId, createdAt])
+  @@index([platformId, periodFrom, periodTo])
+  @@index([userId, createdAt])
+}
+
+model SolutionBillingSettlement {
+  id                 String   @id @default(cuid())
+  platformId         String
+  platform           Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  periodFrom         DateTime
+  periodTo           DateTime
+  casinoBaseGgr      Decimal  @db.Decimal(18, 2)
+  sportsBaseGgr      Decimal  @db.Decimal(18, 2)
+  upstreamCasinoPct  Decimal  @db.Decimal(7, 4)
+  upstreamSportsPct  Decimal  @db.Decimal(7, 4)
+  platformCasinoPct  Decimal  @db.Decimal(7, 4)
+  platformSportsPct  Decimal  @db.Decimal(7, 4)
+  upstreamCost       Decimal  @db.Decimal(18, 2)
+  platformCharge     Decimal  @db.Decimal(18, 2)
+  solutionMargin     Decimal  @db.Decimal(18, 2)
+  note               String?
+  settledByUserId    String?
+  settledByLoginId   String?
+  createdAt          DateTime @default(now())
+
+  @@unique([platformId, periodFrom, periodTo])
+  @@index([platformId, createdAt])
+  @@index([platformId, periodFrom, periodTo])
+}
+
 /// 업로드된 공지용 이미지 라이브러리(플랫폼별)
 model PlatformAnnouncementAsset {
   id           String   @id @default(cuid())
@@ -446,6 +498,7 @@ model User {
   pointLedgerEntries         PointLedgerEntry[]
   depositEventClaims         UserDepositEventClaim[]
   usdtDepositTxs             UsdtDepositTx[]
+  compSettlements            CompSettlement[]
 
   @@index([platformId])
   @@index([parentUserId])

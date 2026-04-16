@@ -9,6 +9,7 @@ import { UpdateSemiVirtualDto } from './dto/update-semi-virtual.dto';
 import {
   BankSmsIngestStatus,
   LedgerEntryType,
+  PointLedgerEntryType,
   Prisma,
   SyncJobType,
   UserRole,
@@ -20,14 +21,244 @@ import { CreatePlatformDto } from './dto/create-platform.dto';
 import { UpdateIntegrationsDto } from './dto/update-integrations.dto';
 import { UpdatePlatformThemeDto } from './dto/update-platform-theme.dto';
 import { UpdatePlatformOperationalDto } from './dto/update-platform-operational.dto';
+import { ExecuteCompSettlementDto } from './dto/execute-comp-settlement.dto';
 import { JwtPayload } from '../auth/auth.service';
 import { access, copyFile, cp, mkdir } from 'fs/promises';
 import { constants as FsConstants } from 'fs';
 import { dirname, join } from 'path';
+import { computeEffectiveAgentShares } from '../common/agent-commission.util';
+import {
+  buildDefaultPlatformHost,
+  getPlatformTemplatePreset,
+  listPlatformTemplatePresets,
+} from './platform-template.util';
 
 @Injectable()
 export class PlatformsService {
   constructor(private prisma: PrismaService) {}
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  }
+
+  private toValidDate(value: string, field: string): Date {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`${field} 날짜가 올바르지 않습니다.`);
+    }
+    return parsed;
+  }
+
+  private readCompPolicy(flagsJson: unknown) {
+    const flags = this.asRecord(flagsJson);
+    const compPolicy = this.asRecord(flags.compPolicy);
+    return {
+      enabled: compPolicy.enabled === true,
+      settlementCycle:
+        compPolicy.settlementCycle === 'DAILY_MIDNIGHT' ||
+        compPolicy.settlementCycle === 'BET_DAY_PLUS'
+          ? compPolicy.settlementCycle
+          : ('INSTANT' as const),
+      settlementOffsetDays:
+        typeof compPolicy.settlementOffsetDays === 'number' &&
+        Number.isFinite(compPolicy.settlementOffsetDays)
+          ? Math.max(0, Math.trunc(compPolicy.settlementOffsetDays))
+          : null,
+      ratePct:
+        typeof compPolicy.ratePct === 'string' ? compPolicy.ratePct : null,
+    };
+  }
+
+  private readCompAutomation(flagsJson: unknown) {
+    const flags = this.asRecord(flagsJson);
+    const automation = this.asRecord(flags.compAutomation);
+    const compPolicy = this.readCompPolicy(flagsJson);
+    const envCronRaw = (process.env.COMP_SETTLEMENT_CRON || '5 0 * * *').trim();
+    const fallbackCron = ['false', 'off', '0', 'disabled'].includes(
+      envCronRaw.toLowerCase(),
+    )
+      ? null
+      : envCronRaw;
+    const cronRaw =
+      typeof automation.cron === 'string' ? automation.cron.trim() : '';
+    const cron = cronRaw
+      ? ['false', 'off', '0', 'disabled'].includes(cronRaw.toLowerCase())
+        ? null
+        : cronRaw
+      : fallbackCron;
+
+    const envBackfillRaw = Number(
+      process.env.COMP_SETTLEMENT_BACKFILL_DAYS ?? '7',
+    );
+    const fallbackBackfill =
+      Number.isFinite(envBackfillRaw) && envBackfillRaw > 0
+        ? Math.min(31, Math.max(1, Math.trunc(envBackfillRaw)))
+        : 7;
+    const backfillRaw =
+      typeof automation.backfillDays === 'number'
+        ? automation.backfillDays
+        : Number(automation.backfillDays ?? fallbackBackfill);
+    const backfillDays =
+      Number.isFinite(backfillRaw) && backfillRaw > 0
+        ? Math.min(31, Math.max(1, Math.trunc(backfillRaw)))
+        : fallbackBackfill;
+
+    const autoEnabled =
+      typeof automation.autoEnabled === 'boolean'
+        ? automation.autoEnabled
+        : compPolicy.enabled &&
+          compPolicy.settlementCycle !== 'INSTANT' &&
+          Boolean(cron);
+
+    return {
+      autoEnabled,
+      cron,
+      backfillDays,
+    };
+  }
+
+  private normalizePctString(value: unknown): string | null {
+    const num =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number(value.trim())
+          : NaN;
+    if (!Number.isFinite(num) || num < 0) return null;
+    return Math.min(100, num).toFixed(2);
+  }
+
+  private readSolutionRatePolicy(flagsJson: unknown) {
+    const flags = this.asRecord(flagsJson);
+    const raw = this.asRecord(flags.solutionRatePolicy);
+    const upstreamCasinoPct = this.normalizePctString(raw.upstreamCasinoPct);
+    const upstreamSportsPct = this.normalizePctString(raw.upstreamSportsPct);
+    const autoMarginPct =
+      this.normalizePctString(raw.autoMarginPct) ?? '1.00';
+    const marginNum = Number(autoMarginPct);
+    const platformCasinoPct =
+      this.normalizePctString(raw.platformCasinoPct) ??
+      ((Number(upstreamCasinoPct ?? '0') + marginNum).toFixed(2) as string);
+    const platformSportsPct =
+      this.normalizePctString(raw.platformSportsPct) ??
+      ((Number(upstreamSportsPct ?? '0') + marginNum).toFixed(2) as string);
+    return {
+      upstreamCasinoPct,
+      upstreamSportsPct,
+      platformCasinoPct,
+      platformSportsPct,
+      autoMarginPct,
+    };
+  }
+
+  private buildSolutionRatePolicy(
+    input: unknown,
+    fallback?: {
+      upstreamCasinoPct?: string | null;
+      upstreamSportsPct?: string | null;
+      platformCasinoPct?: string | null;
+      platformSportsPct?: string | null;
+      autoMarginPct?: string | null;
+    },
+  ) {
+    const raw = this.asRecord(input);
+    const upstreamCasinoPct =
+      this.normalizePctString(raw.upstreamCasinoPct) ??
+      this.normalizePctString(fallback?.upstreamCasinoPct);
+    const upstreamSportsPct =
+      this.normalizePctString(raw.upstreamSportsPct) ??
+      this.normalizePctString(fallback?.upstreamSportsPct);
+    const autoMarginPct =
+      this.normalizePctString(raw.autoMarginPct) ??
+      this.normalizePctString(fallback?.autoMarginPct) ??
+      '1.00';
+    const marginNum = Number(autoMarginPct);
+    const platformCasinoPct =
+      this.normalizePctString(raw.platformCasinoPct) ??
+      this.normalizePctString(fallback?.platformCasinoPct) ??
+      (Number(upstreamCasinoPct ?? '0') + marginNum).toFixed(2);
+    const platformSportsPct =
+      this.normalizePctString(raw.platformSportsPct) ??
+      this.normalizePctString(fallback?.platformSportsPct) ??
+      (Number(upstreamSportsPct ?? '0') + marginNum).toFixed(2);
+
+    return {
+      upstreamCasinoPct,
+      upstreamSportsPct,
+      platformCasinoPct,
+      platformSportsPct,
+      autoMarginPct,
+    };
+  }
+
+  private sanitizeSolutionRatePolicy(
+    actor: JwtPayload,
+    policy: {
+      upstreamCasinoPct?: string | null;
+      upstreamSportsPct?: string | null;
+      platformCasinoPct?: string | null;
+      platformSportsPct?: string | null;
+      autoMarginPct?: string | null;
+    },
+  ) {
+    return actor.role === UserRole.SUPER_ADMIN ? policy : null;
+  }
+
+  private hiddenSolutionRateSummary() {
+    return {
+      upstreamCasinoPct: null,
+      upstreamSportsPct: null,
+      platformCasinoPct: null,
+      platformSportsPct: null,
+      autoMarginPct: null,
+      casinoBaseGgr: '0.00',
+      sportsBaseGgr: '0.00',
+      upstreamCostKrw: '0.00',
+      platformChargeKrw: '0.00',
+      solutionMarginKrw: '0.00',
+      modeledBase: 'HIDDEN',
+    };
+  }
+
+  private computeSolutionRateMetrics(
+    flagsJson: unknown,
+    casinoGgr: number,
+    sportsGgr: number,
+  ) {
+    const solutionRatePolicy = this.readSolutionRatePolicy(flagsJson);
+    const casinoBaseGgr = Math.max(0, casinoGgr);
+    const sportsBaseGgr = Math.max(0, sportsGgr);
+    const upstreamCasinoPctNum = Number(
+      solutionRatePolicy.upstreamCasinoPct ?? '0',
+    );
+    const upstreamSportsPctNum = Number(
+      solutionRatePolicy.upstreamSportsPct ?? '0',
+    );
+    const platformCasinoPctNum = Number(
+      solutionRatePolicy.platformCasinoPct ?? '0',
+    );
+    const platformSportsPctNum = Number(
+      solutionRatePolicy.platformSportsPct ?? '0',
+    );
+    const upstreamVendorCost =
+      casinoBaseGgr * (upstreamCasinoPctNum / 100) +
+      sportsBaseGgr * (upstreamSportsPctNum / 100);
+    const platformBilledRate =
+      casinoBaseGgr * (platformCasinoPctNum / 100) +
+      sportsBaseGgr * (platformSportsPctNum / 100);
+    const solutionRateMargin = platformBilledRate - upstreamVendorCost;
+
+    return {
+      solutionRatePolicy,
+      casinoBaseGgr,
+      sportsBaseGgr,
+      upstreamVendorCost,
+      platformBilledRate,
+      solutionRateMargin,
+    };
+  }
 
   assertPlatformScope(actor: JwtPayload, platformId: string) {
     if (actor.role === UserRole.SUPER_ADMIN) return;
@@ -41,25 +272,97 @@ export class PlatformsService {
   }
 
   list(user: JwtPayload) {
-    if (user.role === UserRole.SUPER_ADMIN) {
-      return this.prisma.platform.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: { domains: true },
+    const canSeeSolutionRates = user.role === UserRole.SUPER_ADMIN;
+    const decorate = (
+      rows: Array<{
+        id: string;
+        slug: string;
+        name: string;
+        previewPort: number | null;
+        flagsJson: unknown;
+        domains: { host: string }[];
+      }>,
+    ) =>
+      rows.map((row) => {
+        const flags = this.asRecord(row.flagsJson);
+        return {
+          ...row,
+          solutionTemplateKey:
+            typeof flags.solutionTemplateKey === 'string'
+              ? flags.solutionTemplateKey
+              : 'HYBRID',
+          solutionHostSuffix:
+            typeof flags.solutionHostSuffix === 'string'
+              ? flags.solutionHostSuffix
+              : buildDefaultPlatformHost(row.slug).split('.').slice(1).join('.'),
+          solutionRatePolicy: canSeeSolutionRates
+            ? this.readSolutionRatePolicy(row.flagsJson)
+            : undefined,
+        };
       });
+
+    if (user.role === UserRole.SUPER_ADMIN) {
+      return this.prisma.platform
+        .findMany({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          previewPort: true,
+          flagsJson: true,
+          domains: { select: { host: true } },
+        },
+      })
+        .then(decorate);
     }
     if (user.role === UserRole.PLATFORM_ADMIN && user.platformId) {
-      return this.prisma.platform.findMany({
+      return this.prisma.platform
+        .findMany({
         where: { id: user.platformId },
-        include: { domains: true },
-      });
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          previewPort: true,
+          flagsJson: true,
+          domains: { select: { host: true } },
+        },
+      })
+        .then(decorate);
     }
     if (user.role === UserRole.MASTER_AGENT && user.platformId) {
-      return this.prisma.platform.findMany({
+      return this.prisma.platform
+        .findMany({
         where: { id: user.platformId },
-        include: { domains: true },
-      });
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          previewPort: true,
+          flagsJson: true,
+          domains: { select: { host: true } },
+        },
+      })
+        .then(decorate);
     }
     throw new ForbiddenException();
+  }
+
+  listTemplates() {
+    return {
+      defaultHostSuffix:
+        process.env.PLATFORM_HOST_SUFFIX?.trim().toLowerCase() ||
+        'mod.tozinosolution.com',
+      items: listPlatformTemplatePresets().map((preset) => ({
+        key: preset.key,
+        label: preset.label,
+        description: preset.description,
+        defaultHostSuffix: preset.defaultHostSuffix,
+        defaultRatePolicy: preset.defaultRatePolicy,
+        defaultOperational: preset.defaultOperational,
+      })),
+    };
   }
 
   private uploadRoot(): string {
@@ -199,7 +502,6 @@ export class PlatformsService {
   }
 
   async create(dto: CreatePlatformDto) {
-    const host = dto.primaryHost.toLowerCase().split(':')[0];
     let previewPort: number;
     if (dto.previewPort != null) {
       const taken = await this.prisma.platform.findFirst({
@@ -214,31 +516,89 @@ export class PlatformsService {
     }
 
     const cloneId = dto.cloneFromPlatformId?.trim();
-    let themeJson: Prisma.InputJsonValue = (dto.themeJson ??
-      {}) as Prisma.InputJsonValue;
-    let flagsJson: Prisma.InputJsonValue = (dto.flagsJson ??
-      {}) as Prisma.InputJsonValue;
+    const src = cloneId
+      ? await this.prisma.platform.findUnique({
+          where: { id: cloneId },
+          select: {
+            themeJson: true,
+            flagsJson: true,
+            integrationsJson: true,
+            rollingLockWithdrawals: true,
+            rollingTurnoverMultiplier: true,
+            agentCanEditMemberRolling: true,
+            pointRulesJson: true,
+          },
+        })
+      : null;
+    if (cloneId && !src) {
+      throw new BadRequestException('복제할 플랫폼을 찾을 수 없습니다');
+    }
+
+    const sourceFlags = this.asRecord(src?.flagsJson);
+    const template = getPlatformTemplatePreset(
+      dto.templateKey ??
+        (typeof sourceFlags.solutionTemplateKey === 'string'
+          ? sourceFlags.solutionTemplateKey
+          : null),
+    );
+    const host = (
+      dto.primaryHost?.trim() || buildDefaultPlatformHost(dto.slug, template.defaultHostSuffix)
+    )
+      .toLowerCase()
+      .split(':')[0];
+    let themeJson: Prisma.InputJsonValue = {
+      ...template.defaultThemeJson,
+    } as Prisma.InputJsonValue;
+    let flagsJson: Prisma.InputJsonValue = {
+      ...template.defaultFlagsJson,
+      solutionTemplateKey: template.key,
+      solutionHostSuffix: template.defaultHostSuffix,
+      solutionRatePolicy: this.buildSolutionRatePolicy(
+        dto.solutionRatePolicy,
+        template.defaultRatePolicy,
+      ),
+    } as Prisma.InputJsonValue;
     let integrationsJson: Prisma.InputJsonValue = {};
 
-    if (cloneId) {
-      const src = await this.prisma.platform.findUnique({
-        where: { id: cloneId },
-        select: { themeJson: true, flagsJson: true, integrationsJson: true },
-      });
-      if (!src) {
-        throw new BadRequestException('복제할 플랫폼을 찾을 수 없습니다');
-      }
+    if (src) {
       const tOverride = (dto.themeJson ?? {}) as Record<string, unknown>;
       const fOverride = (dto.flagsJson ?? {}) as Record<string, unknown>;
       themeJson = {
+        ...(template.defaultThemeJson as object),
         ...(src.themeJson as object),
         ...tOverride,
       } as Prisma.InputJsonValue;
-      flagsJson = {
+      const mergedFlags = {
+        ...(template.defaultFlagsJson as object),
         ...(src.flagsJson as object),
         ...fOverride,
-      } as Prisma.InputJsonValue;
+      } as Record<string, unknown>;
+      mergedFlags.solutionTemplateKey = template.key;
+      mergedFlags.solutionHostSuffix = template.defaultHostSuffix;
+      mergedFlags.solutionRatePolicy = this.buildSolutionRatePolicy(
+        dto.solutionRatePolicy ?? mergedFlags.solutionRatePolicy,
+        template.defaultRatePolicy,
+      );
+      flagsJson = mergedFlags as Prisma.InputJsonValue;
       integrationsJson = (src.integrationsJson ?? {}) as Prisma.InputJsonValue;
+    } else {
+      const tOverride = (dto.themeJson ?? {}) as Record<string, unknown>;
+      const fOverride = (dto.flagsJson ?? {}) as Record<string, unknown>;
+      themeJson = {
+        ...(template.defaultThemeJson as object),
+        ...tOverride,
+      } as Prisma.InputJsonValue;
+      const mergedFlags = {
+        ...(template.defaultFlagsJson as object),
+        ...fOverride,
+      } as Record<string, unknown>;
+      mergedFlags.solutionTemplateKey = template.key;
+      mergedFlags.solutionHostSuffix = template.defaultHostSuffix;
+      mergedFlags.solutionRatePolicy = this.buildSolutionRatePolicy(
+        dto.solutionRatePolicy ?? mergedFlags.solutionRatePolicy,
+        template.defaultRatePolicy,
+      );
+      flagsJson = mergedFlags as Prisma.InputJsonValue;
     }
 
     const platform = await this.prisma.platform.create({
@@ -249,6 +609,18 @@ export class PlatformsService {
         themeJson,
         flagsJson,
         integrationsJson,
+        rollingLockWithdrawals:
+          src?.rollingLockWithdrawals ??
+          template.defaultOperational.rollingLockWithdrawals,
+        rollingTurnoverMultiplier:
+          src?.rollingTurnoverMultiplier ??
+          new Prisma.Decimal(template.defaultOperational.rollingTurnoverMultiplier),
+        agentCanEditMemberRolling:
+          src?.agentCanEditMemberRolling ??
+          template.defaultOperational.agentCanEditMemberRolling,
+        pointRulesJson:
+          (src?.pointRulesJson as Prisma.InputJsonValue | undefined) ??
+          (template.defaultOperational.pointRulesJson as Prisma.InputJsonValue),
         domains: {
           create: { host },
         },
@@ -304,18 +676,10 @@ export class PlatformsService {
       },
     });
     if (!p) throw new NotFoundException('Platform not found');
-    const flags =
-      p.flagsJson &&
-      typeof p.flagsJson === 'object' &&
-      !Array.isArray(p.flagsJson)
-        ? (p.flagsJson as Record<string, unknown>)
-        : {};
-    const compPolicy =
-      flags.compPolicy &&
-      typeof flags.compPolicy === 'object' &&
-      !Array.isArray(flags.compPolicy)
-        ? (flags.compPolicy as Record<string, unknown>)
-        : {};
+    const flags = this.asRecord(p.flagsJson);
+    const compPolicy = this.readCompPolicy(p.flagsJson);
+    const compAutomation = this.readCompAutomation(p.flagsJson);
+    const solutionRatePolicy = this.readSolutionRatePolicy(p.flagsJson);
     return {
       ...p,
       rollingTurnoverMultiplier: p.rollingTurnoverMultiplier?.toString() ?? '1',
@@ -333,21 +697,20 @@ export class PlatformsService {
         typeof flags.defaultSignupReferrerUserId === 'string'
           ? flags.defaultSignupReferrerUserId
           : null,
-      compPolicy: {
-        enabled: compPolicy.enabled === true,
-        settlementCycle:
-          compPolicy.settlementCycle === 'DAILY_MIDNIGHT' ||
-          compPolicy.settlementCycle === 'BET_DAY_PLUS'
-            ? compPolicy.settlementCycle
-            : 'INSTANT',
-        settlementOffsetDays:
-          typeof compPolicy.settlementOffsetDays === 'number' &&
-          Number.isFinite(compPolicy.settlementOffsetDays)
-            ? Math.max(0, Math.trunc(compPolicy.settlementOffsetDays))
-            : null,
-        ratePct:
-          typeof compPolicy.ratePct === 'string' ? compPolicy.ratePct : null,
-      },
+      solutionTemplateKey:
+        typeof flags.solutionTemplateKey === 'string'
+          ? flags.solutionTemplateKey
+          : 'HYBRID',
+      solutionHostSuffix:
+        typeof flags.solutionHostSuffix === 'string'
+          ? flags.solutionHostSuffix
+          : 'mod.tozinosolution.com',
+      compPolicy,
+      compAutomation,
+      solutionRatePolicy: this.sanitizeSolutionRatePolicy(
+        actor,
+        solutionRatePolicy,
+      ),
     };
   }
 
@@ -448,6 +811,43 @@ export class PlatformsService {
         settlementOffsetDays,
         ratePct: ratePct || null,
       };
+      data.flagsJson = nextFlags as Prisma.InputJsonValue;
+    }
+    if (dto.compAutomation !== undefined) {
+      const raw = this.asRecord(dto.compAutomation);
+      const cronRaw =
+        typeof raw.cron === 'string'
+          ? raw.cron.trim()
+          : String(raw.cron ?? '').trim();
+      const cron =
+        cronRaw &&
+        !['false', 'off', '0', 'disabled'].includes(cronRaw.toLowerCase())
+          ? cronRaw
+          : null;
+      const backfillRaw =
+        typeof raw.backfillDays === 'number'
+          ? raw.backfillDays
+          : Number(raw.backfillDays ?? NaN);
+      nextFlags.compAutomation = {
+        autoEnabled: raw.autoEnabled === true,
+        cron,
+        backfillDays:
+          Number.isFinite(backfillRaw) && backfillRaw > 0
+            ? Math.min(31, Math.max(1, Math.trunc(backfillRaw)))
+            : null,
+      };
+      data.flagsJson = nextFlags as Prisma.InputJsonValue;
+    }
+    if (dto.solutionRatePolicy !== undefined) {
+      if (actor.role !== UserRole.SUPER_ADMIN) {
+        throw new ForbiddenException(
+          '상위업체 요율은 슈퍼관리자만 수정할 수 있습니다.',
+        );
+      }
+      nextFlags.solutionRatePolicy = this.buildSolutionRatePolicy(
+        dto.solutionRatePolicy,
+        this.readSolutionRatePolicy(nextFlags),
+      );
       data.flagsJson = nextFlags as Prisma.InputJsonValue;
     }
     if (dto.publicSignupCode !== undefined) {
@@ -768,6 +1168,708 @@ export class PlatformsService {
     return { ok: true };
   }
 
+  async listCompSettlements(
+    platformId: string,
+    actor: JwtPayload,
+    take = 20,
+  ) {
+    this.assertPlatformScope(actor, platformId);
+    const limit = Number.isFinite(take)
+      ? Math.min(100, Math.max(1, Math.trunc(take)))
+      : 20;
+    const [count, totalAgg, items] = await Promise.all([
+      this.prisma.compSettlement.count({ where: { platformId } }),
+      this.prisma.compSettlement.aggregate({
+        where: { platformId },
+        _sum: { amount: true },
+      }),
+      this.prisma.compSettlement.findMany({
+        where: { platformId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: {
+          user: {
+            select: {
+              loginId: true,
+              displayName: true,
+            },
+          },
+        },
+      }),
+    ]);
+    return {
+      count,
+      totalAmount: totalAgg._sum.amount?.toFixed(2) ?? '0.00',
+      items: items.map((item) => ({
+        id: item.id,
+        userId: item.userId,
+        loginId: item.user.loginId ?? '',
+        displayName: item.user.displayName ?? '',
+        periodFrom: item.periodFrom.toISOString(),
+        periodTo: item.periodTo.toISOString(),
+        baseAmount: item.baseAmount.toFixed(2),
+        ratePct: item.ratePct.toFixed(4),
+        amount: item.amount.toFixed(2),
+        settlementCycle: item.settlementCycle,
+        settlementOffsetDays: item.settlementOffsetDays,
+        note: item.note,
+        settledByUserId: item.settledByUserId,
+        settledByLoginId: item.settledByLoginId,
+        ledgerReference: item.ledgerReference,
+        createdAt: item.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  async listSolutionBillingSettlements(
+    platformId: string,
+    actor: JwtPayload,
+    take = 20,
+  ) {
+    this.assertPlatformScope(actor, platformId);
+    if (actor.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException();
+    }
+    const limit = Number.isFinite(take)
+      ? Math.min(100, Math.max(1, Math.trunc(take)))
+      : 20;
+    const [count, totals, items] = await Promise.all([
+      this.prisma.solutionBillingSettlement.count({ where: { platformId } }),
+      this.prisma.solutionBillingSettlement.aggregate({
+        where: { platformId },
+        _sum: {
+          upstreamCost: true,
+          platformCharge: true,
+          solutionMargin: true,
+        },
+      }),
+      this.prisma.solutionBillingSettlement.findMany({
+        where: { platformId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+    ]);
+    return {
+      count,
+      totalUpstreamCost: totals._sum.upstreamCost?.toFixed(2) ?? '0.00',
+      totalPlatformCharge: totals._sum.platformCharge?.toFixed(2) ?? '0.00',
+      totalSolutionMargin: totals._sum.solutionMargin?.toFixed(2) ?? '0.00',
+      items: items.map((item) => ({
+        id: item.id,
+        periodFrom: item.periodFrom.toISOString(),
+        periodTo: item.periodTo.toISOString(),
+        casinoBaseGgr: item.casinoBaseGgr.toFixed(2),
+        sportsBaseGgr: item.sportsBaseGgr.toFixed(2),
+        upstreamCasinoPct: item.upstreamCasinoPct.toFixed(4),
+        upstreamSportsPct: item.upstreamSportsPct.toFixed(4),
+        platformCasinoPct: item.platformCasinoPct.toFixed(4),
+        platformSportsPct: item.platformSportsPct.toFixed(4),
+        upstreamCost: item.upstreamCost.toFixed(2),
+        platformCharge: item.platformCharge.toFixed(2),
+        solutionMargin: item.solutionMargin.toFixed(2),
+        note: item.note,
+        settledByUserId: item.settledByUserId,
+        settledByLoginId: item.settledByLoginId,
+        createdAt: item.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  private kstYmd(date: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
+
+  private shiftKstYmd(baseYmd: string, deltaDays: number): string {
+    const base = new Date(`${baseYmd}T00:00:00+09:00`);
+    base.setUTCDate(base.getUTCDate() + deltaDays);
+    return this.kstYmd(base);
+  }
+
+  private kstDayRange(targetYmd: string) {
+    return {
+      from: new Date(`${targetYmd}T00:00:00+09:00`),
+      to: new Date(`${targetYmd}T23:59:59.999+09:00`),
+    };
+  }
+
+  private async executeCompSettlement(
+    platformId: string,
+    params: {
+      periodFrom: Date;
+      periodTo: Date;
+      dryRun: boolean;
+      note?: string | null;
+      settledByUserId?: string | null;
+      settledByLoginId?: string | null;
+    },
+  ) {
+    const { periodFrom, periodTo, dryRun, note, settledByUserId, settledByLoginId } =
+      params;
+
+    if (periodFrom > periodTo) {
+      throw new BadRequestException('콤프 정산 시작일은 종료일보다 늦을 수 없습니다.');
+    }
+
+    const platform = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: { flagsJson: true },
+    });
+    if (!platform) throw new NotFoundException('Platform not found');
+
+    const compPolicy = this.readCompPolicy(platform.flagsJson);
+    if (!compPolicy.enabled) {
+      throw new BadRequestException('콤프 정책이 비활성화되어 있습니다.');
+    }
+
+    const rateNum = compPolicy.ratePct ? Number(compPolicy.ratePct) : NaN;
+    if (!Number.isFinite(rateNum) || rateNum <= 0) {
+      throw new BadRequestException('유효한 콤프률이 설정되어 있지 않습니다.');
+    }
+
+    const ratePct = new Prisma.Decimal(String(rateNum)).toDecimalPlaces(
+      4,
+      Prisma.Decimal.ROUND_HALF_UP,
+    );
+    const approvedInPeriod = this.approvedWalletWhere(platformId, undefined, {
+      gte: periodFrom,
+      lte: periodTo,
+    });
+
+    const [depByUser, wdrByUser, existingSettlements] = await Promise.all([
+      this.prisma.walletRequest.groupBy({
+        by: ['userId'],
+        where: {
+          ...approvedInPeriod,
+          type: WalletRequestType.DEPOSIT,
+          user: { role: UserRole.USER },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.walletRequest.groupBy({
+        by: ['userId'],
+        where: {
+          ...approvedInPeriod,
+          type: WalletRequestType.WITHDRAWAL,
+          user: { role: UserRole.USER },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.compSettlement.findMany({
+        where: { platformId, periodFrom, periodTo },
+        select: { userId: true },
+      }),
+    ]);
+
+    const depMap = new Map(
+      depByUser.map((row) => [row.userId, row._sum.amount ?? new Prisma.Decimal(0)]),
+    );
+    const wdrMap = new Map(
+      wdrByUser.map((row) => [row.userId, row._sum.amount ?? new Prisma.Decimal(0)]),
+    );
+    const involvedUserIds = [...new Set<string>([...depMap.keys(), ...wdrMap.keys()])];
+    if (involvedUserIds.length === 0) {
+      return {
+        dryRun,
+        period: { from: periodFrom.toISOString(), to: periodTo.toISOString() },
+        policy: {
+          ...compPolicy,
+          ratePct: ratePct.toFixed(4),
+        },
+        totals: {
+          eligibleUsers: 0,
+          readyUsers: 0,
+          skippedExistingUsers: 0,
+          totalBaseAmount: '0.00',
+          totalAmount: '0.00',
+          createdUsers: 0,
+          createdAmount: '0.00',
+        },
+        rows: [],
+      };
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        id: { in: involvedUserIds },
+        platformId,
+        role: UserRole.USER,
+      },
+      select: {
+        id: true,
+        loginId: true,
+        displayName: true,
+        wallet: {
+          select: {
+            id: true,
+            balance: true,
+          },
+        },
+      },
+    });
+
+    const existingUserIds = new Set(existingSettlements.map((row) => row.userId));
+    const eligibleRows = users
+      .map((user) => {
+        const depositTotal = depMap.get(user.id) ?? new Prisma.Decimal(0);
+        const withdrawTotal = wdrMap.get(user.id) ?? new Prisma.Decimal(0);
+        const baseAmount = depositTotal.minus(withdrawTotal).toDecimalPlaces(
+          2,
+          Prisma.Decimal.ROUND_HALF_UP,
+        );
+        if (baseAmount.lte(0)) return null;
+        const amount = baseAmount
+          .times(ratePct)
+          .div(100)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+        if (amount.lte(0)) return null;
+        return {
+          userId: user.id,
+          loginId: user.loginId ?? '',
+          displayName: user.displayName ?? '',
+          walletId: user.wallet?.id ?? null,
+          walletBalance: user.wallet?.balance ?? new Prisma.Decimal(0),
+          baseAmount,
+          amount,
+          existing: existingUserIds.has(user.id),
+        };
+      })
+      .filter(
+        (
+          row,
+        ): row is {
+          userId: string;
+          loginId: string;
+          displayName: string;
+          walletId: string | null;
+          walletBalance: Prisma.Decimal;
+          baseAmount: Prisma.Decimal;
+          amount: Prisma.Decimal;
+          existing: boolean;
+        } => Boolean(row),
+      )
+      .sort((a, b) => b.amount.comparedTo(a.amount));
+
+    const readyRows = eligibleRows.filter((row) => !row.existing && row.walletId);
+    const totalBaseAmount = eligibleRows.reduce(
+      (sum, row) => sum.plus(row.baseAmount),
+      new Prisma.Decimal(0),
+    );
+    const totalAmount = eligibleRows.reduce(
+      (sum, row) => sum.plus(row.amount),
+      new Prisma.Decimal(0),
+    );
+
+    let createdUsers = 0;
+    let createdAmount = new Prisma.Decimal(0);
+
+    if (!dryRun && readyRows.length > 0) {
+      await this.prisma.$transaction(async (tx) => {
+        for (const row of readyRows) {
+          if (!row.walletId) continue;
+          const settlement = await tx.compSettlement.create({
+            data: {
+              platformId,
+              userId: row.userId,
+              periodFrom,
+              periodTo,
+              baseAmount: row.baseAmount,
+              ratePct,
+              amount: row.amount,
+              settlementCycle: compPolicy.settlementCycle,
+              settlementOffsetDays: compPolicy.settlementOffsetDays,
+              note: note?.trim() || null,
+              settledByUserId: settledByUserId ?? null,
+              settledByLoginId: settledByLoginId ?? null,
+            },
+          });
+          const nextBalance = row.walletBalance.plus(row.amount);
+          const ledgerReference = `comp:${settlement.id}`;
+          await tx.wallet.update({
+            where: { id: row.walletId },
+            data: { balance: nextBalance },
+          });
+          await tx.ledgerEntry.create({
+            data: {
+              userId: row.userId,
+              platformId,
+              type: LedgerEntryType.ADJUSTMENT,
+              amount: row.amount,
+              balanceAfter: nextBalance,
+              reference: ledgerReference,
+              metaJson: {
+                compSettlement: true,
+                compSettlementId: settlement.id,
+                baseAmount: row.baseAmount.toFixed(2),
+                ratePct: ratePct.toFixed(4),
+                periodFrom: periodFrom.toISOString(),
+                periodTo: periodTo.toISOString(),
+              },
+            },
+          });
+          await tx.compSettlement.update({
+            where: { id: settlement.id },
+            data: { ledgerReference },
+          });
+          createdUsers += 1;
+          createdAmount = createdAmount.plus(row.amount);
+        }
+      });
+    }
+
+    return {
+      dryRun,
+      period: { from: periodFrom.toISOString(), to: periodTo.toISOString() },
+      policy: {
+        ...compPolicy,
+        ratePct: ratePct.toFixed(4),
+      },
+      totals: {
+        eligibleUsers: eligibleRows.length,
+        readyUsers: readyRows.length,
+        skippedExistingUsers: eligibleRows.filter((row) => row.existing).length,
+        totalBaseAmount: totalBaseAmount.toFixed(2),
+        totalAmount: totalAmount.toFixed(2),
+        createdUsers,
+        createdAmount: createdAmount.toFixed(2),
+      },
+      rows: eligibleRows.slice(0, 100).map((row) => ({
+        userId: row.userId,
+        loginId: row.loginId,
+        displayName: row.displayName,
+        baseAmount: row.baseAmount.toFixed(2),
+        amount: row.amount.toFixed(2),
+        status: row.existing
+          ? 'already_settled'
+          : row.walletId
+            ? 'ready'
+            : 'wallet_missing',
+      })),
+    };
+  }
+
+  async runCompSettlement(
+    platformId: string,
+    actor: JwtPayload,
+    dto: ExecuteCompSettlementDto,
+  ) {
+    this.assertPlatformScope(actor, platformId);
+    const periodFrom = this.toValidDate(dto.from, 'from');
+    const periodTo = this.toValidDate(dto.to, 'to');
+    const settledBy = await this.prisma.user.findUnique({
+      where: { id: actor.sub },
+      select: { loginId: true },
+    });
+    return this.executeCompSettlement(platformId, {
+      periodFrom,
+      periodTo,
+      dryRun: dto.dryRun === true,
+      note: dto.note?.trim() || null,
+      settledByUserId: actor.sub,
+      settledByLoginId: settledBy?.loginId ?? null,
+    });
+  }
+
+  private async executeSolutionBillingSettlement(
+    platformId: string,
+    params: {
+      periodFrom: Date;
+      periodTo: Date;
+      dryRun: boolean;
+      note?: string | null;
+      settledByUserId?: string | null;
+      settledByLoginId?: string | null;
+    },
+  ) {
+    const { periodFrom, periodTo, dryRun, note, settledByUserId, settledByLoginId } =
+      params;
+
+    if (periodFrom > periodTo) {
+      throw new BadRequestException(
+        '솔루션 청구 시작일은 종료일보다 늦을 수 없습니다.',
+      );
+    }
+
+    const platform = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: { flagsJson: true },
+    });
+    if (!platform) throw new NotFoundException('Platform not found');
+
+    const existing = await this.prisma.solutionBillingSettlement.findFirst({
+      where: { platformId, periodFrom, periodTo },
+    });
+
+    const ledgerInPeriod: Prisma.LedgerEntryWhereInput = {
+      platformId,
+      createdAt: {
+        gte: periodFrom,
+        lte: periodTo,
+      },
+    };
+
+    const [casinoBet, casinoWin, sportsBet, sportsWin] = await Promise.all([
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.BET,
+          metaJson: { path: ['vertical'], equals: 'casino' },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.WIN,
+          metaJson: { path: ['vertical'], equals: 'casino' },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.BET,
+          metaJson: { path: ['vertical'], equals: 'sports' },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.WIN,
+          metaJson: { path: ['vertical'], equals: 'sports' },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const casinoGgr =
+      Math.abs(casinoBet._sum.amount?.toNumber() ?? 0) -
+      (casinoWin._sum.amount?.toNumber() ?? 0);
+    const sportsGgr =
+      Math.abs(sportsBet._sum.amount?.toNumber() ?? 0) -
+      (sportsWin._sum.amount?.toNumber() ?? 0);
+    const metrics = this.computeSolutionRateMetrics(
+      platform.flagsJson,
+      casinoGgr,
+      sportsGgr,
+    );
+
+    const settlementPayload = {
+      casinoBaseGgr: metrics.casinoBaseGgr.toFixed(2),
+      sportsBaseGgr: metrics.sportsBaseGgr.toFixed(2),
+      upstreamCasinoPct: metrics.solutionRatePolicy.upstreamCasinoPct ?? '0.0000',
+      upstreamSportsPct: metrics.solutionRatePolicy.upstreamSportsPct ?? '0.0000',
+      platformCasinoPct: metrics.solutionRatePolicy.platformCasinoPct ?? '0.0000',
+      platformSportsPct: metrics.solutionRatePolicy.platformSportsPct ?? '0.0000',
+      upstreamCost: metrics.upstreamVendorCost.toFixed(2),
+      platformCharge: metrics.platformBilledRate.toFixed(2),
+      solutionMargin: metrics.solutionRateMargin.toFixed(2),
+      note: note?.trim() || null,
+      settledByUserId: settledByUserId ?? null,
+      settledByLoginId: settledByLoginId ?? null,
+    };
+
+    if (existing) {
+      return {
+        dryRun,
+        status: 'already_settled',
+        period: { from: periodFrom.toISOString(), to: periodTo.toISOString() },
+        settlement: {
+          id: existing.id,
+          periodFrom: existing.periodFrom.toISOString(),
+          periodTo: existing.periodTo.toISOString(),
+          casinoBaseGgr: existing.casinoBaseGgr.toFixed(2),
+          sportsBaseGgr: existing.sportsBaseGgr.toFixed(2),
+          upstreamCasinoPct: existing.upstreamCasinoPct.toFixed(4),
+          upstreamSportsPct: existing.upstreamSportsPct.toFixed(4),
+          platformCasinoPct: existing.platformCasinoPct.toFixed(4),
+          platformSportsPct: existing.platformSportsPct.toFixed(4),
+          upstreamCost: existing.upstreamCost.toFixed(2),
+          platformCharge: existing.platformCharge.toFixed(2),
+          solutionMargin: existing.solutionMargin.toFixed(2),
+          note: existing.note,
+          settledByUserId: existing.settledByUserId,
+          settledByLoginId: existing.settledByLoginId,
+          createdAt: existing.createdAt.toISOString(),
+        },
+      };
+    }
+
+    if (dryRun) {
+      return {
+        dryRun: true,
+        status: 'ready',
+        period: { from: periodFrom.toISOString(), to: periodTo.toISOString() },
+        settlement: {
+          id: null,
+          periodFrom: periodFrom.toISOString(),
+          periodTo: periodTo.toISOString(),
+          ...settlementPayload,
+          createdAt: null,
+        },
+      };
+    }
+
+    const created = await this.prisma.solutionBillingSettlement.create({
+      data: {
+        platformId,
+        periodFrom,
+        periodTo,
+        casinoBaseGgr: new Prisma.Decimal(settlementPayload.casinoBaseGgr),
+        sportsBaseGgr: new Prisma.Decimal(settlementPayload.sportsBaseGgr),
+        upstreamCasinoPct: new Prisma.Decimal(
+          settlementPayload.upstreamCasinoPct,
+        ),
+        upstreamSportsPct: new Prisma.Decimal(
+          settlementPayload.upstreamSportsPct,
+        ),
+        platformCasinoPct: new Prisma.Decimal(
+          settlementPayload.platformCasinoPct,
+        ),
+        platformSportsPct: new Prisma.Decimal(
+          settlementPayload.platformSportsPct,
+        ),
+        upstreamCost: new Prisma.Decimal(settlementPayload.upstreamCost),
+        platformCharge: new Prisma.Decimal(settlementPayload.platformCharge),
+        solutionMargin: new Prisma.Decimal(settlementPayload.solutionMargin),
+        note: settlementPayload.note,
+        settledByUserId: settlementPayload.settledByUserId,
+        settledByLoginId: settlementPayload.settledByLoginId,
+      },
+    });
+
+    return {
+      dryRun: false,
+      status: 'created',
+      period: { from: periodFrom.toISOString(), to: periodTo.toISOString() },
+      settlement: {
+        id: created.id,
+        periodFrom: created.periodFrom.toISOString(),
+        periodTo: created.periodTo.toISOString(),
+        casinoBaseGgr: created.casinoBaseGgr.toFixed(2),
+        sportsBaseGgr: created.sportsBaseGgr.toFixed(2),
+        upstreamCasinoPct: created.upstreamCasinoPct.toFixed(4),
+        upstreamSportsPct: created.upstreamSportsPct.toFixed(4),
+        platformCasinoPct: created.platformCasinoPct.toFixed(4),
+        platformSportsPct: created.platformSportsPct.toFixed(4),
+        upstreamCost: created.upstreamCost.toFixed(2),
+        platformCharge: created.platformCharge.toFixed(2),
+        solutionMargin: created.solutionMargin.toFixed(2),
+        note: created.note,
+        settledByUserId: created.settledByUserId,
+        settledByLoginId: created.settledByLoginId,
+        createdAt: created.createdAt.toISOString(),
+      },
+    };
+  }
+
+  async runSolutionBillingSettlement(
+    platformId: string,
+    actor: JwtPayload,
+    dto: {
+      from: string;
+      to: string;
+      note?: string;
+      dryRun?: boolean;
+    },
+  ) {
+    this.assertPlatformScope(actor, platformId);
+    if (actor.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException();
+    }
+    const periodFrom = this.toValidDate(dto.from, 'from');
+    const periodTo = this.toValidDate(dto.to, 'to');
+    const settledBy = await this.prisma.user.findUnique({
+      where: { id: actor.sub },
+      select: { loginId: true },
+    });
+    return this.executeSolutionBillingSettlement(platformId, {
+      periodFrom,
+      periodTo,
+      dryRun: dto.dryRun === true,
+      note: dto.note?.trim() || null,
+      settledByUserId: actor.sub,
+      settledByLoginId: settledBy?.loginId ?? null,
+    });
+  }
+
+  async runAutoCompSettlementSweep(platformId: string, now = new Date()) {
+    const platform = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: { flagsJson: true },
+    });
+    if (!platform) {
+      return { platformId, status: 'platform_missing', processedPeriods: 0 };
+    }
+
+    const compPolicy = this.readCompPolicy(platform.flagsJson);
+    const compAutomation = this.readCompAutomation(platform.flagsJson);
+    if (!compPolicy.enabled) {
+      return { platformId, status: 'disabled', processedPeriods: 0 };
+    }
+    if (compPolicy.settlementCycle === 'INSTANT') {
+      return { platformId, status: 'instant_manual', processedPeriods: 0 };
+    }
+    if (!compAutomation.autoEnabled) {
+      return { platformId, status: 'automation_disabled', processedPeriods: 0 };
+    }
+    if (!compAutomation.cron) {
+      return {
+        platformId,
+        status: 'automation_missing_cron',
+        processedPeriods: 0,
+      };
+    }
+
+    const backfillDays = compAutomation.backfillDays;
+    const baseOffset =
+      compPolicy.settlementCycle === 'DAILY_MIDNIGHT'
+        ? 1
+        : Math.max(1, compPolicy.settlementOffsetDays ?? 0);
+    const todayKst = this.kstYmd(now);
+    const results: Array<{
+      targetYmd: string;
+      createdUsers: number;
+      createdAmount: string;
+    }> = [];
+
+    for (let extra = backfillDays - 1; extra >= 0; extra -= 1) {
+      const targetYmd = this.shiftKstYmd(todayKst, -(baseOffset + extra));
+      const range = this.kstDayRange(targetYmd);
+      const result = await this.executeCompSettlement(platformId, {
+        periodFrom: range.from,
+        periodTo: range.to,
+        dryRun: false,
+        note: `[AUTO] ${targetYmd} ${compPolicy.settlementCycle}`,
+        settledByUserId: null,
+        settledByLoginId: 'SYSTEM_AUTO',
+      });
+      results.push({
+        targetYmd,
+        createdUsers: result.totals.createdUsers,
+        createdAmount: result.totals.createdAmount,
+      });
+    }
+
+    return {
+      platformId,
+      status: 'processed',
+      settlementCycle: compPolicy.settlementCycle,
+      backfillDays,
+      processedPeriods: results.length,
+      createdUsers: results.reduce((sum, row) => sum + row.createdUsers, 0),
+      createdAmount: results
+        .reduce((sum, row) => sum.plus(new Prisma.Decimal(row.createdAmount)), new Prisma.Decimal(0))
+        .toFixed(2),
+      results,
+    };
+  }
+
   // ─── 매출 현황 ────────────────────────────────────────────
 
   private assertPlatformAdmin(actor: JwtPayload, platformId: string) {
@@ -777,36 +1879,213 @@ export class PlatformsService {
       throw new ForbiddenException();
   }
 
+  private approvedWalletWhere(
+    platformId: string,
+    userIds?: string[],
+    dateFilter?: Prisma.DateTimeFilter,
+  ): Prisma.WalletRequestWhereInput {
+    const base: Prisma.WalletRequestWhereInput = {
+      platformId,
+      status: WalletRequestStatus.APPROVED,
+      ...(userIds ? { userId: { in: userIds } } : {}),
+    };
+    if (!dateFilter || Object.keys(dateFilter).length === 0) {
+      return base;
+    }
+    return {
+      ...base,
+      OR: [
+        { resolvedAt: dateFilter },
+        {
+          AND: [{ resolvedAt: null }, { createdAt: dateFilter }],
+        },
+      ],
+    };
+  }
+
   async getSalesSummary(platformId: string, actor: JwtPayload, from?: string, to?: string) {
     this.assertPlatformAdmin(actor, platformId);
     const dateFilter: Prisma.DateTimeFilter = {};
     if (from) dateFilter.gte = new Date(from);
     if (to) dateFilter.lte = new Date(to);
     const hasDate = Object.keys(dateFilter).length > 0;
+    const positiveAmount: Prisma.DecimalFilter = { gt: new Prisma.Decimal(0) };
+    const approvedInPeriod = this.approvedWalletWhere(
+      platformId,
+      undefined,
+      hasDate ? dateFilter : undefined,
+    );
+    const ledgerInPeriod: Prisma.LedgerEntryWhereInput = {
+      platformId,
+      ...(hasDate ? { createdAt: dateFilter } : {}),
+    };
+    const pointLedgerInPeriod: Prisma.PointLedgerEntryWhereInput = {
+      platformId,
+      ...(hasDate ? { createdAt: dateFilter } : {}),
+    };
 
-    const [betAgg, winAgg, depositAgg, withdrawAgg, userCnt, agentCnt] = await Promise.all([
+    const [
+      platform,
+      betAgg,
+      winAgg,
+      depositAgg,
+      withdrawAgg,
+      depByUser,
+      wdrByUser,
+      userCnt,
+      agentCnt,
+      positiveAdjustAgg,
+      principalPositiveAdjustAgg,
+      depositBonusAgg,
+      pointRedeemAgg,
+      refundAdjustAgg,
+      cancelAdjustAgg,
+      sportsCancelAdjustAgg,
+      sportsChangeAdjustAgg,
+      compSettlementAdjustAgg,
+      actualCompAgg,
+      pointPositiveByType,
+      pointAdjustmentEntries,
+    ] = await Promise.all([
+      this.prisma.platform.findUnique({
+        where: { id: platformId },
+        select: { flagsJson: true, pointRulesJson: true },
+      }),
       this.prisma.ledgerEntry.aggregate({
-        where: { platformId, type: LedgerEntryType.BET, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        where: { ...ledgerInPeriod, type: LedgerEntryType.BET },
         _sum: { amount: true },
         _count: true,
       }),
       this.prisma.ledgerEntry.aggregate({
-        where: { platformId, type: LedgerEntryType.WIN, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        where: { ...ledgerInPeriod, type: LedgerEntryType.WIN },
         _sum: { amount: true },
         _count: true,
       }),
       this.prisma.walletRequest.aggregate({
-        where: { platformId, type: WalletRequestType.DEPOSIT, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        where: { ...approvedInPeriod, type: WalletRequestType.DEPOSIT },
         _sum: { amount: true },
         _count: true,
       }),
       this.prisma.walletRequest.aggregate({
-        where: { platformId, type: WalletRequestType.WITHDRAWAL, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+        where: { ...approvedInPeriod, type: WalletRequestType.WITHDRAWAL },
         _sum: { amount: true },
         _count: true,
+      }),
+      this.prisma.walletRequest.groupBy({
+        by: ['userId'],
+        where: { ...approvedInPeriod, type: WalletRequestType.DEPOSIT },
+        _sum: { amount: true },
+      }),
+      this.prisma.walletRequest.groupBy({
+        by: ['userId'],
+        where: { ...approvedInPeriod, type: WalletRequestType.WITHDRAWAL },
+        _sum: { amount: true },
       }),
       this.prisma.user.count({ where: { platformId, role: UserRole.USER } }),
       this.prisma.user.count({ where: { platformId, role: UserRole.MASTER_AGENT } }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['demoWalletRequest'], equals: true },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['depositEventBonus'], equals: true },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['pointRedeem'], equals: true },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['command'], equals: 'refund' },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['command'], equals: 'cancel' },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['command'], equals: 'sports-cancel' },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['command'], equals: 'sports-bet-change' },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...ledgerInPeriod,
+          type: LedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+          metaJson: { path: ['compSettlement'], equals: true },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.compSettlement.aggregate({
+        where: {
+          platformId,
+          ...(hasDate ? { createdAt: dateFilter } : {}),
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.pointLedgerEntry.groupBy({
+        by: ['type'],
+        where: {
+          ...pointLedgerInPeriod,
+          amount: positiveAmount,
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.pointLedgerEntry.findMany({
+        where: {
+          ...pointLedgerInPeriod,
+          type: PointLedgerEntryType.ADJUSTMENT,
+          amount: positiveAmount,
+        },
+        select: { amount: true, metaJson: true },
+      }),
     ]);
 
     const betStake = betAgg._sum.amount ? Math.abs(betAgg._sum.amount.toNumber()) : 0;
@@ -850,8 +2129,139 @@ export class PlatformsService {
       };
     }
 
-    // 낙첨금액 = 총입금 - 총출금 (유저가 실제로 잃은 현금)
-    const houseEdge = depositTotal - withdrawTotal;
+    // 총판 정산 기준은 회원별 낙첨금(입금-출금)을 합산한 현금 기준 값이다.
+    const depMap = new Map(
+      depByUser.map((row) => [row.userId, row._sum.amount?.toNumber() ?? 0]),
+    );
+    const wdrMap = new Map(
+      wdrByUser.map((row) => [row.userId, row._sum.amount?.toNumber() ?? 0]),
+    );
+    const involvedUserIds = new Set<string>([
+      ...depMap.keys(),
+      ...wdrMap.keys(),
+    ]);
+    let houseEdge = 0;
+    for (const userId of involvedUserIds) {
+      houseEdge += (depMap.get(userId) ?? 0) - (wdrMap.get(userId) ?? 0);
+    }
+
+    const pointRules = this.asRecord(platform?.pointRulesJson);
+    const compPolicy = this.readCompPolicy(platform?.flagsJson);
+    const redeemKrwRaw = pointRules.redeemKrwPerPoint;
+    const redeemKrwRate =
+      typeof redeemKrwRaw === 'string' || typeof redeemKrwRaw === 'number'
+        ? Number(redeemKrwRaw)
+        : NaN;
+    const redeemKrwPerPoint =
+      Number.isFinite(redeemKrwRate) && redeemKrwRate > 0
+        ? redeemKrwRate
+        : null;
+
+    const totalPositiveAdjust = positiveAdjustAgg._sum.amount?.toNumber() ?? 0;
+    const principalPositiveAdjust =
+      principalPositiveAdjustAgg._sum.amount?.toNumber() ?? 0;
+    const depositBonus = depositBonusAgg._sum.amount?.toNumber() ?? 0;
+    const pointRedeem = pointRedeemAgg._sum.amount?.toNumber() ?? 0;
+    const refundPositiveAdjust = refundAdjustAgg._sum.amount?.toNumber() ?? 0;
+    const cancelPositiveAdjust = cancelAdjustAgg._sum.amount?.toNumber() ?? 0;
+    const sportsCancelPositiveAdjust =
+      sportsCancelAdjustAgg._sum.amount?.toNumber() ?? 0;
+    const sportsChangePositiveAdjust =
+      sportsChangeAdjustAgg._sum.amount?.toNumber() ?? 0;
+    const compSettlementPositiveAdjust =
+      compSettlementAdjustAgg._sum.amount?.toNumber() ?? 0;
+    const actualCompSettled =
+      actualCompAgg._sum.amount?.toNumber() ?? 0;
+    const otherMoneyCreditsRaw =
+      totalPositiveAdjust -
+      principalPositiveAdjust -
+      depositBonus -
+      pointRedeem -
+      refundPositiveAdjust -
+      cancelPositiveAdjust -
+      sportsCancelPositiveAdjust -
+      sportsChangePositiveAdjust -
+      compSettlementPositiveAdjust;
+    const otherMoneyCredits =
+      otherMoneyCreditsRaw > 0 ? otherMoneyCreditsRaw : 0;
+
+    const pointSumByType = new Map(
+      pointPositiveByType.map((row) => [row.type, row._sum.amount?.toNumber() ?? 0]),
+    );
+    let depositPoints = 0;
+    let bulkGrantPoints = 0;
+    let otherAdjustmentPoints = 0;
+    for (const row of pointAdjustmentEntries) {
+      const meta = this.asRecord(row.metaJson);
+      const amount = row.amount.toNumber();
+      if (meta.depositPoint === true) {
+        depositPoints += amount;
+      } else if (meta.bulkGrant === true) {
+        bulkGrantPoints += amount;
+      } else {
+        otherAdjustmentPoints += amount;
+      }
+    }
+    const attendancePoints =
+      pointSumByType.get('ATTENDANCE') ?? 0;
+    const attendanceStreakPoints =
+      pointSumByType.get('ATTENDANCE_STREAK') ?? 0;
+    const loseBetPoints =
+      pointSumByType.get('LOSE_BET') ?? 0;
+    const referralPoints =
+      pointSumByType.get('REFERRAL_FIRST_BET') ?? 0;
+    const totalIssuedPoints =
+      attendancePoints +
+      attendanceStreakPoints +
+      loseBetPoints +
+      referralPoints +
+      depositPoints +
+      bulkGrantPoints +
+      otherAdjustmentPoints;
+    const estimatedPointLiability =
+      redeemKrwPerPoint != null ? totalIssuedPoints * redeemKrwPerPoint : null;
+
+    const compEnabled = compPolicy.enabled;
+    const compCycle = compPolicy.settlementCycle;
+    const compOffsetDays = compPolicy.settlementOffsetDays;
+    const compRatePct = compPolicy.ratePct;
+    const compRateNum = compRatePct ? Number(compRatePct) : NaN;
+    // 콤프 실집행 원장은 아직 없어서, 현재는 총 낙첨금 기준 정책상 추정치만 제공한다.
+    const estimatedCompCost =
+      compEnabled && Number.isFinite(compRateNum) && compRateNum > 0 && houseEdge > 0
+        ? (houseEdge * compRateNum) / 100
+        : 0;
+    const realizedMoneyCost =
+      depositBonus + pointRedeem + otherMoneyCredits + actualCompSettled;
+    const solutionRateMetrics = this.computeSolutionRateMetrics(
+      platform?.flagsJson,
+      Number(vertBreakdown.casino?.ggr ?? 0),
+      Number(vertBreakdown.sports?.ggr ?? 0),
+    );
+    const solutionRates =
+      actor.role === UserRole.SUPER_ADMIN
+        ? {
+            upstreamCasinoPct:
+              solutionRateMetrics.solutionRatePolicy.upstreamCasinoPct,
+            upstreamSportsPct:
+              solutionRateMetrics.solutionRatePolicy.upstreamSportsPct,
+            platformCasinoPct:
+              solutionRateMetrics.solutionRatePolicy.platformCasinoPct,
+            platformSportsPct:
+              solutionRateMetrics.solutionRatePolicy.platformSportsPct,
+            autoMarginPct:
+              solutionRateMetrics.solutionRatePolicy.autoMarginPct,
+            casinoBaseGgr: solutionRateMetrics.casinoBaseGgr.toFixed(2),
+            sportsBaseGgr: solutionRateMetrics.sportsBaseGgr.toFixed(2),
+            upstreamCostKrw:
+              solutionRateMetrics.upstreamVendorCost.toFixed(2),
+            platformChargeKrw:
+              solutionRateMetrics.platformBilledRate.toFixed(2),
+            solutionMarginKrw:
+              solutionRateMetrics.solutionRateMargin.toFixed(2),
+            modeledBase: 'POSITIVE_GGR',
+          }
+        : this.hiddenSolutionRateSummary();
 
     return {
       period: { from: from ?? null, to: to ?? null },
@@ -868,8 +2278,42 @@ export class PlatformsService {
         depositTotal: depositTotal.toFixed(2),
         withdrawCount: withdrawAgg._count,
         withdrawTotal: withdrawTotal.toFixed(2),
-        netInflow: (depositTotal - withdrawTotal).toFixed(2),
+        netInflow: houseEdge.toFixed(2),
         houseEdge: houseEdge.toFixed(2),
+      },
+      costs: {
+        money: {
+          depositBonus: depositBonus.toFixed(2),
+          pointRedeem: pointRedeem.toFixed(2),
+          otherWalletCredits: otherMoneyCredits.toFixed(2),
+          total: realizedMoneyCost.toFixed(2),
+        },
+        pointAccrual: {
+          redeemKrwPerPoint:
+            redeemKrwPerPoint != null ? String(redeemKrwPerPoint) : null,
+          attendancePoints: attendancePoints.toFixed(2),
+          attendanceStreakPoints: attendanceStreakPoints.toFixed(2),
+          loseBetPoints: loseBetPoints.toFixed(2),
+          referralPoints: referralPoints.toFixed(2),
+          depositPoints: depositPoints.toFixed(2),
+          bulkGrantPoints: bulkGrantPoints.toFixed(2),
+          otherAdjustmentPoints: otherAdjustmentPoints.toFixed(2),
+          totalPoints: totalIssuedPoints.toFixed(2),
+          estimatedKrw:
+            estimatedPointLiability != null
+              ? estimatedPointLiability.toFixed(2)
+              : null,
+        },
+        comp: {
+          enabled: compEnabled,
+          settlementCycle: compCycle,
+          settlementOffsetDays: compOffsetDays,
+          ratePct: compRatePct,
+          estimatedKrw: estimatedCompCost.toFixed(2),
+          actualSettledKrw: actualCompSettled.toFixed(2),
+          modeledBase: 'HOUSE_EDGE',
+        },
+        solutionRates,
       },
       verticals: vertBreakdown,
     };
@@ -881,6 +2325,8 @@ export class PlatformsService {
     if (from) dateFilter.gte = new Date(from);
     if (to) dateFilter.lte = new Date(to);
     const hasDate = Object.keys(dateFilter).length > 0;
+    const approvedInPeriod = (userIds?: string[]) =>
+      this.approvedWalletWhere(platformId, userIds, hasDate ? dateFilter : undefined);
 
     const agents = await this.prisma.user.findMany({
       where: { platformId, role: UserRole.MASTER_AGENT },
@@ -892,6 +2338,25 @@ export class PlatformsService {
       },
       orderBy: { createdAt: 'asc' },
     });
+    const roleById = new Map<string, UserRole>();
+    for (const agent of agents) {
+      roleById.set(agent.id, UserRole.MASTER_AGENT);
+    }
+    const effectiveMap = computeEffectiveAgentShares(
+      agents.map((agent) => ({
+        id: agent.id,
+        parentUserId: agent.parentUserId ?? null,
+        agentPlatformSharePct:
+          agent.agentPlatformSharePct != null
+            ? Number(agent.agentPlatformSharePct)
+            : null,
+        agentSplitFromParentPct:
+          agent.agentSplitFromParentPct != null
+            ? Number(agent.agentSplitFromParentPct)
+            : null,
+      })),
+      roleById,
+    );
 
     // BFS helper to get all downline USER ids
     const getDownlineUserIds = async (agentId: string): Promise<string[]> => {
@@ -944,22 +2409,12 @@ export class PlatformsService {
       const [depGroups, wdrGroups] = await Promise.all([
         this.prisma.walletRequest.groupBy({
           by: ['userId'],
-          where: {
-            userId: { in: duIds },
-            type: WalletRequestType.DEPOSIT,
-            status: WalletRequestStatus.APPROVED,
-            ...(hasDate ? { createdAt: dateFilter } : {}),
-          },
+          where: { ...approvedInPeriod(duIds), type: WalletRequestType.DEPOSIT },
           _sum: { amount: true },
         }),
         this.prisma.walletRequest.groupBy({
           by: ['userId'],
-          where: {
-            userId: { in: duIds },
-            type: WalletRequestType.WITHDRAWAL,
-            status: WalletRequestStatus.APPROVED,
-            ...(hasDate ? { createdAt: dateFilter } : {}),
-          },
+          where: { ...approvedInPeriod(duIds), type: WalletRequestType.WITHDRAWAL },
           _sum: { amount: true },
         }),
       ]);
@@ -992,6 +2447,7 @@ export class PlatformsService {
       agents.map(async (a) => {
         const userIds = await getDownlineUserIds(a.id);
         const directUsers = buildDirectUsers(a.id);
+        const effPct = effectiveMap.get(a.id) ?? 0;
         if (userIds.length === 0) {
           return {
           agentId: a.id,
@@ -1002,7 +2458,7 @@ export class PlatformsService {
           isTopAgent: !a.parentUserId,
           platformSharePct: Number(a.agentPlatformSharePct ?? 0),
           splitFromParentPct: Number(a.agentSplitFromParentPct ?? 0),
-          effectivePct: 0,
+          effectivePct: Math.round(effPct * 1e4) / 1e4,
           downlineUsers: 0,
           betStake: '0.00',
           winTotal: '0.00',
@@ -1025,11 +2481,11 @@ export class PlatformsService {
             _sum: { amount: true },
           }),
           this.prisma.walletRequest.aggregate({
-            where: { userId: { in: userIds }, type: WalletRequestType.DEPOSIT, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+            where: { ...approvedInPeriod(userIds), type: WalletRequestType.DEPOSIT },
             _sum: { amount: true },
           }),
           this.prisma.walletRequest.aggregate({
-            where: { userId: { in: userIds }, type: WalletRequestType.WITHDRAWAL, status: WalletRequestStatus.APPROVED, ...(hasDate ? { createdAt: dateFilter } : {}) },
+            where: { ...approvedInPeriod(userIds), type: WalletRequestType.WITHDRAWAL },
             _sum: { amount: true },
           }),
         ]);
@@ -1039,10 +2495,8 @@ export class PlatformsService {
         const ggr = stake - win;
         const dep = depAgg._sum.amount?.toNumber() ?? 0;
         const wdr = wdrAgg._sum.amount?.toNumber() ?? 0;
-        // 낙첨금액 = 입금 - 출금 (총판 정산의 기준)
+        // 총판 정산은 회원별 낙첨금(입금-출금) 통합 합계 기준이다.
         const houseEdge = dep - wdr;
-        // effectivePct: how much of platform houseEdge this agent keeps
-        const effPct = Number(a.agentPlatformSharePct ?? 0) * Number(a.agentSplitFromParentPct ?? 0) / 100;
         const settlement = (houseEdge * effPct) / 100;
 
         return {

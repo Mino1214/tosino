@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type Semi = {
@@ -41,6 +41,10 @@ export default function SemiVirtualSettingsPage() {
   useEffect(() => {
     if (!getAccessToken()) {
       router.replace("/login");
+      return;
+    }
+    if (getStoredUser()?.role !== "SUPER_ADMIN") {
+      router.replace("/console/sales");
     }
   }, [router]);
 

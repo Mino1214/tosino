@@ -15,7 +15,7 @@ export class UsdtDepositController {
    * ?status=PENDING  → 최소 미달 대기 목록
    * ?status=UNMATCHED → 매칭 유저 없는 입금 */
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   list(
     @Param('platformId') platformId: string,
     @Query('status') status?: UsdtDepositTxStatus,

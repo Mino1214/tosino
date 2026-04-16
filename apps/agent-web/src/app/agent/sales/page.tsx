@@ -336,7 +336,7 @@ export default function AgentSalesPage() {
     return Object.keys(data.gameSales.LIVE_CASINO.byKind).sort();
   }, [data]);
 
-  const memberRows = data?.members ?? [];
+  const memberRows = useMemo(() => data?.members ?? [], [data?.members]);
   const filteredMembers = useMemo(() => {
     const t = memberQ.trim().toLowerCase();
     if (!t) return memberRows;
@@ -384,7 +384,9 @@ export default function AgentSalesPage() {
         <div>
           <h1 className="text-xl font-semibold text-zinc-100">매출</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            입출금은 전 구간 합계, 게임 수치는{" "}
+            총판 정산은 회원별 낙첨금
+            <span className="text-zinc-400"> (충전 − 환전) </span>
+            통합 합계 기준입니다. 게임 수치는{" "}
             <span className="text-zinc-400">metaJson.vertical</span>·
             <span className="text-zinc-400">subVertical</span> 기준 집계입니다.
           </p>
@@ -483,7 +485,7 @@ export default function AgentSalesPage() {
                 <h2 className="text-sm font-medium text-amber-200/90">
                   전체 요약
                 </h2>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <StatCard
                     label="승인 충전 합계"
                     value={data.approvedDepositSum}
@@ -495,9 +497,23 @@ export default function AgentSalesPage() {
                     accent="text-rose-300"
                   />
                   <StatCard
-                    label="순입금 (충전 − 환전)"
+                    label="총 낙첨금 (충전 − 환전)"
                     value={data.netInflow}
                     accent="text-amber-200"
+                  />
+                  <StatCard
+                    label="유저 손익 합계 (환전 − 충전)"
+                    value={(
+                      Number(data.approvedWithdrawSum) -
+                      Number(data.approvedDepositSum)
+                    ).toFixed(2)}
+                    accent={
+                      Number(data.approvedWithdrawSum) -
+                        Number(data.approvedDepositSum) >=
+                      0
+                        ? "text-rose-300"
+                        : "text-emerald-300"
+                    }
                   />
                   <StatCard
                     label="배팅 원장 합 (BET, 부호 유지)"
@@ -523,7 +539,7 @@ export default function AgentSalesPage() {
                   )}
                   {data.myEstimatedSettlement !== undefined && (
                     <StatCard
-                      label={`내 정산금 (GGR × ${data.effectiveAgentSharePct ?? 0}%)`}
+                      label={`내 예상 정산금 (총 낙첨금 × ${data.effectiveAgentSharePct ?? 0}%)`}
                       value={data.myEstimatedSettlement}
                       accent="text-amber-400 font-bold"
                     />
@@ -581,7 +597,8 @@ export default function AgentSalesPage() {
                           <th className="px-3 py-2.5">식별 메모</th>
                           <th className="px-3 py-2.5 text-right">충전</th>
                           <th className="px-3 py-2.5 text-right">환전</th>
-                          <th className="px-3 py-2.5 text-right">순입금</th>
+                          <th className="px-3 py-2.5 text-right">유저손익</th>
+                          <th className="px-3 py-2.5 text-right">총 낙첨금</th>
                           <th className="px-3 py-2.5 text-right">배팅(|BET|)</th>
                           <th className="px-3 py-2.5 text-right">당첨</th>
                           <th className="px-3 py-2.5 text-right">추정 GGR</th>
@@ -589,7 +606,10 @@ export default function AgentSalesPage() {
                       </thead>
                       <tbody>
                         {filteredMembers.map((m, i) => {
-                          const net = Number(m.netInflow);
+                          const agentDrop =
+                            Number(m.approvedDepositSum) -
+                            Number(m.approvedWithdrawSum);
+                          const userProfit = -agentDrop;
                           const open = expandedMemberId === m.userId;
                           const stakeN = Number(m.ledgerBetStakeAbs);
                           const maxStake =
@@ -654,12 +674,21 @@ export default function AgentSalesPage() {
                                 </td>
                                 <td
                                   className={`px-3 py-2.5 text-right font-mono text-xs ${
-                                    net >= 0
-                                      ? "text-teal-300/90"
-                                      : "text-orange-300/90"
+                                    userProfit >= 0
+                                      ? "text-rose-300/90"
+                                      : "text-emerald-300/90"
                                   }`}
                                 >
-                                  {m.netInflow}
+                                  {userProfit.toFixed(2)}
+                                </td>
+                                <td
+                                  className={`px-3 py-2.5 text-right font-mono text-xs ${
+                                    agentDrop >= 0
+                                      ? "text-amber-200/90"
+                                      : "text-red-300/90"
+                                  }`}
+                                >
+                                  {agentDrop.toFixed(2)}
                                 </td>
                                 <td className="px-3 py-2.5 text-right font-mono text-xs text-sky-300/90">
                                   {m.ledgerBetStakeAbs}
@@ -673,7 +702,7 @@ export default function AgentSalesPage() {
                               </tr>
                               {open && (
                                 <tr className="border-b border-zinc-800/70 bg-zinc-950/50">
-                                  <td colSpan={10} className="p-0 align-top">
+                                  <td colSpan={11} className="p-0 align-top">
                                     <MemberSalesActivityPanel
                                       userId={m.userId}
                                       from={from}
@@ -789,7 +818,9 @@ function TopMembersStrip({
       </div>
       <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
         {top.map((m) => {
-          const net = Number(m.netInflow);
+          const agentDrop =
+            Number(m.approvedDepositSum) - Number(m.approvedWithdrawSum);
+          const userProfit = -agentDrop;
           const stakeN = Number(m.ledgerBetStakeAbs);
           const barPct = Math.min(100, (stakeN / maxStake) * 100);
           return (
@@ -831,13 +862,23 @@ function TopMembersStrip({
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2 text-zinc-500">
-                  <dt>순입금</dt>
+                  <dt>유저손익</dt>
                   <dd
                     className={`font-mono ${
-                      net >= 0 ? "text-teal-300/90" : "text-orange-300/90"
+                      userProfit >= 0 ? "text-rose-300/90" : "text-emerald-300/90"
                     }`}
                   >
-                    {m.netInflow}
+                    {userProfit.toFixed(2)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2 text-zinc-500">
+                  <dt>총 낙첨금</dt>
+                  <dd
+                    className={`font-mono ${
+                      agentDrop >= 0 ? "text-amber-200/90" : "text-red-300/90"
+                    }`}
+                  >
+                    {agentDrop.toFixed(2)}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2 text-zinc-500">

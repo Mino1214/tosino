@@ -16,6 +16,15 @@ export type PlatformRow = {
   name: string;
   previewPort: number | null;
   domains: { host: string }[];
+  solutionTemplateKey?: string;
+  solutionHostSuffix?: string;
+  solutionRatePolicy?: {
+    upstreamCasinoPct?: string | null;
+    upstreamSportsPct?: string | null;
+    platformCasinoPct?: string | null;
+    platformSportsPct?: string | null;
+    autoMarginPct?: string | null;
+  };
 };
 
 type Ctx = {

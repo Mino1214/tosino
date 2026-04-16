@@ -12,7 +12,7 @@ const NAV = [
   {
     href: "/console/sales",
     label: "매출 현황",
-    hint: "하우스수익 · 배팅내역 · 총판정산",
+    hint: "낙첨금 · 비용 · 순이익",
   },
   {
     href: "/console/users",
@@ -181,10 +181,10 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   useEffect(() => {
-    if (isMaster && mode !== "standard") {
+    if ((isMaster || !isSuperAdmin) && mode !== "standard") {
       setMode("standard");
     }
-  }, [isMaster, mode, setMode]);
+  }, [isMaster, isSuperAdmin, mode, setMode]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -261,7 +261,7 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
           <p className="mt-2 text-xs text-zinc-600">플랫폼 없음</p>
         )}
 
-        {!isMaster && (
+        {!isMaster && isSuperAdmin && (
           <div className="mt-3 flex gap-0.5 rounded-lg bg-zinc-950 p-0.5 ring-1 ring-zinc-800">
             <button
               type="button"

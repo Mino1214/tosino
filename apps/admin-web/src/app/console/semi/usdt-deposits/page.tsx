@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { apiFetch, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type TxStatus = "PENDING" | "AUTO_CREDITED" | "REJECTED" | "UNMATCHED";
@@ -36,6 +37,7 @@ const STATUS_COLOR: Record<TxStatus, string> = {
 };
 
 export default function UsdtDepositsPage() {
+  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [txs, setTxs] = useState<UsdtTx[]>([]);
   const [filter, setFilter] = useState<TxStatus | "ALL">("ALL");
@@ -55,9 +57,13 @@ export default function UsdtDepositsPage() {
   };
 
   useEffect(() => {
+    if (getStoredUser()?.role !== "SUPER_ADMIN") {
+      router.replace("/console/sales");
+      return;
+    }
     if (!platformLoading && selectedPlatformId) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPlatformId, platformLoading, filter]);
+  }, [router, selectedPlatformId, platformLoading, filter]);
 
   async function handleApprove(tx: UsdtTx) {
     if (!tx.walletRequest || !selectedPlatformId) return;

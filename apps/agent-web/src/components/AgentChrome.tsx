@@ -19,7 +19,7 @@ const NAV = [
   {
     href: "/agent/sales",
     label: "매출",
-    hint: "입출금 · 게임별 집계",
+    hint: "낙첨금 · 유저손익 · 게임참고",
   },
   {
     href: "/agent/wallet-requests",

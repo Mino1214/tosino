@@ -601,14 +601,15 @@ export class AgentService {
 
     const totalWin = Number(sumDec(winAgg._sum.amount));
     const ggr = stakeAbs - totalWin;
-    const mySettlement = (ggr * effPct) / 100;
+    const cashDrop = dep - wit;
+    const mySettlement = (cashDrop * effPct) / 100;
 
     return {
       from: start.toISOString(),
       to: end.toISOString(),
       approvedDepositSum: sumDec(depAgg._sum.amount),
       approvedWithdrawSum: sumDec(witAgg._sum.amount),
-      netInflow: (dep - wit).toFixed(2),
+      netInflow: cashDrop.toFixed(2),
       ledgerBetSum: sumDec(betAgg._sum.amount),
       ledgerBetStakeAbs: stakeAbs.toFixed(2),
       ledgerWinSum: sumDec(winAgg._sum.amount),

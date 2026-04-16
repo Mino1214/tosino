@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type Detail = {
@@ -25,6 +25,18 @@ type Detail = {
     settlementCycle?: "INSTANT" | "DAILY_MIDNIGHT" | "BET_DAY_PLUS";
     settlementOffsetDays?: number | null;
     ratePct?: string | null;
+  } | null;
+  compAutomation?: {
+    autoEnabled?: boolean;
+    cron?: string | null;
+    backfillDays?: number | null;
+  } | null;
+  solutionRatePolicy?: {
+    upstreamCasinoPct?: string | null;
+    upstreamSportsPct?: string | null;
+    platformCasinoPct?: string | null;
+    platformSportsPct?: string | null;
+    autoMarginPct?: string | null;
   } | null;
 };
 
@@ -54,6 +66,18 @@ type CompPolicyForm = {
   ratePct: string;
 };
 
+type CompAutomationForm = {
+  autoEnabled: boolean;
+  cron: string;
+  backfillDays: number | null;
+};
+
+type SolutionRatePolicyForm = {
+  upstreamCasinoPct: string;
+  upstreamSportsPct: string;
+  autoMarginPct: string;
+};
+
 type PointTierForm = {
   id: string;
   minAmount: string;
@@ -75,6 +99,61 @@ type PointRulesForm = {
   referrerFirstBetFlat: string;
   referrerFirstBetPct: string;
   depositPointTiers: PointTierForm[];
+};
+
+type CompSettlementHistoryItem = {
+  id: string;
+  userId: string;
+  loginId: string;
+  displayName: string;
+  periodFrom: string;
+  periodTo: string;
+  baseAmount: string;
+  ratePct: string;
+  amount: string;
+  settlementCycle: "INSTANT" | "DAILY_MIDNIGHT" | "BET_DAY_PLUS" | string;
+  settlementOffsetDays: number | null;
+  note: string | null;
+  settledByUserId: string | null;
+  settledByLoginId: string | null;
+  ledgerReference: string | null;
+  createdAt: string;
+};
+
+type CompSettlementListResponse = {
+  count: number;
+  totalAmount: string;
+  items: CompSettlementHistoryItem[];
+};
+
+type CompRunRow = {
+  userId: string;
+  loginId: string;
+  displayName: string;
+  baseAmount: string;
+  amount: string;
+  status: "already_settled" | "ready" | "wallet_missing";
+};
+
+type CompRunResult = {
+  dryRun: boolean;
+  period: { from: string; to: string };
+  policy: {
+    enabled: boolean;
+    settlementCycle: "INSTANT" | "DAILY_MIDNIGHT" | "BET_DAY_PLUS";
+    settlementOffsetDays: number | null;
+    ratePct: string | null;
+  };
+  totals: {
+    eligibleUsers: number;
+    readyUsers: number;
+    skippedExistingUsers: number;
+    totalBaseAmount: string;
+    totalAmount: string;
+    createdUsers: number;
+    createdAmount: string;
+  };
+  rows: CompRunRow[];
 };
 
 type TabKey = "rolling" | "comp" | "point";
@@ -113,6 +192,10 @@ function numberOrNull(value: string) {
   return Number.isFinite(n) ? n : null;
 }
 
+function formatDateOnly(value: string) {
+  return new Date(value).toLocaleDateString("ko-KR");
+}
+
 function normalizeCompPolicy(detail: Detail): CompPolicyForm {
   const raw = asRecord(detail.compPolicy);
   const settlementCycle =
@@ -128,6 +211,28 @@ function normalizeCompPolicy(detail: Detail): CompPolicyForm {
         ? Math.max(0, Math.trunc(offsetRaw))
         : null,
     ratePct: stringOrEmpty(raw.ratePct),
+  };
+}
+
+function normalizeCompAutomation(detail: Detail): CompAutomationForm {
+  const raw = asRecord(detail.compAutomation);
+  const backfillRaw = Number(raw.backfillDays ?? 7);
+  return {
+    autoEnabled: raw.autoEnabled === true,
+    cron: stringOrEmpty(raw.cron),
+    backfillDays:
+      Number.isFinite(backfillRaw) && backfillRaw > 0
+        ? Math.max(1, Math.trunc(backfillRaw))
+        : 7,
+  };
+}
+
+function normalizeSolutionRatePolicy(detail: Detail): SolutionRatePolicyForm {
+  const raw = asRecord(detail.solutionRatePolicy);
+  return {
+    upstreamCasinoPct: stringOrEmpty(raw.upstreamCasinoPct) || "0.00",
+    upstreamSportsPct: stringOrEmpty(raw.upstreamSportsPct) || "0.00",
+    autoMarginPct: stringOrEmpty(raw.autoMarginPct) || "1.00",
   };
 }
 
@@ -251,9 +356,18 @@ function createTier(): PointTierForm {
 export default function ConsoleOperationalPage() {
   const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
+  const userRole = getStoredUser()?.role;
+  const canEditSolutionRates = userRole === "SUPER_ADMIN";
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = `${today.slice(0, 7)}-01`;
   const [activeTab, setActiveTab] = useState<TabKey>("rolling");
   const [rolling, setRolling] = useState<RollingForm | null>(null);
   const [compPolicy, setCompPolicy] = useState<CompPolicyForm | null>(null);
+  const [compAutomation, setCompAutomation] = useState<CompAutomationForm | null>(
+    null,
+  );
+  const [solutionRatePolicy, setSolutionRatePolicy] =
+    useState<SolutionRatePolicyForm | null>(null);
   const [pointRules, setPointRules] = useState<PointRulesForm | null>(null);
   const [pointRulesBase, setPointRulesBase] = useState<Record<string, unknown>>({});
   const [masters, setMasters] = useState<MasterRow[]>([]);
@@ -263,6 +377,17 @@ export default function ConsoleOperationalPage() {
   const [grantAmount, setGrantAmount] = useState("");
   const [grantNote, setGrantNote] = useState("");
   const [granting, setGranting] = useState(false);
+  const [compPeriodFrom, setCompPeriodFrom] = useState(monthStart);
+  const [compPeriodTo, setCompPeriodTo] = useState(today);
+  const [compSettlementNote, setCompSettlementNote] = useState("");
+  const [compRunning, setCompRunning] = useState(false);
+  const [compPreviewing, setCompPreviewing] = useState(false);
+  const [compResult, setCompResult] = useState<CompRunResult | null>(null);
+  const [compHistory, setCompHistory] = useState<CompSettlementHistoryItem[]>([]);
+  const [compHistorySummary, setCompHistorySummary] = useState({
+    count: 0,
+    totalAmount: "0.00",
+  });
 
   const load = useCallback(() => {
     if (!selectedPlatformId) return Promise.resolve();
@@ -270,8 +395,11 @@ export default function ConsoleOperationalPage() {
     return Promise.all([
       apiFetch<Detail>(`/platforms/${selectedPlatformId}`),
       apiFetch<MasterRow[]>(`/platforms/${selectedPlatformId}/users`),
+      apiFetch<CompSettlementListResponse>(
+        `/platforms/${selectedPlatformId}/comp-settlements?take=20`,
+      ),
     ])
-      .then(([detail, users]) => {
+      .then(([detail, users, compSettlements]) => {
         setRolling({
           rollingLockWithdrawals: detail.rollingLockWithdrawals,
           rollingTurnoverMultiplier: detail.rollingTurnoverMultiplier,
@@ -284,10 +412,17 @@ export default function ConsoleOperationalPage() {
           defaultSignupReferrerUserId: detail.defaultSignupReferrerUserId ?? "",
         });
         setCompPolicy(normalizeCompPolicy(detail));
+        setCompAutomation(normalizeCompAutomation(detail));
+        setSolutionRatePolicy(normalizeSolutionRatePolicy(detail));
         const normalizedRules = normalizePointRules(detail);
         setPointRules(normalizedRules.form);
         setPointRulesBase(normalizedRules.base);
         setMasters(users.filter((user) => user.role === "MASTER_AGENT"));
+        setCompHistory(compSettlements.items);
+        setCompHistorySummary({
+          count: compSettlements.count,
+          totalAmount: compSettlements.totalAmount,
+        });
       })
       .catch((e) => setErr(e instanceof Error ? e.message : "불러오기 실패"));
   }, [selectedPlatformId]);
@@ -315,6 +450,20 @@ export default function ConsoleOperationalPage() {
     value: CompPolicyForm[K],
   ) {
     setCompPolicy((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  function patchCompAutomation<K extends keyof CompAutomationForm>(
+    key: K,
+    value: CompAutomationForm[K],
+  ) {
+    setCompAutomation((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  function patchSolutionRate<K extends keyof SolutionRatePolicyForm>(
+    key: K,
+    value: SolutionRatePolicyForm[K],
+  ) {
+    setSolutionRatePolicy((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
   function patchPoint<K extends keyof PointRulesForm>(
@@ -360,7 +509,15 @@ export default function ConsoleOperationalPage() {
   }
 
   async function save() {
-    if (!selectedPlatformId || !rolling || !compPolicy || !pointRules) return;
+    if (
+      !selectedPlatformId ||
+      !rolling ||
+      !compPolicy ||
+      !compAutomation ||
+      !solutionRatePolicy ||
+      !pointRules
+    )
+      return;
     setSaving(true);
     setErr(null);
     setMsg(null);
@@ -389,6 +546,20 @@ export default function ConsoleOperationalPage() {
                 : null,
             ratePct: compPolicy.ratePct.trim(),
           },
+          compAutomation: {
+            autoEnabled: compAutomation.autoEnabled,
+            cron: compAutomation.cron.trim(),
+            backfillDays: compAutomation.backfillDays ?? undefined,
+          },
+          ...(canEditSolutionRates
+            ? {
+                solutionRatePolicy: {
+                  upstreamCasinoPct: solutionRatePolicy.upstreamCasinoPct.trim(),
+                  upstreamSportsPct: solutionRatePolicy.upstreamSportsPct.trim(),
+                  autoMarginPct: solutionRatePolicy.autoMarginPct.trim(),
+                },
+              }
+            : {}),
           pointRulesJson: buildPointRulesJson(pointRulesBase, pointRules),
         }),
       });
@@ -436,13 +607,66 @@ export default function ConsoleOperationalPage() {
     }
   }
 
+  async function runCompSettlement(dryRun: boolean) {
+    if (!selectedPlatformId) return;
+    if (!compPeriodFrom || !compPeriodTo) {
+      setErr("콤프 정산 기간을 확인해주세요.");
+      return;
+    }
+
+    if (dryRun) {
+      setCompPreviewing(true);
+    } else {
+      setCompRunning(true);
+    }
+    setErr(null);
+    setMsg(null);
+
+    try {
+      const result = await apiFetch<CompRunResult>(
+        `/platforms/${selectedPlatformId}/comp-settlements/run`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            from: `${compPeriodFrom}T00:00:00.000Z`,
+            to: `${compPeriodTo}T23:59:59.999Z`,
+            note: compSettlementNote.trim() || undefined,
+            dryRun,
+          }),
+        },
+      );
+      setCompResult(result);
+      if (dryRun) {
+        setMsg(
+          `콤프 미리보기: 대상 ${result.totals.eligibleUsers}명, 지급 예정 ${result.totals.totalAmount}원`,
+        );
+      } else {
+        setMsg(
+          `콤프 정산 완료: ${result.totals.createdUsers}명, 실제 지급 ${result.totals.createdAmount}원`,
+        );
+        await load();
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "콤프 정산 실행 실패");
+    } finally {
+      setCompPreviewing(false);
+      setCompRunning(false);
+    }
+  }
+
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (
       <p className="text-zinc-500">불러오는 중…</p>
     ) : null;
   }
 
-  if (!rolling || !compPolicy || !pointRules) {
+  if (
+    !rolling ||
+    !compPolicy ||
+    !compAutomation ||
+    !solutionRatePolicy ||
+    !pointRules
+  ) {
     return err ? (
       <p className="text-red-400">{err}</p>
     ) : (
@@ -503,6 +727,7 @@ export default function ConsoleOperationalPage() {
                       (option) => option.value === compPolicy.settlementCycle,
                     )?.label
                   }
+                  {compAutomation.autoEnabled ? " · 자동" : " · 수동"}
                 </p>
               ) : null}
               {tab.key === "point" ? (
@@ -654,6 +879,75 @@ export default function ConsoleOperationalPage() {
               </div>
             </div>
           </div>
+
+          {canEditSolutionRates ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <h3 className="text-sm font-medium text-zinc-200">
+                상위업체 요율
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500">
+                상위업체 매입 요율과 자동 마진을 기준으로 플랫폼 청구율을 계산합니다.
+                현재는 카지노·스포츠 기준입니다.
+              </p>
+              <div className="mt-3 grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-xs text-zinc-500">상위 카지노 %</label>
+                  <input
+                    type="text"
+                    value={solutionRatePolicy.upstreamCasinoPct}
+                    onChange={(e) =>
+                      patchSolutionRate("upstreamCasinoPct", e.target.value)
+                    }
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500">상위 스포츠 %</label>
+                  <input
+                    type="text"
+                    value={solutionRatePolicy.upstreamSportsPct}
+                    onChange={(e) =>
+                      patchSolutionRate("upstreamSportsPct", e.target.value)
+                    }
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500">자동 마진 %</label>
+                  <input
+                    type="text"
+                    value={solutionRatePolicy.autoMarginPct}
+                    onChange={(e) =>
+                      patchSolutionRate("autoMarginPct", e.target.value)
+                    }
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3">
+                  <p className="text-xs text-zinc-500">플랫폼 카지노 청구율</p>
+                  <p className="mt-1 font-mono text-lg text-emerald-300">
+                    {(
+                      (Number(solutionRatePolicy.upstreamCasinoPct || 0) || 0) +
+                      (Number(solutionRatePolicy.autoMarginPct || 0) || 0)
+                    ).toFixed(2)}
+                    %
+                  </p>
+                </div>
+                <div className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3">
+                  <p className="text-xs text-zinc-500">플랫폼 스포츠 청구율</p>
+                  <p className="mt-1 font-mono text-lg text-emerald-300">
+                    {(
+                      (Number(solutionRatePolicy.upstreamSportsPct || 0) || 0) +
+                      (Number(solutionRatePolicy.autoMarginPct || 0) || 0)
+                    ).toFixed(2)}
+                    %
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -662,8 +956,8 @@ export default function ConsoleOperationalPage() {
           <div>
             <h2 className="text-lg font-semibold text-zinc-100">콤프 정책</h2>
             <p className="mt-1 text-sm text-zinc-500">
-              콤프 정산주기와 지급률을 플랫폼 정책으로 저장합니다. 실제 정산 엔진이
-              읽는 기준값으로 쓰기 좋게 구조를 단순화해 두었습니다.
+              콤프 정산주기, 지급률, 자동정산 스케줄을 플랫폼별로 저장합니다.
+              `매일 00시`, `배팅일 +x일`은 자동 대상이고 `즉시`는 수동 실행 기준입니다.
             </p>
           </div>
 
@@ -726,6 +1020,57 @@ export default function ConsoleOperationalPage() {
             </div>
           </div>
 
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+            <h3 className="text-sm font-medium text-zinc-200">
+              플랫폼별 자동정산
+            </h3>
+            <div className="mt-3 grid gap-4 md:grid-cols-3">
+              <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-3">
+                <input
+                  type="checkbox"
+                  checked={compAutomation.autoEnabled}
+                  onChange={(e) =>
+                    patchCompAutomation("autoEnabled", e.target.checked)
+                  }
+                />
+                이 플랫폼에서 자동 콤프 정산 사용
+              </label>
+
+              <div>
+                <label className="text-xs text-zinc-500">Cron (KST)</label>
+                <input
+                  type="text"
+                  value={compAutomation.cron}
+                  onChange={(e) => patchCompAutomation("cron", e.target.value)}
+                  placeholder="예: 5 0 * * *"
+                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-500">백필 일수</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={compAutomation.backfillDays ?? ""}
+                  onChange={(e) =>
+                    patchCompAutomation(
+                      "backfillDays",
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                />
+              </div>
+
+              <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2 text-xs leading-relaxed text-zinc-500">
+                솔루션 A/B/C처럼 플랫폼별로 다른 시각과 백필 폭을 둘 수 있습니다.
+                cron이 비면 서버 기본값을 따르고, 자동 사용을 끄면 수동 정산만 남습니다.
+              </div>
+            </div>
+          </div>
+
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
             <p>
               현재 설정:{" "}
@@ -750,6 +1095,220 @@ export default function ConsoleOperationalPage() {
                 {compPolicy.ratePct.trim() || "미설정"}%
               </span>
             </p>
+            <p className="mt-2">
+              자동정산:{" "}
+              <span className="font-medium text-zinc-100">
+                {compAutomation.autoEnabled ? "사용" : "미사용"}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              스케줄 {compAutomation.cron.trim() || "기본값 사용"} · 백필{" "}
+              {compAutomation.backfillDays ?? 7}일
+            </p>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <h3 className="text-sm font-medium text-zinc-200">수동 콤프 정산</h3>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                승인 입출금 기준 회원별 낙첨금(충전 − 환전)에 현재 콤프률을 적용해
+                실제 지갑으로 지급합니다. 같은 회원/같은 기간은 중복 정산되지 않습니다.
+              </p>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-xs text-zinc-500">시작일</label>
+                  <input
+                    type="date"
+                    value={compPeriodFrom}
+                    onChange={(e) => setCompPeriodFrom(e.target.value)}
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500">종료일</label>
+                  <input
+                    type="date"
+                    value={compPeriodTo}
+                    onChange={(e) => setCompPeriodTo(e.target.value)}
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500">메모</label>
+                  <input
+                    type="text"
+                    value={compSettlementNote}
+                    onChange={(e) => setCompSettlementNote(e.target.value)}
+                    placeholder="예: 4월 1차 콤프"
+                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void runCompSettlement(true)}
+                  disabled={compPreviewing || compRunning}
+                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600 disabled:opacity-50"
+                >
+                  {compPreviewing ? "미리보기 중..." : "미리보기"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runCompSettlement(false)}
+                  disabled={compPreviewing || compRunning || !compPolicy.enabled}
+                  className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-50"
+                >
+                  {compRunning ? "정산 실행 중..." : "정산 실행"}
+                </button>
+              </div>
+
+              {compResult ? (
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">대상 회원</p>
+                      <p className="mt-1 text-lg font-semibold text-zinc-100">
+                        {compResult.totals.eligibleUsers}명
+                      </p>
+                      <p className="text-xs text-zinc-600">
+                        신규 {compResult.totals.readyUsers} / 기존 {compResult.totals.skippedExistingUsers}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">총 기준금액</p>
+                      <p className="mt-1 text-lg font-semibold text-zinc-100">
+                        {compResult.totals.totalBaseAmount}원
+                      </p>
+                      <p className="text-xs text-zinc-600">
+                        콤프률 {compResult.policy.ratePct ?? "0"}%
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                        {compResult.dryRun ? "지급 예정" : "실제 지급"}
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-amber-300">
+                        {compResult.dryRun
+                          ? `${compResult.totals.totalAmount}원`
+                          : `${compResult.totals.createdAmount}원`}
+                      </p>
+                      <p className="text-xs text-zinc-600">
+                        {formatDateOnly(compResult.period.from)} ~ {formatDateOnly(compResult.period.to)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-black/20">
+                    <table className="w-full min-w-[640px] text-xs">
+                      <thead>
+                        <tr className="border-b border-zinc-800 bg-zinc-900/60 text-zinc-500">
+                          {["회원", "기준금액", "콤프", "상태"].map((label) => (
+                            <th key={label} className="px-3 py-2 text-left font-medium">
+                              {label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {compResult.rows.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-3 py-4 text-center text-zinc-500">
+                              해당 기간에 지급 대상 회원이 없습니다.
+                            </td>
+                          </tr>
+                        ) : (
+                          compResult.rows.map((row) => (
+                            <tr key={row.userId} className="border-b border-zinc-900/70">
+                              <td className="px-3 py-2">
+                                <p className="font-mono text-zinc-100">{row.loginId}</p>
+                                <p className="text-zinc-500">{row.displayName || "—"}</p>
+                              </td>
+                              <td className="px-3 py-2 font-mono text-zinc-200">
+                                {row.baseAmount}원
+                              </td>
+                              <td className="px-3 py-2 font-mono text-amber-300">
+                                {row.amount}원
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`rounded-full px-2 py-1 text-[11px] ${
+                                    row.status === "already_settled"
+                                      ? "bg-zinc-800 text-zinc-300"
+                                      : row.status === "wallet_missing"
+                                        ? "bg-red-950/60 text-red-200"
+                                        : "bg-emerald-950/50 text-emerald-200"
+                                  }`}
+                                >
+                                  {row.status === "already_settled"
+                                    ? "기정산"
+                                    : row.status === "wallet_missing"
+                                      ? "지갑 없음"
+                                      : compResult.dryRun
+                                        ? "지급 예정"
+                                        : "정산 완료"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium text-zinc-200">최근 집행 내역</h3>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    최근 20건 기준 · 누적 {compHistorySummary.count}건 / {compHistorySummary.totalAmount}원
+                  </p>
+                </div>
+              </div>
+
+              {compHistory.length === 0 ? (
+                <p className="mt-4 text-sm text-zinc-500">아직 집행된 콤프 원장이 없습니다.</p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {compHistory.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-sm text-zinc-100">
+                            {item.loginId}
+                          </p>
+                          <p className="truncate text-xs text-zinc-500">
+                            {item.displayName || "닉네임 없음"}
+                          </p>
+                        </div>
+                        <p className="shrink-0 font-mono text-sm font-semibold text-amber-300">
+                          {item.amount}원
+                        </p>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                        <span>
+                          기준 {item.baseAmount}원 × {item.ratePct}%
+                        </span>
+                        <span>
+                          기간 {formatDateOnly(item.periodFrom)} ~ {formatDateOnly(item.periodTo)}
+                        </span>
+                        <span>실행 {new Date(item.createdAt).toLocaleString("ko-KR")}</span>
+                        <span>처리자 {item.settledByLoginId || "시스템"}</span>
+                      </div>
+                      {item.note ? (
+                        <p className="mt-1 text-[11px] text-zinc-400">메모: {item.note}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       ) : null}

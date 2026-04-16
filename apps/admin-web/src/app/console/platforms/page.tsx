@@ -92,6 +92,16 @@ export default function ConsolePlatformsPage() {
                   </>
                 )}
               </p>
+              <p className="mt-1 text-xs text-zinc-600">
+                템플릿 {p.solutionTemplateKey ?? "HYBRID"}
+                {p.solutionRatePolicy ? (
+                  <>
+                    {" "}
+                    · 카지노 {p.solutionRatePolicy.platformCasinoPct ?? "0"}%
+                    / 스포츠 {p.solutionRatePolicy.platformSportsPct ?? "0"}%
+                  </>
+                ) : null}
+              </p>
             </div>
             <div className="flex flex-wrap gap-2 text-sm">
               <button
