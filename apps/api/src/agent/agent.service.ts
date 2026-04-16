@@ -99,7 +99,10 @@ function buildGameSalesFromRows(rows: SqlGameRow[]): {
     nested.set(v, new Map());
   }
   for (const r of rows) {
-    const vRaw = (r.vertical || 'UNKNOWN').toUpperCase().trim();
+    const vRaw0 = (r.vertical || 'UNKNOWN').toUpperCase().trim();
+    /** 원장은 소문자 casino·sports… 총판 리포트는 LIVE_CASINO 키 사용 */
+    const vRaw =
+      vRaw0 === 'CASINO' ? 'LIVE_CASINO' : vRaw0 === 'MINIGAME' ? 'MINIGAME' : vRaw0;
     const v = KNOWN_VERTICALS.includes(vRaw as (typeof KNOWN_VERTICALS)[number])
       ? vRaw
       : 'UNKNOWN';

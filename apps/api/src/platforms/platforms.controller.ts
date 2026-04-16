@@ -27,6 +27,7 @@ import {
   ExecuteSolutionBillingDto,
   ListSolutionBillingSettlementsDto,
 } from './dto/execute-solution-billing.dto';
+import { UpdateHqPortfolioNoteDto } from './dto/update-hq-portfolio-note.dto';
 import { PointsService } from '../points/points.service';
 import { CompSettlementSchedulerService } from './comp-settlement-scheduler.service';
 
@@ -49,6 +50,17 @@ export class PlatformsController {
   @Roles(UserRole.SUPER_ADMIN)
   listTemplates() {
     return this.platforms.listTemplates();
+  }
+
+  /** 본사: 전체 솔루션 기간 손익·알값·자산 배정 상태를 한 번에 집계 */
+  @Get('hq/portfolio-summary')
+  @Roles(UserRole.SUPER_ADMIN)
+  getHqPortfolioSummary(
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.platforms.getHqPortfolioSummary(user, from, to);
   }
 
   @Post()
@@ -91,6 +103,17 @@ export class PlatformsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.platforms.updateSemiVirtual(platformId, user, dto);
+  }
+
+  @Patch(':platformId/hq-portfolio-note')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  updateHqPortfolioNote(
+    @Param('platformId') platformId: string,
+    @Body() dto: UpdateHqPortfolioNoteDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.updateHqPortfolioNote(platformId, user, dto.hedgeNote);
   }
 
   @Get(':platformId/bank-sms-ingests')

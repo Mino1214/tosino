@@ -536,7 +536,9 @@ export default function SalesPage() {
                 <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
                   <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏢 상위업체 비용</p>
                   <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(upstreamCost)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">카지노/스포츠 양수 GGR 기준</p>
+                  <p className="mt-0.5 text-xs text-zinc-600">
+                    카지노·슬롯·미니 / 스포츠 양수 GGR 기준
+                  </p>
                 </div>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
                   <p className="text-[10px] uppercase tracking-wider text-zinc-500">🧾 플랫폼 청구액</p>
@@ -940,8 +942,8 @@ export default function SalesPage() {
                   솔루션 청구 실행
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  선택 기간의 카지노/스포츠 양수 GGR 기준으로 상위업체 비용과
-                  플랫폼 청구액을 계산해 원장으로 고정합니다.
+                  선택 기간의 카지노·슬롯·미니(동일 버킷) 및 스포츠 양수 GGR 기준으로
+                  상위업체 비용과 플랫폼 청구액을 계산해 원장으로 고정합니다.
                 </p>
               </div>
               <div className="flex w-full flex-col gap-2 xl:w-auto xl:min-w-[28rem]">
@@ -999,7 +1001,7 @@ export default function SalesPage() {
                   </div>
                   <div className="rounded-xl border border-zinc-800 bg-black/20 p-4">
                     <p className="text-[10px] uppercase tracking-wider text-zinc-500">
-                      카지노 양수 GGR
+                      카·슬·미니 양수 GGR
                     </p>
                     <p className="mt-2 text-lg font-bold font-mono text-zinc-100">
                       {krw(solutionBillingResult.settlement.casinoBaseGgr)}원

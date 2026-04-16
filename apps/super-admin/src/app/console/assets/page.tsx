@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { inferAdminHost, inferAgentHost, inferRootHost } from "@/lib/platform-hosts";
 import { usePlatform } from "@/context/PlatformContext";
+import { SemiVirtualForm } from "@/components/SemiVirtualForm";
 
 type SemiVirtualDetail = {
   semiVirtualEnabled: boolean;
@@ -181,6 +182,15 @@ export default function SuperAdminAssetsPage() {
           )}
         </div>
       </section>
+
+      {selectedPlatformId ? (
+        <section className="rounded-2xl border border-violet-900/30 bg-zinc-900/40 p-5">
+          <SemiVirtualForm
+            platformId={selectedPlatformId}
+            heading="원화 · 테더 · 반가상 즉시 배정"
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

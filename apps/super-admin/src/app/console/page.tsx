@@ -412,7 +412,7 @@ export default function SuperAdminDashboardPage() {
         <KpiCard
           label="상위 알 원가"
           value={`${krw(totals.upstreamCost)}원`}
-          hint="카지노/스포츠 양수 GGR 기준 원가"
+          hint="카·슬·미니 + 스포츠 양수 GGR 기준 원가"
           accent="rose"
         />
         <KpiCard

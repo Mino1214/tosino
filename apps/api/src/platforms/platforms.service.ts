@@ -260,6 +260,47 @@ export class PlatformsService {
     };
   }
 
+  /**
+   * 상위 카지노 벤더 알에 태울 GGR: 라이브 카지노 + 슬롯 + 미니게임 (ledger vertical 기준).
+   * 스포츠는 별도 요율(solutionRatePolicy upstreamSportsPct)로만 집계한다.
+   */
+  private async ledgerGgrForVertical(
+    where: Prisma.LedgerEntryWhereInput,
+    vertical: string,
+  ): Promise<number> {
+    const [betAgg, winAgg] = await Promise.all([
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...where,
+          type: LedgerEntryType.BET,
+          metaJson: { path: ['vertical'], equals: vertical },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ...where,
+          type: LedgerEntryType.WIN,
+          metaJson: { path: ['vertical'], equals: vertical },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+    const stake = Math.abs(betAgg._sum.amount?.toNumber() ?? 0);
+    const win = winAgg._sum.amount?.toNumber() ?? 0;
+    return stake - win;
+  }
+
+  private async ledgerGgrSumVerticals(
+    where: Prisma.LedgerEntryWhereInput,
+    verticals: readonly string[],
+  ): Promise<number> {
+    const parts = await Promise.all(
+      verticals.map((v) => this.ledgerGgrForVertical(where, v)),
+    );
+    return parts.reduce((a, b) => a + b, 0);
+  }
+
   assertPlatformScope(actor: JwtPayload, platformId: string) {
     if (actor.role === UserRole.SUPER_ADMIN) return;
     if (actor.platformId !== platformId) throw new ForbiddenException();
@@ -1613,50 +1654,18 @@ export class PlatformsService {
       },
     };
 
-    const [casinoBet, casinoWin, sportsBet, sportsWin] = await Promise.all([
-      this.prisma.ledgerEntry.aggregate({
-        where: {
-          ...ledgerInPeriod,
-          type: LedgerEntryType.BET,
-          metaJson: { path: ['vertical'], equals: 'casino' },
-        },
-        _sum: { amount: true },
-      }),
-      this.prisma.ledgerEntry.aggregate({
-        where: {
-          ...ledgerInPeriod,
-          type: LedgerEntryType.WIN,
-          metaJson: { path: ['vertical'], equals: 'casino' },
-        },
-        _sum: { amount: true },
-      }),
-      this.prisma.ledgerEntry.aggregate({
-        where: {
-          ...ledgerInPeriod,
-          type: LedgerEntryType.BET,
-          metaJson: { path: ['vertical'], equals: 'sports' },
-        },
-        _sum: { amount: true },
-      }),
-      this.prisma.ledgerEntry.aggregate({
-        where: {
-          ...ledgerInPeriod,
-          type: LedgerEntryType.WIN,
-          metaJson: { path: ['vertical'], equals: 'sports' },
-        },
-        _sum: { amount: true },
-      }),
+    const [casinoBucketGgr, sportsGgr] = await Promise.all([
+      this.ledgerGgrSumVerticals(ledgerInPeriod, [
+        'casino',
+        'slot',
+        'minigame',
+      ]),
+      this.ledgerGgrSumVerticals(ledgerInPeriod, ['sports']),
     ]);
 
-    const casinoGgr =
-      Math.abs(casinoBet._sum.amount?.toNumber() ?? 0) -
-      (casinoWin._sum.amount?.toNumber() ?? 0);
-    const sportsGgr =
-      Math.abs(sportsBet._sum.amount?.toNumber() ?? 0) -
-      (sportsWin._sum.amount?.toNumber() ?? 0);
     const metrics = this.computeSolutionRateMetrics(
       platform.flagsJson,
-      casinoGgr,
+      casinoBucketGgr,
       sportsGgr,
     );
 
@@ -2234,9 +2243,13 @@ export class PlatformsService {
         : 0;
     const realizedMoneyCost =
       depositBonus + pointRedeem + otherMoneyCredits + actualCompSettled;
+    const casinoBucketGgr =
+      Number(vertBreakdown.casino?.ggr ?? 0) +
+      Number(vertBreakdown.slot?.ggr ?? 0) +
+      Number(vertBreakdown.minigame?.ggr ?? 0);
     const solutionRateMetrics = this.computeSolutionRateMetrics(
       platform?.flagsJson,
-      Number(vertBreakdown.casino?.ggr ?? 0),
+      casinoBucketGgr,
       Number(vertBreakdown.sports?.ggr ?? 0),
     );
     const solutionRates =
@@ -2556,6 +2569,12 @@ export class PlatformsService {
 
     return rows.map((r) => {
       const meta = (r.metaJson as Record<string, unknown>) || {};
+      const cmd = String(meta.command ?? '').toLowerCase();
+      let vertical = (meta.vertical as string | undefined)?.trim();
+      if (!vertical) {
+        vertical =
+          cmd === 'sports-bet' || cmd.startsWith('sports-') ? 'sports' : 'casino';
+      }
       return {
         id: r.id,
         userId: r.userId,
@@ -2565,10 +2584,278 @@ export class PlatformsService {
         amount: r.amount.toFixed(2),
         balanceAfter: r.balanceAfter.toFixed(2),
         reference: r.reference,
-        vertical: (meta.vertical as string | undefined) ?? 'casino',
+        vertical,
         gameName: (meta.gameName as string | undefined) ?? (meta.providerName as string | undefined) ?? '',
         createdAt: r.createdAt.toISOString(),
       };
     });
+  }
+
+  /**
+   * 슈퍼관리자 전용. 운영 중인 모든 솔루션에 대해 매출 요약·총판 차감 후 잔여·상위 알/청구/본사 마진을
+   * 동일 기간으로 묶어 포트폴리오(헷징·장부) 관점에서 한 번에 본다.
+   */
+  async getHqPortfolioSummary(actor: JwtPayload, from?: string, to?: string) {
+    if (actor.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException();
+    }
+    const platforms = await this.prisma.platform.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        flagsJson: true,
+        semiVirtualEnabled: true,
+        settlementUsdtWallet: true,
+        semiVirtualRecipientPhone: true,
+        semiVirtualBankName: true,
+        semiVirtualAccountNumber: true,
+        domains: { select: { host: true } },
+      },
+    });
+
+    type HqPortfolioRow = {
+      platformId: string;
+      slug: string;
+      name: string;
+      domainHosts: string[];
+      hedgeNote: string;
+      hedgeUpdatedAt: string | null;
+      semiVirtualEnabled: boolean;
+      hasUsdtWallet: boolean;
+      hasKrwAccount: boolean;
+      smsDeviceReady: boolean;
+      upstreamCasinoPct: string | null;
+      upstreamSportsPct: string | null;
+      platformCasinoPct: string | null;
+      platformSportsPct: string | null;
+      autoMarginPct: string | null;
+      ggr: string | null;
+      houseEdge: string | null;
+      cashNet: string | null;
+      solutionCashNet: string | null;
+      solutionPolicyNet: string | null;
+      upstreamCost: string | null;
+      platformCharge: string | null;
+      solutionMargin: string | null;
+      loadError: string | null;
+    };
+
+    const batchSize = 4;
+    const rows: HqPortfolioRow[] = [];
+    for (let i = 0; i < platforms.length; i += batchSize) {
+      const chunk = platforms.slice(i, i + batchSize);
+      const part: HqPortfolioRow[] = await Promise.all(
+        chunk.map(async (p) => {
+          const flags = this.asRecord(p.flagsJson);
+          const hq = this.asRecord(flags.hqPortfolio);
+          const hedgeNote = typeof hq.hedgeNote === 'string' ? hq.hedgeNote : '';
+          const hedgeUpdatedAt =
+            typeof hq.updatedAt === 'string' ? hq.updatedAt : null;
+          try {
+            const [summary, agents] = await Promise.all([
+              this.getSalesSummary(p.id, actor, from, to),
+              this.getSalesAgents(p.id, actor, from, to),
+            ]);
+            const deposit = Number(summary.wallet.depositTotal ?? 0);
+            const withdraw = Number(summary.wallet.withdrawTotal ?? 0);
+            const houseEdge = Number(
+              summary.wallet.houseEdge ?? deposit - withdraw,
+            );
+            const topAgents = agents.filter((a) => a.isTopAgent);
+            const totalSettle = topAgents.reduce(
+              (sum, a) => sum + Number(a.myEstimatedSettlement ?? 0),
+              0,
+            );
+            const realizedMoneyCost = Number(summary.costs.money.total ?? 0);
+            const depositBonus = Number(summary.costs.money.depositBonus ?? 0);
+            const otherMoneyCredits = Number(
+              summary.costs.money.otherWalletCredits ?? 0,
+            );
+            const compEstimated = Number(summary.costs.comp.estimatedKrw ?? 0);
+            const pointIssuedEstimated = Number(
+              summary.costs.pointAccrual.estimatedKrw ?? 0,
+            );
+            const upstreamCost = Number(
+              summary.costs.solutionRates.upstreamCostKrw ?? 0,
+            );
+            const platformCharge = Number(
+              summary.costs.solutionRates.platformChargeKrw ?? 0,
+            );
+            const solutionMargin = Number(
+              summary.costs.solutionRates.solutionMarginKrw ?? 0,
+            );
+            const cashNet = houseEdge - totalSettle - realizedMoneyCost;
+            const solutionCashNet = cashNet - upstreamCost;
+            const policyEstimatedNet =
+              houseEdge -
+              totalSettle -
+              depositBonus -
+              otherMoneyCredits -
+              pointIssuedEstimated -
+              compEstimated;
+            const solutionPolicyNet = policyEstimatedNet - upstreamCost;
+            const sr = summary.costs.solutionRates;
+            return {
+              platformId: p.id,
+              slug: p.slug,
+              name: p.name,
+              domainHosts: p.domains.map((d) => d.host),
+              hedgeNote,
+              hedgeUpdatedAt,
+              semiVirtualEnabled: p.semiVirtualEnabled,
+              hasUsdtWallet: Boolean(p.settlementUsdtWallet?.trim()),
+              hasKrwAccount: Boolean(
+                p.semiVirtualBankName?.trim() &&
+                  p.semiVirtualAccountNumber?.trim(),
+              ),
+              smsDeviceReady: Boolean(p.semiVirtualRecipientPhone?.trim()),
+              upstreamCasinoPct: sr.upstreamCasinoPct ?? null,
+              upstreamSportsPct: sr.upstreamSportsPct ?? null,
+              platformCasinoPct: sr.platformCasinoPct ?? null,
+              platformSportsPct: sr.platformSportsPct ?? null,
+              autoMarginPct: sr.autoMarginPct ?? null,
+              ggr: summary.betting.ggr,
+              houseEdge: houseEdge.toFixed(2),
+              cashNet: cashNet.toFixed(2),
+              solutionCashNet: solutionCashNet.toFixed(2),
+              solutionPolicyNet: solutionPolicyNet.toFixed(2),
+              upstreamCost: upstreamCost.toFixed(2),
+              platformCharge: platformCharge.toFixed(2),
+              solutionMargin: solutionMargin.toFixed(2),
+              loadError: null,
+            };
+          } catch (err) {
+            return {
+              platformId: p.id,
+              slug: p.slug,
+              name: p.name,
+              domainHosts: p.domains.map((d) => d.host),
+              hedgeNote,
+              hedgeUpdatedAt,
+              semiVirtualEnabled: p.semiVirtualEnabled,
+              hasUsdtWallet: Boolean(p.settlementUsdtWallet?.trim()),
+              hasKrwAccount: Boolean(
+                p.semiVirtualBankName?.trim() &&
+                  p.semiVirtualAccountNumber?.trim(),
+              ),
+              smsDeviceReady: Boolean(p.semiVirtualRecipientPhone?.trim()),
+              upstreamCasinoPct: null,
+              upstreamSportsPct: null,
+              platformCasinoPct: null,
+              platformSportsPct: null,
+              autoMarginPct: null,
+              ggr: null,
+              houseEdge: null,
+              cashNet: null,
+              solutionCashNet: null,
+              solutionPolicyNet: null,
+              upstreamCost: null,
+              platformCharge: null,
+              solutionMargin: null,
+              loadError:
+                err instanceof Error
+                  ? err.message
+                  : '집계를 불러오지 못했습니다',
+            };
+          }
+        }),
+      );
+      rows.push(...part);
+    }
+
+    const totals = rows.reduce(
+      (
+        acc: {
+          ok: number;
+          houseEdge: number;
+          cashNet: number;
+          solutionCashNet: number;
+          solutionPolicyNet: number;
+          upstreamCost: number;
+          platformCharge: number;
+          solutionMargin: number;
+          ggr: number;
+        },
+        row,
+      ) => {
+        if (row.loadError) return acc;
+        acc.houseEdge += Number(row.houseEdge ?? 0);
+        acc.cashNet += Number(row.cashNet ?? 0);
+        acc.solutionCashNet += Number(row.solutionCashNet ?? 0);
+        acc.solutionPolicyNet += Number(row.solutionPolicyNet ?? 0);
+        acc.upstreamCost += Number(row.upstreamCost ?? 0);
+        acc.platformCharge += Number(row.platformCharge ?? 0);
+        acc.solutionMargin += Number(row.solutionMargin ?? 0);
+        acc.ggr += Number(row.ggr ?? 0);
+        acc.ok += 1;
+        return acc;
+      },
+      {
+        ok: 0,
+        houseEdge: 0,
+        cashNet: 0,
+        solutionCashNet: 0,
+        solutionPolicyNet: 0,
+        upstreamCost: 0,
+        platformCharge: 0,
+        solutionMargin: 0,
+        ggr: 0,
+      },
+    );
+
+    return {
+      period: { from: from ?? null, to: to ?? null },
+      totals: {
+        solutionsWithMetrics: totals.ok,
+        solutionsTotal: platforms.length,
+        houseEdge: totals.houseEdge.toFixed(2),
+        cashNet: totals.cashNet.toFixed(2),
+        solutionCashNet: totals.solutionCashNet.toFixed(2),
+        solutionPolicyNet: totals.solutionPolicyNet.toFixed(2),
+        upstreamCost: totals.upstreamCost.toFixed(2),
+        platformCharge: totals.platformCharge.toFixed(2),
+        solutionMargin: totals.solutionMargin.toFixed(2),
+        ggr: totals.ggr.toFixed(2),
+      },
+      rows,
+    };
+  }
+
+  async updateHqPortfolioNote(
+    platformId: string,
+    actor: JwtPayload,
+    hedgeNoteRaw?: string,
+  ) {
+    if (actor.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException();
+    }
+    const current = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: { flagsJson: true },
+    });
+    if (!current) throw new NotFoundException('Platform not found');
+    const nextFlags =
+      current.flagsJson &&
+      typeof current.flagsJson === 'object' &&
+      !Array.isArray(current.flagsJson)
+        ? { ...(current.flagsJson as Record<string, unknown>) }
+        : {};
+    const trimmed = (hedgeNoteRaw ?? '').trim();
+    const updatedAt = new Date().toISOString();
+    nextFlags.hqPortfolio = {
+      hedgeNote: trimmed,
+      updatedAt,
+    };
+    await this.prisma.platform.update({
+      where: { id: platformId },
+      data: { flagsJson: nextFlags as Prisma.InputJsonValue },
+    });
+    return {
+      platformId,
+      hedgeNote: trimmed,
+      updatedAt,
+    };
   }
 }

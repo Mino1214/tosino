@@ -27,6 +27,11 @@ const NAV_PRIMARY: NavItem[] = [
     hint: "도메인 · 상태 · 알값 · 운영 진입점",
   },
   {
+    href: "/console/portfolio",
+    label: "포트폴리오 장부",
+    hint: "전 솔루션 합산 손익 · 헷징 메모 · 테더·원화 배정",
+  },
+  {
     href: "/console/operational",
     label: "알값 / 정책 센터",
     hint: "상위 알 · 자동 마진 · 롤링/콤프/포인트",

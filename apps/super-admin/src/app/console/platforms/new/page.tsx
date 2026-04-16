@@ -314,7 +314,7 @@ export default function ConsoleNewPlatformPage() {
             </p>
             <p className="mt-1 text-xs text-zinc-500">
               상위업체 매입 요율과 자동 마진을 넣으면, 플랫폼 청구 요율은 자동으로
-              계산됩니다. 현재는 카지노·스포츠 기준입니다.
+              계산됩니다. 카지노·슬롯·미니는 동일 알 버킷, 스포츠는 별도 요율입니다.
             </p>
           </div>
 

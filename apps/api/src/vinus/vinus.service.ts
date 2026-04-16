@@ -15,6 +15,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { PointsService } from '../points/points.service';
 import type { VinusLaunchDto } from './dto/vinus-launch.dto';
+import {
+  resolveLedgerVerticalFromVinus,
+  withLedgerVerticalMeta,
+} from './vinus-ledger-vertical.util';
 
 /** 문서: 15~25자 토큰 (랜덤 + 시간 일부). 0/O·1/I/l 등 헷갈리는 문자 제외 */
 function generateVinusToken(): string {
@@ -1160,7 +1164,7 @@ export class VinusService {
           amount: amount.negated(),
           balanceAfter: newBal,
           reference: tid,
-          metaJson: {
+          metaJson: withLedgerVerticalMeta('sports', {
             command: 'sports-bet',
             reserve_id: rid,
             req_id: reqId,
@@ -1175,7 +1179,7 @@ export class VinusService {
             bet_count:
               typeof data.bet_count === 'number' ? data.bet_count : undefined,
             timestamp,
-          },
+          }) as Prisma.InputJsonValue,
         },
       });
       await this.rolling.applyBetStake(tx, userRow.id, amount);
@@ -1358,13 +1362,13 @@ export class VinusService {
             amount: delta.negated(),
             balanceAfter: newBal,
             reference: changeTid,
-            metaJson: {
+            metaJson: withLedgerVerticalMeta('sports', {
               command: 'sports-bet-change',
               original_transaction_id: actual!.externalId,
               req_id: reqId,
               bet_details: betDetailsJson ?? undefined,
               timestamp,
-            },
+            }) as Prisma.InputJsonValue,
           },
         });
         return ok(newBal);
@@ -1461,13 +1465,13 @@ export class VinusService {
           amount: legDelta.negated(),
           balanceAfter: newBal,
           reference: changeTid,
-          metaJson: {
+          metaJson: withLedgerVerticalMeta('sports', {
             command: 'sports-bet-change',
             original_transaction_id: origTx!.externalId,
             req_id: reqId,
             bet_details: betDetailsJson ?? undefined,
             timestamp,
-          },
+          }) as Prisma.InputJsonValue,
         },
       });
       return ok(newBal);
@@ -1657,13 +1661,13 @@ export class VinusService {
             amount: payout,
             balanceAfter: newBal,
             reference: resultTid,
-            metaJson: {
+            metaJson: withLedgerVerticalMeta('sports', {
               command,
               reserve_id: reserveBetId ?? undefined,
               outcome: outcome ?? undefined,
               bet_details_result: resultJson ?? undefined,
               timestamp,
-            },
+            }) as Prisma.InputJsonValue,
           },
         });
       }
@@ -2173,6 +2177,16 @@ export class VinusService {
         const amount = toDec(data.amount);
         if (!tid || !amount) return fail(99);
         const txKind = command === 'sports-bet' ? 'SPORTS_BET' : 'BET';
+        const gameSortBet =
+          typeof data.game_sort === 'string' ? data.game_sort : undefined;
+        const gameTypeBet =
+          typeof data.game_type === 'string' ? data.game_type : undefined;
+        const betVertical = resolveLedgerVerticalFromVinus({
+          command,
+          casinoTxKind: txKind,
+          gameSort: gameSortBet,
+          gameType: gameTypeBet,
+        });
         const dup = await this.prisma.casinoVinusTx.findUnique({
           where: { externalId: tid },
         });
@@ -2221,7 +2235,7 @@ export class VinusService {
               amount: amount.negated(),
               balanceAfter: newBal,
               reference: tid,
-              metaJson: {
+              metaJson: withLedgerVerticalMeta(betVertical, {
                 command,
                 reserve_id:
                   typeof data.reserve_id === 'string'
@@ -2233,20 +2247,14 @@ export class VinusService {
                     : undefined,
                 vendor:
                   typeof data.vendor === 'string' ? data.vendor : undefined,
-                game_sort:
-                  typeof data.game_sort === 'string'
-                    ? data.game_sort
-                    : undefined,
-                game_type:
-                  typeof data.game_type === 'string'
-                    ? data.game_type
-                    : undefined,
+                game_sort: gameSortBet,
+                game_type: gameTypeBet,
                 bet_type:
                   typeof data.bet_type === 'string' ? data.bet_type : undefined,
                 bet_count:
                   typeof data.bet_count === 'number' ? data.bet_count : undefined,
                 timestamp,
-              },
+              }) as Prisma.InputJsonValue,
             },
           });
           await this.rolling.applyBetStake(tx, userRow!.id, amount);
@@ -2279,6 +2287,15 @@ export class VinusService {
           return fail(41, w.balance);
         }
         const net = win.minus(bet);
+        const gameSortBw =
+          typeof data.game_sort === 'string' ? data.game_sort : undefined;
+        const gameTypeBw =
+          typeof data.game_type === 'string' ? data.game_type : undefined;
+        const betWinVertical = resolveLedgerVerticalFromVinus({
+          command: 'bet-win',
+          gameSort: gameSortBw,
+          gameType: gameTypeBw,
+        });
         return this.prisma.$transaction(async (tx) => {
           const w0 = await tx.wallet.findUnique({
             where: { userId: userRow!.id },
@@ -2318,11 +2335,13 @@ export class VinusService {
               amount: net,
               balanceAfter: newBal,
               reference: tid,
-              metaJson: {
+              metaJson: withLedgerVerticalMeta(betWinVertical, {
                 command: 'bet-win',
                 transfer: transferFlag ? 'Y' : undefined,
                 timestamp,
-              },
+                game_sort: gameSortBw,
+                game_type: gameTypeBw,
+              }) as Prisma.InputJsonValue,
             },
           });
           await this.points.maybeCreditLoseBet(
@@ -2380,6 +2399,15 @@ export class VinusService {
           typeof data.transaction_id === 'string' ? data.transaction_id : '';
         const amount = toDec(data.amount);
         if (!tid || amount === null) return fail(99);
+        const gameSortW =
+          typeof data.game_sort === 'string' ? data.game_sort : undefined;
+        const gameTypeW =
+          typeof data.game_type === 'string' ? data.game_type : undefined;
+        const winVertical = resolveLedgerVerticalFromVinus({
+          command,
+          gameSort: gameSortW,
+          gameType: gameTypeW,
+        });
         const dup = await this.prisma.casinoVinusTx.findUnique({
           where: { externalId: tid },
         });
@@ -2421,7 +2449,12 @@ export class VinusService {
                 amount,
                 balanceAfter: newBal,
                 reference: tid,
-                metaJson: { command, timestamp },
+                metaJson: withLedgerVerticalMeta(winVertical, {
+                  command,
+                  timestamp,
+                  game_sort: gameSortW,
+                  game_type: gameTypeW,
+                }) as Prisma.InputJsonValue,
               },
             });
           }
@@ -2511,6 +2544,13 @@ export class VinusService {
             where: { id: cur.id },
             data: { cancelledAt: new Date() },
           });
+          const cancelVertical =
+            command === 'sports-cancel' || cur.kind === 'SPORTS_BET'
+              ? ('sports' as const)
+              : resolveLedgerVerticalFromVinus({
+                  command: 'cancel',
+                  casinoTxKind: cur.kind,
+                });
           await tx.ledgerEntry.create({
             data: {
               userId: userRow!.id,
@@ -2519,7 +2559,11 @@ export class VinusService {
               amount: delta,
               balanceAfter: newBal,
               reference: `cancel:${tid}`,
-              metaJson: { command, timestamp },
+              metaJson: withLedgerVerticalMeta(cancelVertical, {
+                command,
+                timestamp,
+                cancelledKind: cur.kind,
+              }) as Prisma.InputJsonValue,
             },
           });
           return okCancel(newBal, uid, tid);
@@ -2557,6 +2601,13 @@ export class VinusService {
           orderBy: { createdAt: 'desc' },
         });
         if (!openBet || !openBet.stake) return fail(99);
+        const refundVertical =
+          openBet.kind === 'SPORTS_BET'
+            ? ('sports' as const)
+            : resolveLedgerVerticalFromVinus({
+                command: 'refund',
+                casinoTxKind: openBet.kind ?? undefined,
+              });
         return this.prisma.$transaction(async (tx) => {
           const w0 = await tx.wallet.findUnique({
             where: { userId: userRow!.id },
@@ -2593,7 +2644,10 @@ export class VinusService {
               amount: refundAmt,
               balanceAfter: newBal,
               reference: tid,
-              metaJson: { command: 'refund', timestamp },
+              metaJson: withLedgerVerticalMeta(refundVertical, {
+                command: 'refund',
+                timestamp,
+              }) as Prisma.InputJsonValue,
             },
           });
           return ok(newBal);
@@ -2607,6 +2661,15 @@ export class VinusService {
         const tid =
           typeof data.transaction_id === 'string' ? data.transaction_id : '';
         const amount = toDec(data.amount);
+        const gameSortBn =
+          typeof data.game_sort === 'string' ? data.game_sort : undefined;
+        const gameTypeBn =
+          typeof data.game_type === 'string' ? data.game_type : undefined;
+        const bonusVertical = resolveLedgerVerticalFromVinus({
+          command,
+          gameSort: gameSortBn,
+          gameType: gameTypeBn,
+        });
         if (!tid || !amount || amount.lte(0)) return fail(99);
         const dup = await this.prisma.casinoVinusTx.findUnique({
           where: { externalId: tid },
@@ -2649,7 +2712,12 @@ export class VinusService {
               amount,
               balanceAfter: newBal,
               reference: tid,
-              metaJson: { command, timestamp },
+              metaJson: withLedgerVerticalMeta(bonusVertical, {
+                command,
+                timestamp,
+                game_sort: gameSortBn,
+                game_type: gameTypeBn,
+              }) as Prisma.InputJsonValue,
             },
           });
           return ok(newBal);

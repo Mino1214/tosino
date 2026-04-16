@@ -888,7 +888,8 @@ export default function ConsoleOperationalPage() {
               </h3>
               <p className="mt-1 text-xs text-zinc-500">
                 상위업체 매입 요율과 자동 마진을 기준으로 플랫폼 청구율을 계산합니다.
-                현재는 카지노·스포츠 기준입니다.
+                카지노·슬롯·미니게임 GGR은 동일(카지노) 알 버킷으로 합산되고, 스포츠는
+                별도 요율입니다.
               </p>
               <div className="mt-3 grid gap-4 md:grid-cols-3">
                 <div>
