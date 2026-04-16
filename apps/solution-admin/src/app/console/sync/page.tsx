@@ -109,7 +109,14 @@ export default function ConsoleSyncPage() {
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (
       <p className="text-zinc-500">불러오는 중…</p>
-    ) : null;
+    ) : (
+      <p className="rounded-lg border border-amber-900/40 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+        플랫폼 컨텍스트가 없습니다. 로그아웃 후 다시 로그인하거나 API 연결을
+        확인하세요. 시드 데모 계정은{" "}
+        <span className="font-mono text-amber-300">platform@tosino.local</span>{" "}
+        입니다.
+      </p>
+    );
   }
   if (err && !rows) {
     return <p className="text-red-400">{err}</p>;

@@ -128,7 +128,7 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
     platforms,
     selectedPlatformId,
     loading,
-    error,
+    error: platformListError,
   } = usePlatform();
   const { mode, setMode } = useAdminConsoleMode();
   const userRole = getStoredUser()?.role;
@@ -213,6 +213,19 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
           </p>
         ) : loading ? (
           <p className="mt-2 text-xs text-zinc-600">로딩 중…</p>
+        ) : selectedPlatformId ? (
+          <div className="mt-2 space-y-1 text-xs text-amber-200/90">
+            <p className="font-mono text-[11px] text-zinc-400">
+              id {selectedPlatformId.slice(0, 12)}…
+            </p>
+            <p>
+              플랫폼 목록은 못 받았지만 세션 기준으로 동작합니다. API 주소·CORS를
+              확인하세요.
+            </p>
+            {platformListError ? (
+              <p className="text-rose-300/90">{platformListError}</p>
+            ) : null}
+          </div>
         ) : (
           <p className="mt-2 text-xs text-zinc-600">플랫폼 없음</p>
         )}
@@ -348,9 +361,9 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
 
         {/* 본문 */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col md:min-h-[calc(100vh-3.25rem)]">
-          {error && (
+          {platformListError && (
             <div className="shrink-0 border-b border-red-900/40 bg-red-950/30 px-4 py-2 text-sm text-red-300">
-              {error}
+              {platformListError}
             </div>
           )}
           {!loading && platforms.length > 0 && !selectedPlatformId && (

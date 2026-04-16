@@ -6,7 +6,8 @@ import { apiFetch, buildLoginPlatformBody, clearSession } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [loginId, setLoginId] = useState("admin@brand.local");
+  /** 시드 기본 플랫폼 관리자 — 실제 운영 계정으로 빌드 시 교체 */
+  const [loginId, setLoginId] = useState("platform@tosino.local");
   const [password, setPassword] = useState("Admin123!");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,6 +70,16 @@ export default function LoginPage() {
         <h1 className="text-center text-xl font-semibold text-zinc-100">
           Solution Admin 로그인
         </h1>
+        <p className="text-center text-[11px] leading-relaxed text-zinc-500">
+          시드 데모 관리자는{" "}
+          <span className="font-mono text-zinc-400">platform@tosino.local</span> /
+          비밀번호 <span className="font-mono text-zinc-400">Admin123!</span> 입니다.
+          <span className="block mt-1">
+            mod.* 주소로 접속하면 Host로 플랫폼이 잡히며, API는{" "}
+            <span className="font-mono">NEXT_PUBLIC_API_URL</span> 또는 동일 출처
+            프록시 설정이 맞아야 합니다.
+          </span>
+        </p>
         {error && (
           <p className="rounded bg-red-950/80 px-3 py-2 text-sm text-red-200">
             {error}

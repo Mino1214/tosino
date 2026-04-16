@@ -40,11 +40,23 @@ const PlatformContext = createContext<Ctx | null>(null);
 
 const STORAGE_KEY = "adminSelectedPlatformId";
 
+function initialSelectedPlatformId(): string | null {
+  if (typeof window === "undefined") return null;
+  const user = getStoredUser();
+  if (user?.role === "PLATFORM_ADMIN" && user.platformId) {
+    return user.platformId;
+  }
+  if (user?.role === "MASTER_AGENT" && user.platformId) {
+    return user.platformId;
+  }
+  return sessionStorage.getItem(STORAGE_KEY);
+}
+
 export function PlatformProvider({ children }: { children: React.ReactNode }) {
   const [platforms, setPlatforms] = useState<PlatformRow[]>([]);
   const [selectedPlatformId, setSelectedPlatformIdState] = useState<
     string | null
-  >(null);
+  >(initialSelectedPlatformId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +105,8 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "플랫폼 목록 오류");
       setPlatforms([]);
+      /** 목록 실패해도 플랫폼 관리자는 JWT의 platformId로 API 호출 가능 */
+      applySelection([]);
     } finally {
       setLoading(false);
     }
