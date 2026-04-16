@@ -548,7 +548,18 @@ export class TestScenarioService {
             balance = balance.minus(stake);
             await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
             await txn.ledgerEntry.create({
-              data: { platformId, userId: u.id, type: LedgerEntryType.BET, amount: stake.negated(), balanceAfter: balance, reference: ref, metaJson: { note: `${TAG} 카지노 라운드${i + 1} 배팅 - ${round.label}` } },
+              data: {
+                platformId,
+                userId: u.id,
+                type: LedgerEntryType.BET,
+                amount: stake.negated(),
+                balanceAfter: balance,
+                reference: ref,
+                metaJson: {
+                  vertical: 'casino',
+                  note: `${TAG} 카지노 라운드${i + 1} 배팅 - ${round.label}`,
+                },
+              },
             });
 
             // WIN: 지급
@@ -556,7 +567,18 @@ export class TestScenarioService {
               balance = balance.plus(winAmt);
               await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
               await txn.ledgerEntry.create({
-                data: { platformId, userId: u.id, type: LedgerEntryType.WIN, amount: winAmt, balanceAfter: balance, reference: ref, metaJson: { note: `${TAG} 카지노 라운드${i + 1} 당첨` } },
+                data: {
+                  platformId,
+                  userId: u.id,
+                  type: LedgerEntryType.WIN,
+                  amount: winAmt,
+                  balanceAfter: balance,
+                  reference: ref,
+                  metaJson: {
+                    vertical: 'casino',
+                    note: `${TAG} 카지노 라운드${i + 1} 당첨`,
+                  },
+                },
               });
             }
 
@@ -622,14 +644,36 @@ export class TestScenarioService {
             balance = balance.minus(stake);
             await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
             await txn.ledgerEntry.create({
-              data: { platformId, userId: u.id, type: LedgerEntryType.BET, amount: stake.negated(), balanceAfter: balance, reference: ref, metaJson: { note: `${TAG} 롤링충족 추가배팅 r${roundNum}` } },
+              data: {
+                platformId,
+                userId: u.id,
+                type: LedgerEntryType.BET,
+                amount: stake.negated(),
+                balanceAfter: balance,
+                reference: ref,
+                metaJson: {
+                  vertical: 'casino',
+                  note: `${TAG} 롤링충족 추가배팅 r${roundNum}`,
+                },
+              },
             });
 
             if (didWin) {
               balance = balance.plus(winAmt);
               await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
               await txn.ledgerEntry.create({
-                data: { platformId, userId: u.id, type: LedgerEntryType.WIN, amount: winAmt, balanceAfter: balance, reference: ref, metaJson: { note: `${TAG} 롤링충족 당첨 r${roundNum}` } },
+                data: {
+                  platformId,
+                  userId: u.id,
+                  type: LedgerEntryType.WIN,
+                  amount: winAmt,
+                  balanceAfter: balance,
+                  reference: ref,
+                  metaJson: {
+                    vertical: 'casino',
+                    note: `${TAG} 롤링충족 당첨 r${roundNum}`,
+                  },
+                },
               });
             }
 

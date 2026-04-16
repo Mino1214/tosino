@@ -22,6 +22,8 @@ type Summary = {
     withdrawTotal: string;
     netInflow: string;
     houseEdge: string;
+    /** 루트 총판 트리 기준 예상 정산(요약 API에서 계산) */
+    estimatedRootAgentSettlementKrw?: string;
   };
   costs: {
     money: {
@@ -233,16 +235,17 @@ export default function SalesPage() {
   const [msg, setMsg] = useState<string | null>(null);
   // 에이전트 트리 펼침 상태 (agentId 집합)
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const [agentsBusy, setAgentsBusy] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const loadCore = useCallback(async () => {
     if (!selectedPlatformId) return;
     setLoading(true);
     setErr(null);
     const q = `from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`;
     try {
-      const [s, a, l, billing] = await Promise.all([
+      const [s, l, billing] = await Promise.all([
         apiFetch<Summary>(`/platforms/${selectedPlatformId}/sales/summary?${q}`),
-        apiFetch<AgentRow[]>(`/platforms/${selectedPlatformId}/sales/agents?${q}`),
         apiFetch<LedgerRow[]>(`/platforms/${selectedPlatformId}/sales/ledger?${q}&limit=200`),
         isSuperAdmin
           ? apiFetch<SolutionBillingListResponse>(
@@ -251,19 +254,59 @@ export default function SalesPage() {
           : Promise.resolve(null),
       ]);
       setSummary(s);
-      setAgents(a);
       setLedger(l);
       setSolutionBilling(billing);
-      // 최상위 총판은 기본 펼침
-      setOpenIds(new Set(a.filter((ag: AgentRow) => ag.isTopAgent).map((ag: AgentRow) => ag.agentId)));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "조회 실패");
+      setSummary(null);
+      setLedger(null);
+      setSolutionBilling(null);
     } finally {
       setLoading(false);
     }
   }, [selectedPlatformId, from, to, isSuperAdmin]);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadAgents = useCallback(async () => {
+    if (!selectedPlatformId) {
+      setAgentsBusy(false);
+      setAgentsError(null);
+      setAgents(null);
+      return;
+    }
+    setAgentsBusy(true);
+    setAgentsError(null);
+    setErr(null);
+    const q = `from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`;
+    try {
+      const a = await apiFetch<AgentRow[]>(
+        `/platforms/${selectedPlatformId}/sales/agents?${q}`,
+      );
+      setAgents(a);
+      // 기본은 접힘 — 사용자가 행을 눌러 펼치면 반응이 분명함(이전엔 전부 펼침+canExpand 조건으로 혼란 가능)
+      setOpenIds(new Set());
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "총판 목록 조회 실패";
+      setAgentsError(msg);
+      setErr(msg);
+      setAgents(null);
+    } finally {
+      setAgentsBusy(false);
+    }
+  }, [selectedPlatformId, from, to]);
+
+  const refresh = useCallback(() => {
+    void loadCore();
+    if (tab === "agents") void loadAgents();
+  }, [loadCore, loadAgents, tab]);
+
+  useEffect(() => {
+    void loadCore();
+  }, [loadCore]);
+
+  useEffect(() => {
+    if (tab !== "agents") return;
+    void loadAgents();
+  }, [tab, loadAgents]);
 
   async function runSolutionBilling(dryRun: boolean) {
     if (!selectedPlatformId || !isSuperAdmin) return;
@@ -308,7 +351,8 @@ export default function SalesPage() {
                 result.settlement.platformCharge,
               )}원`,
         );
-        await load();
+        await loadCore();
+        if (tab === "agents") await loadAgents();
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "솔루션 청구 실행 실패");
@@ -333,7 +377,7 @@ export default function SalesPage() {
         <div>
           <h1 className="text-xl font-bold text-zinc-100">매출 현황</h1>
           <p className="mt-1 text-xs text-zinc-500">
-            현금 순이익은 총판 정산과 실제 머니 지급을 차감한 값이고, 정책상 추정 순이익은 포인트 발행·콤프까지 당기 비용으로 가정한 참고값입니다.
+            매출 요약은 플랫폼 기준으로 묶었습니다. 총판 금액은 API에서 계산한 루트 총판 예상 정산이며, 상세 트리는「총판 정산 구조」탭에서 확인합니다.
           </p>
         </div>
         {/* 기간 필터 */}
@@ -361,8 +405,8 @@ export default function SalesPage() {
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
             className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300" />
           <button
-            onClick={load}
-            disabled={loading}
+            onClick={refresh}
+            disabled={loading || agentsBusy}
             className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
           >
             {loading ? "조회중..." : "조회"}
@@ -444,10 +488,8 @@ export default function SalesPage() {
             modeledBase: "HIDDEN",
           },
         };
-        const topAgents = (agents ?? []).filter((agent) => agent.isTopAgent);
-        const totalSettle = topAgents.reduce(
-          (sum, agent) => sum + Number(agent.myEstimatedSettlement ?? 0),
-          0,
+        const totalSettle = Number(
+          summary.wallet.estimatedRootAgentSettlementKrw ?? 0,
         );
         const depositBonus = Number(costs.money.depositBonus);
         const pointRedeem = Number(costs.money.pointRedeem);
@@ -473,178 +515,243 @@ export default function SalesPage() {
         // 충전 대비 낙첨금 비율
         const lossRate = deposit > 0 ? (houseEdge / deposit * 100) : 0;
         return (
-        <div className="space-y-5">
-          {/* 핵심 KPI 카드 - 현금 기준 */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="space-y-4">
+          <div className="rounded-lg border border-zinc-800/90 bg-zinc-950/40 px-3 py-2.5 text-[11px] leading-relaxed text-zinc-500">
+            <span className="font-semibold text-zinc-400">플랫폼 관점</span>
+            {" · "}
+            현금 순이익은 낙첨금에서 <span className="text-zinc-400">루트 총판 예상 정산</span>(요약 API)과 실제 머니 지급(보너스·전환·콤프 등)을 뺀 값입니다. 하위 총판 몫은 루트 예산에 포함된 구조로 보며, 트리는「총판 정산 구조」에서 확인합니다.
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className={`rounded-xl border p-4 ${houseEdge >= 0 ? "border-emerald-800/50 bg-emerald-950/20" : "border-red-800/50 bg-red-950/20"}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">💸 총 낙첨금</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">총 낙첨금</p>
               <p className={`mt-2 text-2xl font-bold font-mono ${houseEdge >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {houseEdge >= 0 ? "+" : ""}{krw(houseEdge)}원
               </p>
-              <p className="mt-1 text-xs text-zinc-600">회원별 (충전 − 환전) 합계</p>
-            </div>
-            <div className={`rounded-xl border p-4 ${userProfit >= 0 ? "border-rose-800/50 bg-rose-950/20" : "border-emerald-800/50 bg-emerald-950/20"}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">👤 유저 손익 합계</p>
-              <p className={`mt-2 text-2xl font-bold font-mono ${userProfit >= 0 ? "text-rose-300" : "text-emerald-300"}`}>
-                {userProfit >= 0 ? "+" : ""}{krw(userProfit)}원
-              </p>
-              <p className="mt-1 text-xs text-zinc-600">총환전 − 총충전</p>
+              <p className="mt-1 text-xs text-zinc-600">승인 입금 − 승인 출금</p>
             </div>
             <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">✅ 총 입금</p>
-              <p className="mt-2 text-2xl font-bold font-mono text-emerald-300">{krw(deposit)}원</p>
-              <p className="mt-1 text-xs text-zinc-600">{summary.wallet.depositCount}건 승인</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">💳 총 출금</p>
-              <p className="mt-2 text-2xl font-bold font-mono text-red-300">{krw(withdraw)}원</p>
-              <p className="mt-1 text-xs text-zinc-600">{summary.wallet.withdrawCount}건 승인</p>
-            </div>
-          </div>
-
-          <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 ${isSuperAdmin ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">💰 총판 예상 정산금</p>
-              <p className="mt-2 text-xl font-bold font-mono text-amber-300">{krw(totalSettle)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">총 낙첨금 × 총판 실효율</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🎁 입금보너스</p>
-              <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(depositBonus)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">이벤트/첫충 등 머니 지급</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🔁 포인트 전환</p>
-              <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(pointRedeem)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">포인트 → 머니 실제 전환</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🗂️ 실집행 콤프</p>
-              <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(actualComp)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">수동 정산으로 실제 지급된 콤프</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🧾 기타 머니지급</p>
-              <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(otherMoneyCredits)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">수동/기타 지갑 지급분</p>
+              <p className="text-[10px] uppercase tracking-wider text-zinc-500">루트 총판 예상 정산</p>
+              <p className="mt-2 text-2xl font-bold font-mono text-amber-300">{krw(totalSettle)}원</p>
+              <p className="mt-1 text-xs text-zinc-600">낙첨금 × 루트 실효요율 합(추정)</p>
             </div>
             <div className={`rounded-xl border p-4 ${cashNet >= 0 ? "border-emerald-800/40 bg-emerald-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏦 플랫폼 현금 순이익</p>
-              <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(cashNet)}`}>{krw(cashNet)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">낙첨금 − 총판 − 실제 머니비용</p>
+              <p className="text-[10px] uppercase tracking-wider text-zinc-500">플랫폼 현금 순이익</p>
+              <p className={`mt-2 text-2xl font-bold font-mono ${ggrColor(cashNet)}`}>{krw(cashNet)}원</p>
+              <p className="mt-1 text-xs text-zinc-600">낙첨 − 예상정산 − 실지급 머니비용</p>
             </div>
-            {isSuperAdmin ? (
-              <div className={`rounded-xl border p-4 ${solutionCashNet >= 0 ? "border-cyan-800/40 bg-cyan-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-                <p className="text-[10px] uppercase tracking-wider text-zinc-500">🛰️ 솔루션 현금 순이익</p>
-                <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(solutionCashNet)}`}>{krw(solutionCashNet)}원</p>
-                <p className="mt-0.5 text-xs text-zinc-600">플랫폼 현금 순익 − 상위업체 비용</p>
+          </div>
+
+          <details open className="rounded-xl border border-zinc-800 bg-zinc-950/50">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-900/50">
+              입·출금 · 회원
+            </summary>
+            <div className="border-t border-zinc-800 px-4 pb-4 pt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-lg border border-zinc-800/80 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">총 입금</p>
+                <p className="mt-1 font-mono text-lg text-emerald-300">{krw(deposit)}원</p>
+                <p className="text-[10px] text-zinc-600">{summary.wallet.depositCount}건</p>
               </div>
-            ) : null}
-          </div>
+              <div className="rounded-lg border border-zinc-800/80 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">총 출금</p>
+                <p className="mt-1 font-mono text-lg text-red-300">{krw(withdraw)}원</p>
+                <p className="text-[10px] text-zinc-600">{summary.wallet.withdrawCount}건</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800/80 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">유저 손익</p>
+                <p className={`mt-1 font-mono text-lg ${userProfit >= 0 ? "text-rose-300" : "text-emerald-300"}`}>
+                  {userProfit >= 0 ? "+" : ""}{krw(userProfit)}원
+                </p>
+                <p className="text-[10px] text-zinc-600">환전 − 충전</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800/80 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">회원 / 총판</p>
+                <p className="mt-1 font-mono text-lg text-zinc-100">{summary.platform.userCnt}명</p>
+                <p className="text-[10px] text-zinc-600">총판 {summary.platform.agentCnt}명</p>
+              </div>
+            </div>
+          </details>
 
-          <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 ${isSuperAdmin ? "xl:grid-cols-8" : "xl:grid-cols-5"}`}>
-            <div className={`rounded-xl border p-4 ${policyEstimatedNet >= 0 ? "border-emerald-800/40 bg-emerald-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">📉 플랫폼 정책 추정 순이익</p>
-              <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(policyEstimatedNet)}`}>{krw(policyEstimatedNet)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">포인트 발행·콤프를 당기 비용으로 가정</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🪙 발행 포인트</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{pointText(pointIssued)}P</p>
-              <p className="mt-0.5 text-xs text-zinc-600">당기 포인트 적립 합계</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">📌 포인트 충당 추정</p>
-              <p className="mt-2 text-xl font-bold font-mono text-amber-200">
-                {costs.pointAccrual.estimatedKrw != null
-                  ? `${krw(costs.pointAccrual.estimatedKrw)}원`
-                  : "환산율 없음"}
-              </p>
-              <p className="mt-0.5 text-xs text-zinc-600">
-                {costs.pointAccrual.redeemKrwPerPoint
-                  ? `1P = ${costs.pointAccrual.redeemKrwPerPoint}원 기준`
-                  : "KRW 전환율 미설정"}
-              </p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🗓️ 콤프 추정</p>
-              <p className="mt-2 text-xl font-bold font-mono text-amber-200">{krw(compEstimated)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">
-                {costs.comp.enabled
-                  ? `${compCycleLabel(
-                      costs.comp.settlementCycle,
-                      costs.comp.settlementOffsetDays,
-                    )} · ${costs.comp.ratePct ?? "0"}%`
-                  : "콤프 미사용"}
-              </p>
-            </div>
-            {isSuperAdmin ? (
-              <>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏢 상위업체 비용</p>
-                  <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(upstreamCost)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">
-                    카지노·슬롯·미니 / 스포츠 양수 GGR 기준
-                  </p>
+          <details className="rounded-xl border border-zinc-800 bg-zinc-950/50">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-900/50">
+              배팅 · 게임 버킷별 (vertical 없는 원장은 메모·커맨드로 추정)
+            </summary>
+            <div className="border-t border-zinc-800 px-4 pb-4 pt-3 space-y-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className={`rounded-lg border p-3 ${lossRate >= 0 ? "border-amber-800/40 bg-amber-950/10" : "border-red-800/40"}`}>
+                  <p className="text-[10px] text-zinc-500">낙첨률</p>
+                  <p className={`mt-1 font-mono text-lg ${lossRate >= 0 ? "text-amber-300" : "text-red-400"}`}>{lossRate.toFixed(1)}%</p>
+                  <p className="text-[10px] text-zinc-600">낙첨÷충전</p>
                 </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">🧾 플랫폼 청구액</p>
-                  <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{krw(platformCharge)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">설정된 카지노/스포츠 요율</p>
+                <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                  <p className="text-[10px] text-zinc-500">총 배팅</p>
+                  <p className="mt-1 font-mono text-lg text-zinc-100">{krw(summary.betting.betStake)}원</p>
+                  <p className="text-[10px] text-zinc-600">{summary.betting.rounds}라운드</p>
                 </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">📐 솔루션 요율 마진</p>
-                  <p className="mt-2 text-xl font-bold font-mono text-cyan-300">{krw(solutionRateMargin)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">플랫폼 청구액 − 상위업체 비용</p>
+                <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                  <p className="text-[10px] text-zinc-500">총 당첨</p>
+                  <p className="mt-1 font-mono text-lg text-zinc-100">{krw(summary.betting.winTotal)}원</p>
+                  <p className="text-[10px] text-zinc-600">RTP {rtp}%</p>
                 </div>
-                <div className={`rounded-xl border p-4 ${solutionPolicyNet >= 0 ? "border-cyan-800/40 bg-cyan-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">🛰️ 솔루션 정책 추정 순이익</p>
-                  <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(solutionPolicyNet)}`}>{krw(solutionPolicyNet)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">플랫폼 정책 순익 − 상위업체 비용</p>
+                <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                  <p className="text-[10px] text-zinc-500">베팅 GGR</p>
+                  <p className={`mt-1 font-mono text-lg ${ggrColor(summary.betting.ggr)}`}>{krw(summary.betting.ggr)}원</p>
+                  <p className="text-[10px] text-zinc-600">참고</p>
                 </div>
-              </>
-            ) : null}
-          </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold text-zinc-400">버킷별</p>
+                <div className="space-y-2">
+                  {Object.entries(summary.verticals).map(([vert, data]) => {
+                    const ggrN = Number(data.ggr);
+                    const stakeN = Number(data.betStake);
+                    const pct = stakeN > 0 ? (ggrN / stakeN) * 100 : 0;
+                    return (
+                      <div key={vert} className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-zinc-400">{vertLabel(vert)}</span>
+                          <span className="text-xs text-zinc-600">{data.rounds}라운드</span>
+                        </div>
+                        <div className="mt-1.5 flex items-end justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] text-zinc-600">배팅 {krw(data.betStake)}원 / 당첨 {krw(data.winTotal)}원</p>
+                          </div>
+                          <p className={`text-base font-bold font-mono ${ggrColor(data.ggr)}`}>
+                            수익 {krw(data.ggr)}원
+                            <span className="ml-1 text-xs text-zinc-500">({pct.toFixed(1)}%)</span>
+                          </p>
+                        </div>
+                        <div className="mt-1.5 h-1 rounded-full bg-zinc-800">
+                          <div
+                            className={`h-1 rounded-full ${ggrN > 0 ? "bg-emerald-500" : "bg-red-500"}`}
+                            style={{ width: `${Math.min(100, Math.abs(pct))}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </details>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <div className={`rounded-xl border p-4 ${lossRate >= 0 ? "border-amber-800/50 bg-amber-950/20" : "border-red-800/50 bg-red-950/20"}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">📈 낙첨률</p>
-              <p className={`mt-2 text-2xl font-bold font-mono ${lossRate >= 0 ? "text-amber-300" : "text-red-400"}`}>
-                {lossRate >= 0 ? "+" : ""}{lossRate.toFixed(1)}%
-              </p>
-              <p className="mt-1 text-xs text-zinc-600">총 낙첨금 ÷ 총 충전</p>
+          <details className="rounded-xl border border-zinc-800 bg-zinc-950/50">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-900/50">
+              머니 비용 · 포인트·콤프 (정책 추정)
+            </summary>
+            <div className="border-t border-zinc-800 px-4 pb-4 pt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">입금보너스</p>
+                <p className="mt-1 font-mono text-rose-300">{krw(depositBonus)}원</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">포인트 전환</p>
+                <p className="mt-1 font-mono text-rose-300">{krw(pointRedeem)}원</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">실집행 콤프</p>
+                <p className="mt-1 font-mono text-rose-300">{krw(actualComp)}원</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">기타 머니지급</p>
+                <p className="mt-1 font-mono text-rose-300">{krw(otherMoneyCredits)}원</p>
+              </div>
+              <div className={`rounded-lg border p-3 ${policyEstimatedNet >= 0 ? "border-emerald-800/40 bg-emerald-950/10" : "border-red-800/40 bg-red-950/10"}`}>
+                <p className="text-[10px] text-zinc-500">정책 추정 순이익</p>
+                <p className={`mt-1 font-mono text-lg ${ggrColor(policyEstimatedNet)}`}>{krw(policyEstimatedNet)}원</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">발행 포인트</p>
+                <p className="mt-1 font-mono text-zinc-100">{pointText(pointIssued)}P</p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">포인트 충당 추정</p>
+                <p className="mt-1 font-mono text-amber-200">
+                  {costs.pointAccrual.estimatedKrw != null
+                    ? `${krw(costs.pointAccrual.estimatedKrw)}원`
+                    : "환산율 없음"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                <p className="text-[10px] text-zinc-500">콤프 추정</p>
+                <p className="mt-1 font-mono text-amber-200">{krw(compEstimated)}원</p>
+              </div>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🎰 총 배팅액</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{krw(summary.betting.betStake)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">{summary.betting.rounds}라운드</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏆 총 당첨금</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{krw(summary.betting.winTotal)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">RTP {rtp}%</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">📊 베팅 순수익</p>
-              <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(summary.betting.ggr)}`}>{krw(summary.betting.ggr)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">배팅 − 당첨 (참고값)</p>
-            </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">👥 회원 / 총판</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{summary.platform.userCnt}명</p>
-              <p className="mt-0.5 text-xs text-zinc-600">총판 {summary.platform.agentCnt}명</p>
-            </div>
-          </div>
+          </details>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-zinc-100">비용 · 충당 상세</h3>
+          {isSuperAdmin ? (
+            <details className="rounded-xl border border-zinc-800 bg-zinc-950/50">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-900/50">
+                솔루션 요율 (본사만)
+              </summary>
+              <div className="border-t border-zinc-800 px-4 pb-4 pt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className={`rounded-lg border p-3 ${solutionCashNet >= 0 ? "border-cyan-800/40 bg-cyan-950/10" : "border-red-800/40"}`}>
+                  <p className="text-[10px] text-zinc-500">솔루션 현금 순이익</p>
+                  <p className={`mt-1 font-mono text-lg ${ggrColor(solutionCashNet)}`}>{krw(solutionCashNet)}원</p>
+                </div>
+                <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                  <p className="text-[10px] text-zinc-500">상위업체 비용</p>
+                  <p className="mt-1 font-mono text-rose-300">{krw(upstreamCost)}원</p>
+                </div>
+                <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                  <p className="text-[10px] text-zinc-500">플랫폼 청구</p>
+                  <p className="mt-1 font-mono text-zinc-100">{krw(platformCharge)}원</p>
+                </div>
+                <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
+                  <p className="text-[10px] text-zinc-500">요율 마진</p>
+                  <p className="mt-1 font-mono text-cyan-300">{krw(solutionRateMargin)}원</p>
+                </div>
+                <div className={`rounded-lg border p-3 sm:col-span-2 ${solutionPolicyNet >= 0 ? "border-cyan-800/40 bg-cyan-950/10" : "border-red-800/40"}`}>
+                  <p className="text-[10px] text-zinc-500">솔루션 정책 추정 순이익</p>
+                  <p className={`mt-1 font-mono text-lg ${ggrColor(solutionPolicyNet)}`}>{krw(solutionPolicyNet)}원</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-lg border border-zinc-800 bg-black/20 p-4">
+                <p className="text-xs font-semibold text-zinc-300">상위업체 요율 기준</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+                    <p className="text-[11px] text-zinc-500">카지노</p>
+                    <p className="mt-1 text-sm text-zinc-200">
+                      상위 {costs.solutionRates.upstreamCasinoPct ?? "0"}% / 플랫폼 {costs.solutionRates.platformCasinoPct ?? "0"}%
+                    </p>
+                    <p className="mt-1 text-[11px] text-zinc-600">
+                      기준 GGR {krw(costs.solutionRates.casinoBaseGgr)}원
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+                    <p className="text-[11px] text-zinc-500">스포츠</p>
+                    <p className="mt-1 text-sm text-zinc-200">
+                      상위 {costs.solutionRates.upstreamSportsPct ?? "0"}% / 플랫폼 {costs.solutionRates.platformSportsPct ?? "0"}%
+                    </p>
+                    <p className="mt-1 text-[11px] text-zinc-600">
+                      기준 GGR {krw(costs.solutionRates.sportsBaseGgr)}원
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+                    <p className="text-[11px] text-zinc-500">자동 마진</p>
+                    <p className="mt-1 text-sm text-cyan-300">
+                      {costs.solutionRates.autoMarginPct ?? "0"}%
+                    </p>
+                    <p className="mt-1 text-[11px] text-zinc-600">
+                      기준: {costs.solutionRates.modeledBase}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </details>
+          ) : null}
+
+          <details className="rounded-xl border border-zinc-800 bg-zinc-950/50">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-200 hover:bg-zinc-900/50">
+              표로 보기 · 비용·충당 상세
+            </summary>
+            <div className="border-t border-zinc-800 p-4">
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="rounded-lg border border-zinc-800 bg-black/20 p-4">
                   <p className="text-xs font-semibold text-zinc-300">실제 머니 차감</p>
                   <div className="mt-3 space-y-2 text-sm">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">총판 예상 정산금</span>
+                      <span className="text-zinc-500">루트 총판 예상 정산</span>
                       <span className="font-mono text-amber-300">{krw(totalSettle)}원</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
@@ -669,7 +776,6 @@ export default function SalesPage() {
                     </div>
                   </div>
                 </div>
-
                 <div className="rounded-lg border border-zinc-800 bg-black/20 p-4">
                   <p className="text-xs font-semibold text-zinc-300">포인트 · 콤프 충당</p>
                   <div className="mt-3 space-y-2 text-sm">
@@ -726,85 +832,37 @@ export default function SalesPage() {
                   </p>
                 </div>
               </div>
-              {isSuperAdmin ? (
-              <div className="mt-4 rounded-lg border border-zinc-800 bg-black/20 p-4">
-                <p className="text-xs font-semibold text-zinc-300">상위업체 요율 기준</p>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-                    <p className="text-[11px] text-zinc-500">카지노</p>
-                    <p className="mt-1 text-sm text-zinc-200">
-                      상위 {costs.solutionRates.upstreamCasinoPct ?? "0"}% / 플랫폼 {costs.solutionRates.platformCasinoPct ?? "0"}%
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
-                      기준 GGR {krw(costs.solutionRates.casinoBaseGgr)}원
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-                    <p className="text-[11px] text-zinc-500">스포츠</p>
-                    <p className="mt-1 text-sm text-zinc-200">
-                      상위 {costs.solutionRates.upstreamSportsPct ?? "0"}% / 플랫폼 {costs.solutionRates.platformSportsPct ?? "0"}%
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
-                      기준 GGR {krw(costs.solutionRates.sportsBaseGgr)}원
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-                    <p className="text-[11px] text-zinc-500">자동 마진</p>
-                    <p className="mt-1 text-sm text-cyan-300">
-                      {costs.solutionRates.autoMarginPct ?? "0"}%
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
-                      기준: {costs.solutionRates.modeledBase}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              ) : null}
-            </section>
-
-            <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-zinc-100">게임별 하우스 수익</h3>
-              <div className="space-y-2">
-                {Object.entries(summary.verticals).map(([vert, data]) => {
-                  const ggrN = Number(data.ggr);
-                  const stakeN = Number(data.betStake);
-                  const pct = stakeN > 0 ? (ggrN / stakeN) * 100 : 0;
-                  return (
-                    <div key={vert} className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-zinc-400">{vertLabel(vert)}</span>
-                        <span className="text-xs text-zinc-600">{data.rounds}라운드</span>
-                      </div>
-                      <div className="mt-1.5 flex items-end justify-between gap-2">
-                        <div>
-                          <p className="text-[10px] text-zinc-600">배팅 {krw(data.betStake)}원 / 당첨 {krw(data.winTotal)}원</p>
-                        </div>
-                        <p className={`text-base font-bold font-mono ${ggrColor(data.ggr)}`}>
-                          수익 {krw(data.ggr)}원
-                          <span className="ml-1 text-xs text-zinc-500">({pct.toFixed(1)}%)</span>
-                        </p>
-                      </div>
-                      {/* 진행바 */}
-                      <div className="mt-1.5 h-1 rounded-full bg-zinc-800">
-                        <div
-                          className={`h-1 rounded-full ${ggrN > 0 ? "bg-emerald-500" : "bg-red-500"}`}
-                          style={{ width: `${Math.min(100, Math.abs(pct))}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
+            </div>
+          </details>
         </div>
         );
       })()}
 
       {/* ── 에이전트 정산 탭 (트리 뷰) ── */}
       {tab === "agents" && (() => {
-        if (agents === null && loading) return <p className="text-sm text-zinc-500">불러오는 중...</p>;
-        if (!agents || agents.length === 0) return <p className="text-sm text-zinc-600">등록된 총판이 없습니다.</p>;
+        if (!selectedPlatformId) {
+          return (
+            <p className="text-sm text-amber-200/90">
+              플랫폼이 아직 선택되지 않았습니다. 잠시 후 다시 시도하거나 상단에서 플랫폼을 확인해 주세요.
+            </p>
+          );
+        }
+        if (agentsBusy) {
+          return <p className="text-sm text-zinc-500">총판 구조를 불러오는 중…</p>;
+        }
+        if (agents === null && agentsError) {
+          return (
+            <p className="text-sm text-red-300">
+              총판 목록을 불러오지 못했습니다: {agentsError}
+            </p>
+          );
+        }
+        if (agents === null) {
+          return <p className="text-sm text-zinc-500">총판 구조를 불러오는 중…</p>;
+        }
+        if (agents.length === 0) {
+          return <p className="text-sm text-zinc-600">등록된 총판이 없습니다.</p>;
+        }
 
         // 회원별 낙첨금(입금-출금)을 총판 트리 기준으로 통합 합산
         const totalHouseEdge = agents.filter(a => a.isTopAgent).reduce((s, a) => s + Number(a.houseEdge ?? 0), 0);
@@ -829,7 +887,7 @@ export default function SalesPage() {
             (a) => salesAgentTreeParentId(a) === agent.agentId,
           );
           const directUsers = agent.directUsers ?? [];
-          const canExpand = childAgents.length > 0 || directUsers.length > 0;
+          const hasChildren = childAgents.length > 0 || directUsers.length > 0;
           const isOpen = openIds.has(agent.agentId);
           const indent = depth * 20;
           const childSettleSum = Number(agent.childrenSettlementTotal ?? 0);
@@ -837,12 +895,14 @@ export default function SalesPage() {
             <div key={agent.agentId} className={depth > 0 ? "border-t border-zinc-800/40 bg-zinc-950/30" : ""}>
               <button
                 type="button"
-                onClick={() => { if (canExpand) toggleAgent(agent.agentId); }}
-                className={`w-full flex items-center gap-2 px-4 py-3 text-left transition hover:bg-zinc-800/40 ${canExpand ? "" : "cursor-default opacity-90"}`}
+                onClick={() => {
+                  toggleAgent(agent.agentId);
+                }}
+                className="relative z-10 w-full cursor-pointer select-none flex items-center gap-2 px-4 py-3 text-left transition hover:bg-zinc-800/40"
                 style={{ paddingLeft: `${16 + indent}px` }}
               >
                 <span className="w-4 shrink-0 text-zinc-500 text-xs">
-                  {!canExpand ? "·" : isOpen ? "▼" : "▶"}
+                  {isOpen ? "▼" : "▶"}
                 </span>
                 <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
                   depth === 0 ? "bg-amber-600/25 text-amber-400" :
@@ -859,7 +919,10 @@ export default function SalesPage() {
                 {directUsers.length > 0 && (
                   <span className="text-[10px] text-zinc-600 shrink-0">직속 유저 {directUsers.length}</span>
                 )}
-                <div className="ml-auto flex flex-col items-end gap-0.5 text-xs shrink-0 sm:flex-row sm:items-center sm:gap-3">
+                {!hasChildren && (
+                  <span className="text-[10px] text-zinc-600 shrink-0">하위 없음</span>
+                )}
+                <div className="pointer-events-none ml-auto flex flex-col items-end gap-0.5 text-xs shrink-0 sm:flex-row sm:items-center sm:gap-3">
                   {childAgents.length > 0 && (
                     <span
                       className="text-[10px] text-cyan-400/90 font-mono hidden sm:inline"
@@ -875,8 +938,13 @@ export default function SalesPage() {
                   <span className="text-amber-300 font-mono font-bold">예상정산 {krw(agent.myEstimatedSettlement)}원</span>
                 </div>
               </button>
-              {isOpen && canExpand && (
+              {isOpen && (
                 <div style={{ paddingLeft: `${indent}px` }} className="pb-1">
+                  {!hasChildren && (
+                    <p className="px-8 py-2 text-[11px] text-zinc-500">
+                      이 기간에 직속 하위 총판·직속 유저 실적이 없습니다. 행을 다시 누르면 접습니다.
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-x-5 gap-y-1 px-8 py-1.5 text-[11px] text-zinc-500 bg-black/20">
                     <span>입금 <b className="text-emerald-400">{krw(agent.depositTotal)}원</b></span>
                     <span>출금 <b className="text-red-400">{krw(agent.withdrawTotal)}원</b></span>
@@ -890,15 +958,15 @@ export default function SalesPage() {
                     {agent.splitFromParentPct > 0 && <span>분배율 <b className="text-zinc-300">{agent.splitFromParentPct}%</b></span>}
                     {agent.effectivePct > 0 && <span>실효율 <b className="text-violet-300">{agent.effectivePct}%</b></span>}
                   </div>
-                  {childAgents.length > 0 && (
+                  {childAgents.length > 0 ? (
                     <div className="mt-2 border-t border-zinc-800/50 pt-2">
                       <p className="px-8 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">하위 총판</p>
                       <div className="mt-1">
                         {[...childAgents].sort((a, b) => a.loginId.localeCompare(b.loginId)).map((c) => renderAgent(c, depth + 1))}
                       </div>
                     </div>
-                  )}
-                  {directUsers.length > 0 && (
+                  ) : null}
+                  {directUsers.length > 0 ? (
                     <div className="mt-3 border-t border-zinc-800/50 pt-2 px-4 sm:px-8 pb-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-2">직속 유저</p>
                       <div className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-black/20">
@@ -934,7 +1002,7 @@ export default function SalesPage() {
                         </table>
                       </div>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
@@ -971,7 +1039,7 @@ export default function SalesPage() {
             <div className="rounded-xl border border-zinc-800 overflow-hidden">
               <div className="bg-zinc-900/60 px-4 py-2.5 flex items-center gap-2 border-b border-zinc-800">
                 <span className="text-xs font-semibold text-zinc-400">총판 구조</span>
-                <span className="text-[10px] text-zinc-600">▶ 클릭하여 하위 총판 펼치기/닫기</span>
+                <span className="text-[10px] text-zinc-600">행을 눌러 상세·하위 총판/직속 유저를 펼치거나 접습니다.</span>
               </div>
               <div>
                 {topAgents.map(a => renderAgent(a, 0))}
@@ -1239,7 +1307,9 @@ export default function SalesPage() {
         <div>
           {loading ? (
             <p className="py-6 text-sm text-zinc-500">불러오는 중...</p>
-          ) : ledger && ledger.length === 0 ? (
+          ) : !ledger ? (
+            <p className="py-6 text-sm text-zinc-500">원장을 불러오지 못했습니다.</p>
+          ) : ledger.length === 0 ? (
             <p className="py-6 text-sm text-zinc-600">배팅 원장이 없습니다.</p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-zinc-800 max-h-[65vh] overflow-y-auto">

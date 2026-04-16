@@ -22,6 +22,7 @@ type Summary = {
     withdrawTotal: string;
     netInflow: string;
     houseEdge: string;
+    estimatedRootAgentSettlementKrw?: string;
   };
   costs: {
     money: {
@@ -253,8 +254,7 @@ export default function SalesPage() {
       setAgents(a);
       setLedger(l);
       setSolutionBilling(billing);
-      // 최상위 총판은 기본 펼침
-      setOpenIds(new Set(a.filter((ag: AgentRow) => ag.isTopAgent).map((ag: AgentRow) => ag.agentId)));
+      setOpenIds(new Set());
     } catch (e) {
       setErr(e instanceof Error ? e.message : "조회 실패");
     } finally {
@@ -403,10 +403,8 @@ export default function SalesPage() {
         const houseEdge = Number(summary.wallet.houseEdge ?? (deposit - withdraw));
         const userProfit = withdraw - deposit;
         const rtp = Number(summary.betting.rtp);
-        const topAgents = (agents ?? []).filter((agent) => agent.isTopAgent);
-        const totalSettle = topAgents.reduce(
-          (sum, agent) => sum + Number(agent.myEstimatedSettlement ?? 0),
-          0,
+        const totalSettle = Number(
+          summary.wallet.estimatedRootAgentSettlementKrw ?? 0,
         );
         const depositBonus = Number(summary.costs.money.depositBonus);
         const pointRedeem = Number(summary.costs.money.pointRedeem);
@@ -762,8 +760,19 @@ export default function SalesPage() {
 
       {/* ── 에이전트 정산 탭 (트리 뷰) ── */}
       {tab === "agents" && (() => {
-        if (agents === null && loading) return <p className="text-sm text-zinc-500">불러오는 중...</p>;
-        if (!agents || agents.length === 0) return <p className="text-sm text-zinc-600">등록된 총판이 없습니다.</p>;
+        if (!selectedPlatformId) {
+          return (
+            <p className="text-sm text-amber-200/90">
+              플랫폼을 선택해 주세요.
+            </p>
+          );
+        }
+        if (agents === null && loading) {
+          return <p className="text-sm text-zinc-500">불러오는 중...</p>;
+        }
+        if (!agents || agents.length === 0) {
+          return <p className="text-sm text-zinc-600">등록된 총판이 없습니다.</p>;
+        }
 
         // 회원별 낙첨금(입금-출금)을 총판 트리 기준으로 통합 합산
         const totalHouseEdge = agents.filter(a => a.isTopAgent).reduce((s, a) => s + Number(a.houseEdge ?? 0), 0);
@@ -788,7 +797,7 @@ export default function SalesPage() {
             (a) => salesAgentTreeParentId(a) === agent.agentId,
           );
           const directUsers = agent.directUsers ?? [];
-          const canExpand = childAgents.length > 0 || directUsers.length > 0;
+          const hasChildren = childAgents.length > 0 || directUsers.length > 0;
           const isOpen = openIds.has(agent.agentId);
           const indent = depth * 20;
           const childSettleSum = Number(agent.childrenSettlementTotal ?? 0);
@@ -796,12 +805,14 @@ export default function SalesPage() {
             <div key={agent.agentId} className={depth > 0 ? "border-t border-zinc-800/40 bg-zinc-950/30" : ""}>
               <button
                 type="button"
-                onClick={() => { if (canExpand) toggleAgent(agent.agentId); }}
-                className={`w-full flex items-center gap-2 px-4 py-3 text-left transition hover:bg-zinc-800/40 ${canExpand ? "" : "cursor-default opacity-90"}`}
+                onClick={() => {
+                  toggleAgent(agent.agentId);
+                }}
+                className="relative z-10 w-full cursor-pointer select-none flex items-center gap-2 px-4 py-3 text-left transition hover:bg-zinc-800/40"
                 style={{ paddingLeft: `${16 + indent}px` }}
               >
                 <span className="w-4 shrink-0 text-zinc-500 text-xs">
-                  {!canExpand ? "·" : isOpen ? "▼" : "▶"}
+                  {isOpen ? "▼" : "▶"}
                 </span>
                 <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
                   depth === 0 ? "bg-amber-600/25 text-amber-400" :
@@ -818,7 +829,10 @@ export default function SalesPage() {
                 {directUsers.length > 0 && (
                   <span className="text-[10px] text-zinc-600 shrink-0">직속 유저 {directUsers.length}</span>
                 )}
-                <div className="ml-auto flex flex-col items-end gap-0.5 text-xs shrink-0 sm:flex-row sm:items-center sm:gap-3">
+                {!hasChildren && (
+                  <span className="text-[10px] text-zinc-600 shrink-0">하위 없음</span>
+                )}
+                <div className="pointer-events-none ml-auto flex flex-col items-end gap-0.5 text-xs shrink-0 sm:flex-row sm:items-center sm:gap-3">
                   {childAgents.length > 0 && (
                     <span
                       className="text-[10px] text-cyan-400/90 font-mono hidden sm:inline"
@@ -834,8 +848,13 @@ export default function SalesPage() {
                   <span className="text-amber-300 font-mono font-bold">예상정산 {krw(agent.myEstimatedSettlement)}원</span>
                 </div>
               </button>
-              {isOpen && canExpand && (
+              {isOpen && (
                 <div style={{ paddingLeft: `${indent}px` }} className="pb-1">
+                  {!hasChildren && (
+                    <p className="px-8 py-2 text-[11px] text-zinc-500">
+                      이 기간에 직속 하위 총판·직속 유저 실적이 없습니다.
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-x-5 gap-y-1 px-8 py-1.5 text-[11px] text-zinc-500 bg-black/20">
                     <span>입금 <b className="text-emerald-400">{krw(agent.depositTotal)}원</b></span>
                     <span>출금 <b className="text-red-400">{krw(agent.withdrawTotal)}원</b></span>
@@ -849,15 +868,15 @@ export default function SalesPage() {
                     {agent.splitFromParentPct > 0 && <span>분배율 <b className="text-zinc-300">{agent.splitFromParentPct}%</b></span>}
                     {agent.effectivePct > 0 && <span>실효율 <b className="text-violet-300">{agent.effectivePct}%</b></span>}
                   </div>
-                  {childAgents.length > 0 && (
+                  {childAgents.length > 0 ? (
                     <div className="mt-2 border-t border-zinc-800/50 pt-2">
                       <p className="px-8 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">하위 총판</p>
                       <div className="mt-1">
                         {[...childAgents].sort((a, b) => a.loginId.localeCompare(b.loginId)).map((c) => renderAgent(c, depth + 1))}
                       </div>
                     </div>
-                  )}
-                  {directUsers.length > 0 && (
+                  ) : null}
+                  {directUsers.length > 0 ? (
                     <div className="mt-3 border-t border-zinc-800/50 pt-2 px-4 sm:px-8 pb-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-2">직속 유저</p>
                       <div className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-black/20">
@@ -893,7 +912,7 @@ export default function SalesPage() {
                         </table>
                       </div>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>

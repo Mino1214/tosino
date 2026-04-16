@@ -1889,6 +1889,117 @@ export class PlatformsService {
       throw new ForbiddenException();
   }
 
+  /**
+   * metaJson.vertical 이 없는 구간(테스트 시나리오 등)도 note/command 로 버킷을 나눈다.
+   * 집계는 PostgreSQL에서 한 번에 수행한다.
+   */
+  private async aggregateBetWinByInferredVertical(
+    platformId: string,
+    hasDate: boolean,
+    dateFilter: Prisma.DateTimeFilter,
+  ): Promise<
+    Record<
+      string,
+      { betStake: string; winTotal: string; ggr: string; rounds: number }
+    >
+  > {
+    const verticals = ['casino', 'sports', 'slot', 'minigame'] as const;
+    const empty = (): Record<
+      (typeof verticals)[number],
+      { betStake: string; winTotal: string; ggr: string; rounds: number }
+    > => ({
+      casino: {
+        betStake: '0.00',
+        winTotal: '0.00',
+        ggr: '0.00',
+        rounds: 0,
+      },
+      sports: {
+        betStake: '0.00',
+        winTotal: '0.00',
+        ggr: '0.00',
+        rounds: 0,
+      },
+      slot: {
+        betStake: '0.00',
+        winTotal: '0.00',
+        ggr: '0.00',
+        rounds: 0,
+      },
+      minigame: {
+        betStake: '0.00',
+        winTotal: '0.00',
+        ggr: '0.00',
+        rounds: 0,
+      },
+    });
+    const out = empty();
+    const gte = hasDate ? dateFilter.gte : undefined;
+    const lte = hasDate ? dateFilter.lte : undefined;
+    const dateSql =
+      gte != null && lte != null
+        ? Prisma.sql`AND le."createdAt" >= ${gte} AND le."createdAt" <= ${lte}`
+        : Prisma.sql``;
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        vert: string;
+        bet_stake: unknown;
+        win_total: unknown;
+        bet_rounds: bigint;
+      }>
+    >(Prisma.sql`
+      SELECT
+        (
+          CASE
+            WHEN lower(trim(COALESCE(le."metaJson"->>'vertical', ''))) IN ('casino', 'sports', 'slot', 'minigame')
+              THEN lower(trim(COALESCE(le."metaJson"->>'vertical', '')))
+            WHEN lower(coalesce(le."metaJson"->>'command', '')) LIKE 'sports%'
+              OR lower(coalesce(le."metaJson"->>'command', '')) LIKE 'sports-%'
+              THEN 'sports'
+            WHEN lower(coalesce(le."metaJson"->>'note', '')) ~ '(슬롯|slot\\b|_slot)'
+              THEN 'slot'
+            WHEN lower(coalesce(le."metaJson"->>'note', '')) ~ '(미니|mini|minigame|arcade|crash|graph)'
+              THEN 'minigame'
+            ELSE 'casino'
+          END
+        ) AS vert,
+        SUM(
+          CASE
+            WHEN le."type"::text = 'BET' THEN abs(le."amount")::numeric
+            ELSE 0::numeric
+          END
+        ) AS bet_stake,
+        SUM(
+          CASE
+            WHEN le."type"::text = 'WIN' THEN le."amount"::numeric
+            ELSE 0::numeric
+          END
+        ) AS win_total,
+        COUNT(*) FILTER (WHERE le."type"::text = 'BET') AS bet_rounds
+      FROM "LedgerEntry" le
+      WHERE le."platformId" = ${platformId}
+        AND le."type"::text IN ('BET', 'WIN')
+        ${dateSql}
+      GROUP BY 1
+    `);
+
+    for (const r of rows) {
+      const key = r.vert;
+      if (!(verticals as readonly string[]).includes(key)) continue;
+      const vk = key as (typeof verticals)[number];
+      const stake = Number(r.bet_stake ?? 0);
+      const win = Number(r.win_total ?? 0);
+      out[vk] = {
+        betStake: stake.toFixed(2),
+        winTotal: win.toFixed(2),
+        ggr: (stake - win).toFixed(2),
+        rounds: Number(r.bet_rounds ?? 0),
+      };
+    }
+    return out;
+  }
+
   private approvedWalletWhere(
     platformId: string,
     userIds?: string[],
@@ -2104,40 +2215,11 @@ export class PlatformsService {
     const depositTotal = depositAgg._sum.amount?.toNumber() ?? 0;
     const withdrawTotal = withdrawAgg._sum.amount?.toNumber() ?? 0;
 
-    // per-vertical breakdown
-    const verticals = ['casino', 'sports', 'minigame', 'slot'] as const;
-    const vertBreakdown: Record<string, { betStake: string; winTotal: string; ggr: string; rounds: number }> = {};
-    for (const v of verticals) {
-      const [vBet, vWin] = await Promise.all([
-        this.prisma.ledgerEntry.aggregate({
-          where: {
-            platformId,
-            type: LedgerEntryType.BET,
-            ...(hasDate ? { createdAt: dateFilter } : {}),
-            metaJson: { path: ['vertical'], equals: v },
-          },
-          _sum: { amount: true },
-          _count: true,
-        }),
-        this.prisma.ledgerEntry.aggregate({
-          where: {
-            platformId,
-            type: LedgerEntryType.WIN,
-            ...(hasDate ? { createdAt: dateFilter } : {}),
-            metaJson: { path: ['vertical'], equals: v },
-          },
-          _sum: { amount: true },
-        }),
-      ]);
-      const vStake = Math.abs(vBet._sum.amount?.toNumber() ?? 0);
-      const vWinTotal = vWin._sum.amount?.toNumber() ?? 0;
-      vertBreakdown[v] = {
-        betStake: vStake.toFixed(2),
-        winTotal: vWinTotal.toFixed(2),
-        ggr: (vStake - vWinTotal).toFixed(2),
-        rounds: vBet._count,
-      };
-    }
+    const vertBreakdown = await this.aggregateBetWinByInferredVertical(
+      platformId,
+      hasDate,
+      dateFilter,
+    );
 
     // 총판 정산 기준은 회원별 낙첨금(입금-출금)을 합산한 현금 기준 값이다.
     const depMap = new Map(
@@ -2277,6 +2359,11 @@ export class PlatformsService {
           }
         : this.hiddenSolutionRateSummary();
 
+    const salesAgentRows = await this.getSalesAgents(platformId, actor, from, to);
+    const estimatedRootAgentSettlement = salesAgentRows
+      .filter((r) => r.isTopAgent)
+      .reduce((s, r) => s + Number(r.myEstimatedSettlement ?? 0), 0);
+
     return {
       period: { from: from ?? null, to: to ?? null },
       platform: { userCnt, agentCnt },
@@ -2294,6 +2381,9 @@ export class PlatformsService {
         withdrawTotal: withdrawTotal.toFixed(2),
         netInflow: houseEdge.toFixed(2),
         houseEdge: houseEdge.toFixed(2),
+        /** 루트 총판 트리별 낙첨금×실효요율 합계(하위 총판 몫은 루트가 받는 구조로 가정한 추정치) */
+        estimatedRootAgentSettlementKrw:
+          estimatedRootAgentSettlement.toFixed(2),
       },
       costs: {
         money: {
