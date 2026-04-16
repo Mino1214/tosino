@@ -89,19 +89,28 @@ type PlatformOverview = {
   solutionPolicyNet: number;
 };
 
-function krw(value: number) {
-  return value.toLocaleString("ko-KR");
+function krw(value: number | null | undefined) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return "0";
+  try {
+    return n.toLocaleString("ko-KR");
+  } catch {
+    return "0";
+  }
 }
 
-function signed(value: number) {
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${krw(value)}원`;
+function signed(value: number | null | undefined) {
+  const n = Number(value ?? 0);
+  const sign = Number.isFinite(n) && n > 0 ? "+" : "";
+  return `${sign}${krw(n)}원`;
 }
 
-function moneyClass(value: number) {
-  return value > 0
+function moneyClass(value: number | null | undefined) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return "text-zinc-100";
+  return n > 0
     ? "text-emerald-300"
-    : value < 0
+    : n < 0
       ? "text-rose-300"
       : "text-zinc-100";
 }

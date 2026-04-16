@@ -122,22 +122,69 @@ const STEPS = [
   },
 ];
 
-// ─── 유틸 ───────────────────────────────────────────────────
-const krw = (n: number | string | null | undefined) => {
-  const v = typeof n === "string" ? Number(n) : Number(n ?? 0);
-  if (!Number.isFinite(v)) return "0";
-  return v.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+// ─── 유틸 (API/직렬화 차이·빈 필드 대비 — toLocaleString 수신자가 항상 유효한 값이 되도록)
+function toFiniteNumber(n: unknown): number {
+  if (n == null) return 0;
+  if (typeof n === "number") return Number.isFinite(n) ? n : 0;
+  if (typeof n === "bigint") {
+    const x = Number(n);
+    return Number.isFinite(x) ? x : 0;
+  }
+  if (typeof n === "string") {
+    const x = Number(n);
+    return Number.isFinite(x) ? x : 0;
+  }
+  if (typeof n === "object") {
+    try {
+      const x = Number(String(n));
+      return Number.isFinite(x) ? x : 0;
+    } catch {
+      return 0;
+    }
+  }
+  try {
+    const x = Number(n);
+    return Number.isFinite(x) ? x : 0;
+  } catch {
+    return 0;
+  }
+}
+
+const krw = (n: unknown) => {
+  try {
+    const v = toFiniteNumber(n);
+    return v.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+  } catch {
+    return "0";
+  }
 };
 
-const dt = (s: string | null | undefined) => {
-  if (s == null || s === "") return "—";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("ko-KR", {
-    month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+const dt = (s: unknown) => {
+  try {
+    if (s == null || s === "") return "—";
+    const d =
+      typeof s === "number"
+        ? new Date(s)
+        : typeof s === "string"
+          ? new Date(s)
+          : s instanceof Date
+            ? s
+            : new Date(String(s));
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString("ko-KR", {
+      month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
 };
+
+function pctLabel(n: unknown): string {
+  const v = toFiniteNumber(n);
+  if (!Number.isFinite(v)) return "0";
+  return String(parseFloat(v.toFixed(4)));
+}
 
 type LogEntry = { ts: string; level: "info" | "error" | "success"; msg: string };
 
@@ -223,12 +270,12 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
             )}
             {isAgent && commission && (
               <span className="text-violet-400">
-                실효요율 <b>{commission.effectiveSharePct}%</b>
+                실효요율 <b>{pctLabel(commission.effectiveSharePct)}%</b>
                 {commission.platformSharePct != null && (
-                  <> · 플랫폼부여 <b>{commission.platformSharePct}%</b></>
+                  <> · 플랫폼부여 <b>{pctLabel(commission.platformSharePct)}%</b></>
                 )}
                 {commission.splitFromParentPct != null && (
-                  <> · 상위대비 <b>{commission.splitFromParentPct}%</b></>
+                  <> · 상위대비 <b>{pctLabel(commission.splitFromParentPct)}%</b></>
                 )}
               </span>
             )}
@@ -318,8 +365,8 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                           <span className={`text-[10px] ${typeColor(l.type)}`}>{l.type}</span>
                         )}
                       </Td>
-                      <Td className="text-zinc-300">{l.betAmount > 0 ? `${krw(l.betAmount)}원` : "-"}</Td>
-                      <Td className={l.winAmount > 0 ? "text-emerald-300" : "text-zinc-600"}>{l.winAmount > 0 ? `+${krw(l.winAmount)}원` : "-"}</Td>
+                      <Td className="text-zinc-300">{toFiniteNumber(l.betAmount) > 0 ? `${krw(l.betAmount)}원` : "-"}</Td>
+                      <Td className={toFiniteNumber(l.winAmount) > 0 ? "text-emerald-300" : "text-zinc-600"}>{toFiniteNumber(l.winAmount) > 0 ? `+${krw(l.winAmount)}원` : "-"}</Td>
                       <Td className={(l.netResult ?? 0) >= 0 ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
                         {(l.netResult ?? 0) >= 0 ? "+" : ""}{krw(l.netResult)}원
                       </Td>
@@ -464,12 +511,13 @@ function Td({ children, className }: { children: React.ReactNode; className?: st
 
 // ─── 계정 섹션 ───────────────────────────────────────────────
 function AccountSection({ title, users, defaultOpen }: { title: string; users: UserDetail[]; defaultOpen?: boolean }) {
-  if (users.length === 0) return null;
+  const clean = users.filter((x): x is UserDetail => x != null && typeof x.id === "string" && x.id.length > 0);
+  if (clean.length === 0) return null;
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">{title} ({users.length}명)</p>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">{title} ({clean.length}명)</p>
       <div className="space-y-2">
-        {users.map((u) => (
+        {clean.map((u) => (
           <UserCard key={u.id} u={u} defaultOpen={defaultOpen} />
         ))}
       </div>

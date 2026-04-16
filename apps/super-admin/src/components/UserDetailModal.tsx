@@ -99,14 +99,39 @@ type RollingObItem = {
 
 // ─── 유틸 ───────────────────────────────────────────────────
 function krw(v: string | number | null | undefined) {
-  const n = Number(v ?? 0);
-  return Number.isFinite(n) ? n.toLocaleString("ko-KR") : "0";
+  try {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n.toLocaleString("ko-KR") : "0";
+  } catch {
+    return "0";
+  }
 }
-function dt(s: string) {
-  return new Date(s).toLocaleString("ko-KR", {
-    month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+function usdt2(v: string | number | null | undefined) {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+}
+function dt(s: string | null | undefined) {
+  try {
+    if (s == null || s === "") return "—";
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString("ko-KR", {
+      month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+function dateOnlyKo(s: string | null | undefined): string {
+  try {
+    if (s == null || s === "") return "—";
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("ko-KR");
+  } catch {
+    return "—";
+  }
 }
 function typeKr(t: string) {
   const map: Record<string, string> = {
@@ -317,7 +342,7 @@ export default function UserDetailModal({ user, platformId, onClose }: Props) {
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
                     { label: "현재 잔액", val: `${krw(overview.wallet.balance)}원`, color: "text-amber-300" },
-                    { label: "출금 가능", val: overview.wallet.withdrawCurrency === "USDT" ? `${Number(overview.wallet.withdrawableUsdt).toFixed(2)} USDT` : `${krw(overview.wallet.withdrawableKrw)}원`, color: "text-zinc-100" },
+                    { label: "출금 가능", val: overview.wallet.withdrawCurrency === "USDT" ? `${usdt2(overview.wallet.withdrawableUsdt)} USDT` : `${krw(overview.wallet.withdrawableKrw)}원`, color: "text-zinc-100" },
                     { label: "롤링 달성", val: `${overview.rolling.achievementPct}%`, color: "text-cyan-300" },
                     { label: "포인트", val: `${krw(overview.wallet.pointBalance)} P`, color: "text-emerald-300" },
                   ].map((c) => (
@@ -340,7 +365,7 @@ export default function UserDetailModal({ user, platformId, onClose }: Props) {
                         ["추천인", overview.user.referredBy?.loginId ?? "—"],
                         ["소속 총판", overview.user.parent?.loginId ?? "—"],
                         ["총판 코드", overview.user.parent?.referralCode ?? "—"],
-                        ["가입일", new Date(overview.user.createdAt).toLocaleDateString()],
+                        ["가입일", dateOnlyKo(overview.user.createdAt)],
                         ["출금 수단", overview.user.signupMode === "anonymous"
                           ? (overview.user.usdtWalletAddress ?? "지갑 미등록")
                           : (overview.user.bankAccountHolder && overview.user.bankAccountNumber
