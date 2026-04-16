@@ -29,7 +29,7 @@ export class CreatePlatformDto {
   @IsString()
   templateKey?: string;
 
-  /** Initial domain host e.g. brand-a.mod.tozinosolution.com */
+  /** Initial root domain host e.g. brand-a.com or brand-a.tozinosolution.com */
   @IsOptional()
   @IsString()
   @MinLength(1)

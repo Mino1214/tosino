@@ -12,9 +12,10 @@ printf '%s\n' \
   "  Tosino — 개발(핫리로드): 터미널마다 하나씩만 실행하면 로그가 섞이지 않습니다." \
   "  ─────────────────────────────────────────────────────────────" \
   "  터미널 1   API (Nest)      pnpm dev:api         → http://localhost:4001" \
-  "  터미널 2   관리자(Next)    pnpm dev:admin       → http://localhost:3000" \
-  "  터미널 3   솔루션(Next)    pnpm dev:solution    → http://localhost:3002" \
-  "  터미널 4   총판(Next)      pnpm dev:agent       → http://localhost:3003  (필요 시)" \
+  "  터미널 2   슈퍼어드민      pnpm dev:super-admin → http://localhost:3000" \
+  "  터미널 3   솔루션어드민    pnpm dev:admin       → http://localhost:3001" \
+  "  터미널 4   솔루션유저      pnpm dev:solution    → http://localhost:3002" \
+  "  터미널 5   솔루션에이전트  pnpm dev:agent       → http://localhost:3003  (필요 시)" \
   "  (선택)     shared 타입     pnpm dev:shared      → packages/shared 수정 시" \
   "  (선택)     SMS 수집       pnpm dev:sms-ingest" \
   "" \
@@ -24,9 +25,10 @@ printf '%s\n' \
   "  빌드 후 정적 서빙(out/ + serve): 먼저  pnpm build:apps" \
   "  ─────────────────────────────────────────────────────────────" \
   "  터미널 1   API               pnpm start:api" \
-  "  터미널 2   관리자            pnpm start:admin   (apps/admin-web/out)" \
-  "  터미널 3   솔루션            pnpm start:solution" \
-  "  터미널 4   총판              pnpm start:agent" \
+  "  터미널 2   슈퍼어드민        pnpm start:super-admin   (apps/super-admin/out)" \
+  "  터미널 3   솔루션어드민      pnpm start:admin         (apps/solution-admin/out)" \
+  "  터미널 4   솔루션유저        pnpm start:solution" \
+  "  터미널 5   솔루션에이전트    pnpm start:agent" \
   "" \
   "  위 네 개를 한 번에:            pnpm start:apps   (또는 pnpm apps:prod = 빌드+기동)" \
   ""

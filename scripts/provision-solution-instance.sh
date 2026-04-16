@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 플랫폼 미리보기용: apps/solution-web + packages/shared 를 별도 디렉터리에 복사하고
+# 플랫폼 미리보기용: apps/solution-user + packages/shared 를 별도 디렉터리에 복사하고
 # 독립 pnpm 워크스페이스로 설치한 뒤, 해당 포트로 next dev 를 띄울 수 있게 준비합니다.
 #
 # 사용법:
@@ -45,12 +45,12 @@ fi
 
 mkdir -p "$DEST/packages"
 
-echo "→ 복사: apps/solution-web → $DEST/solution-web"
+echo "→ 복사: apps/solution-user → $DEST/solution-user"
 rsync -a \
   --exclude node_modules \
   --exclude .next \
   --exclude .turbo \
-  "$ROOT/apps/solution-web/" "$DEST/solution-web/"
+  "$ROOT/apps/solution-user/" "$DEST/solution-user/"
 
 echo "→ 복사: packages/shared → $DEST/packages/shared"
 rsync -a \
@@ -60,7 +60,7 @@ rsync -a \
 
 cat > "$DEST/pnpm-workspace.yaml" << 'YAML'
 packages:
-  - "solution-web"
+  - "solution-user"
   - "packages/shared"
 YAML
 
@@ -77,7 +77,7 @@ if [ -n "${PREVIEW_BOOTSTRAP_SECRET:-}" ]; then
   PREVIEW_SECRET_LINE="NEXT_PUBLIC_PREVIEW_BOOTSTRAP_SECRET=${PREVIEW_BOOTSTRAP_SECRET}"
 fi
 
-cat > "$DEST/solution-web/.env.local" << EOF
+cat > "$DEST/solution-user/.env.local" << EOF
 # 자동 생성 (${SLUG} / 포트 ${PORT}) — API·비밀값은 환경에 맞게 수정
 NEXT_PUBLIC_API_URL=${API_PUBLIC_URL}
 NEXT_PUBLIC_PREVIEW_PORT=${PORT}

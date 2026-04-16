@@ -13,7 +13,7 @@ SLUG="${1:?인자: 인스턴스 슬러그(예: brand-b)}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/deployments/solution-instances/$SLUG"
 META="$DEST/instance.json"
-APP="$DEST/solution-web"
+APP="$DEST/solution-user"
 
 if [ ! -f "$META" ] || [ ! -d "$APP" ]; then
   echo "인스턴스가 없습니다: $DEST" >&2

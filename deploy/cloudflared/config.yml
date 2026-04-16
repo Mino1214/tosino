@@ -4,10 +4,11 @@
 #
 # ── 도메인 → 서비스 매핑 ────────────────────────────────────
 #   apisgate.org           → API (NestJS :4001) + sms-ingest (:4050)
-#   i-on.bet               → solution-web  :3002
-#   www.i-on.bet           → solution-web  :3002
-#   mod.i-on.bet           → admin-web     :3000
-#   agent.i-on.bet         → agent-web     :3003
+#   mod.tozinosolution.com → super-admin   :3000
+#   i-on.bet               → solution-user :3002
+#   www.i-on.bet           → solution-user :3002
+#   mod.i-on.bet           → solution-admin:3001
+#   agent.i-on.bet         → solution-agent:3003
 # ─────────────────────────────────────────────────────────────
 
 tunnel: 50a78d10-c684-4f59-a74e-6385131744d1
@@ -31,7 +32,13 @@ ingress:
     service: http://localhost:4001
 
   # ══════════════════════════════════════════════════
-  # i-on.bet — 솔루션 메인 (solution-web :3002)
+  # mod.tozinosolution.com — 슈퍼어드민 (super-admin :3000)
+  # ══════════════════════════════════════════════════
+  - hostname: mod.tozinosolution.com
+    service: http://localhost:3000
+
+  # ══════════════════════════════════════════════════
+  # i-on.bet — 솔루션 메인 (solution-user :3002)
   # ══════════════════════════════════════════════════
   - hostname: i-on.bet
     service: http://localhost:3002
@@ -40,13 +47,13 @@ ingress:
     service: http://localhost:3002
 
   # ══════════════════════════════════════════════════
-  # mod.i-on.bet — 관리자 (admin-web :3000)
+  # mod.i-on.bet — 솔루션 어드민 (solution-admin :3001)
   # ══════════════════════════════════════════════════
   - hostname: mod.i-on.bet
-    service: http://localhost:3000
+    service: http://localhost:3001
 
   # ══════════════════════════════════════════════════
-  # agent.i-on.bet — 총판 (agent-web :3003)
+  # agent.i-on.bet — 총판 (solution-agent :3003)
   # ══════════════════════════════════════════════════
   - hostname: agent.i-on.bet
     service: http://localhost:3003

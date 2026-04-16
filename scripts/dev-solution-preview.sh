@@ -5,5 +5,5 @@ while [ "${1:-}" = "--" ]; do shift; done
 PORT="${1:-3200}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export NEXT_PUBLIC_PREVIEW_PORT="$PORT"
-cd "$ROOT/apps/solution-web"
+cd "$ROOT/apps/solution-user"
 exec pnpm exec next dev --turbopack -p "$PORT"

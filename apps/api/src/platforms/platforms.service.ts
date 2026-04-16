@@ -285,9 +285,9 @@ export class PlatformsService {
     ) =>
       rows.map((row) => {
         const flags = this.asRecord(row.flagsJson);
-        return {
-          ...row,
-          solutionTemplateKey:
+      return {
+        ...row,
+        solutionTemplateKey:
             typeof flags.solutionTemplateKey === 'string'
               ? flags.solutionTemplateKey
               : 'HYBRID',
@@ -352,8 +352,9 @@ export class PlatformsService {
   listTemplates() {
     return {
       defaultHostSuffix:
+        process.env.PLATFORM_ROOT_HOST_SUFFIX?.trim().toLowerCase() ||
         process.env.PLATFORM_HOST_SUFFIX?.trim().toLowerCase() ||
-        'mod.tozinosolution.com',
+        'tozinosolution.com',
       items: listPlatformTemplatePresets().map((preset) => ({
         key: preset.key,
         label: preset.label,
@@ -704,7 +705,7 @@ export class PlatformsService {
       solutionHostSuffix:
         typeof flags.solutionHostSuffix === 'string'
           ? flags.solutionHostSuffix
-          : 'mod.tozinosolution.com',
+          : buildDefaultPlatformHost(p.slug).split('.').slice(1).join('.'),
       compPolicy,
       compAutomation,
       solutionRatePolicy: this.sanitizeSolutionRatePolicy(

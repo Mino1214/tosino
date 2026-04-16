@@ -37,18 +37,18 @@ done
 mkdir -p "$SSL_DIR"
 
 if [ ! -f "$SSL_DIR/fullchain.pem" ]; then
-  echo "→ 자체 서명 인증서 생성 (90일, SAN: nexus001·www·mod·demo1·demo2)…"
+  echo "→ 자체 서명 인증서 생성 (90일, SAN: super-admin + solution root/mod/agent)…"
   openssl req -x509 -nodes -days 90 -newkey rsa:2048 \
     -keyout "$SSL_DIR/privkey.pem" \
     -out "$SSL_DIR/fullchain.pem" \
     -subj "/CN=nexus001.vip" \
-    -addext "subjectAltName=DNS:nexus001.vip,DNS:www.nexus001.vip,DNS:mod.nexus001.vip,DNS:demo1.nexus001.vip,DNS:demo2.nexus001.vip"
+    -addext "subjectAltName=DNS:nexus001.vip,DNS:www.nexus001.vip,DNS:mod.nexus001.vip,DNS:agent.nexus001.vip,DNS:demo1.nexus001.vip,DNS:demo2.nexus001.vip,DNS:mod.tozinosolution.com"
   chmod 640 "$SSL_DIR/privkey.pem"
   chmod 644 "$SSL_DIR/fullchain.pem"
   echo "  $SSL_DIR/fullchain.pem"
 else
   echo "→ 기존 인증서 사용: $SSL_DIR/fullchain.pem"
-  echo "  (mod.nexus001.vip 접속 시 호스트 불일치면: rm $SSL_DIR/*.pem 후 이 스크립트 재실행)"
+  echo "  (mod.nexus001.vip / mod.tozinosolution.com 접속 시 호스트 불일치면: rm $SSL_DIR/*.pem 후 이 스크립트 재실행)"
 fi
 
 echo "→ nginx 설정 생성…"

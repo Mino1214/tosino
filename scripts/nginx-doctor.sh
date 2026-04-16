@@ -83,7 +83,7 @@ if [ -n "$PUB" ]; then
 else
   echo "  공인 IP 조회 실패(오프라인)"
 fi
-for zone in nexus001.vip mod.nexus001.vip; do
+for zone in nexus001.vip mod.nexus001.vip agent.nexus001.vip mod.tozinosolution.com; do
   if command -v dig >/dev/null 2>&1; then
     rec=$(dig +short "$zone" A 2>/dev/null | head -1 || true)
     if [ -z "$rec" ]; then

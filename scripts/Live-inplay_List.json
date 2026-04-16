@@ -1,0 +1,303 @@
+{
+  "success": 1,
+  "total": 9,
+  "game": [
+    {
+      "game_id": "268496603",
+      "status": "1",
+      "start_ts": "2025-07-03 07:15:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10529",
+          "team1_name": "San Diego Padres",
+          "team1_name_kor": "샌디에이고",
+          "team1_img": "be7ceee2130563820e4038814915ddd9.png"
+        },
+        {
+          "team2_id": "10509",
+          "team2_name": "Philadelphia Phillies",
+          "team2_name_kor": "필라델피아",
+          "team2_img": "10509.png"
+        }
+      ],
+      "location": "Citizens Bank Park (Philadelphia)",
+      "round": "Game 2",
+      "series": "",
+      "timer": {
+        "time_mark": "7th Top",
+        "time_mark_kor": "7회초"
+      },
+      "score": "1-4",
+      "update_time": "2025-07-03 08:59:08"
+    },
+    {
+      "game_id": "268472588",
+      "status": "1",
+      "start_ts": "2025-07-03 07:40:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10479",
+          "team1_name": "Minnesota Twins",
+          "team1_name_kor": "미네소타",
+          "team1_img": "10479.png"
+        },
+        {
+          "team2_id": "10505",
+          "team2_name": "Miami Marlins",
+          "team2_name_kor": "마이애미",
+          "team2_img": "d1a388459345ba7f328341bd4127c43a.png"
+        }
+      ],
+      "location": "Loan Depot (Miami)",
+      "round": "",
+      "series": "",
+      "timer": {
+        "time_mark": "6th Top",
+        "time_mark_kor": "6회초"
+      },
+      "score": "2-1",
+      "update_time": "2025-07-03 08:59:07"
+    },
+    {
+      "game_id": "268496604",
+      "status": "1",
+      "start_ts": "2025-07-03 07:45:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10473",
+          "team1_name": "Detroit Tigers",
+          "team1_name_kor": "디트로이트",
+          "team1_img": "9bcb40669e835935acaf6cc12183ef28.png"
+        },
+        {
+          "team2_id": "10511",
+          "team2_name": "Washington Nationals",
+          "team2_name_kor": "워싱턴",
+          "team2_img": "5da0e161227a6721713cb46490f5274b.png"
+        }
+      ],
+      "location": "National Park (Washington)",
+      "round": "Game 2",
+      "series": "",
+      "timer": {
+        "time_mark": "4th Top",
+        "time_mark_kor": "4회초"
+      },
+      "score": "1-3",
+      "update_time": "2025-07-03 08:59:07"
+    },
+    {
+      "game_id": "268472690",
+      "status": "1",
+      "start_ts": "2025-07-03 08:07:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10487",
+          "team1_name": "New York Yankees",
+          "team1_name_kor": "뉴욕Y",
+          "team1_img": "7f3aed0305553ef954768ab8f131b180.png"
+        },
+        {
+          "team2_id": "10491",
+          "team2_name": "Toronto Blue Jays",
+          "team2_name_kor": "토론토",
+          "team2_img": "10491.png"
+        }
+      ],
+      "location": "Rogers Centre (Toronto)",
+      "round": "",
+      "series": "",
+      "timer": {
+        "time_mark": "3rd Top",
+        "time_mark_kor": "3회초"
+      },
+      "score": "0-7",
+      "update_time": "2025-07-03 08:59:08"
+    },
+    {
+      "game_id": "268507802",
+      "status": "1",
+      "start_ts": "2025-07-03 08:10:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10515",
+          "team1_name": "Cincinnati Reds",
+          "team1_name_kor": "신시내티",
+          "team1_img": "2aa1b05b6c59d0bca43a4983dd31d33a.png"
+        },
+        {
+          "team2_id": "10485",
+          "team2_name": "Boston Red Sox",
+          "team2_name_kor": "보스턴",
+          "team2_img": "10485.png"
+        }
+      ],
+      "location": "Fenway (Boston)",
+      "round": "Game 2",
+      "series": "",
+      "timer": {
+        "time_mark": "4th Top",
+        "time_mark_kor": "4회초"
+      },
+      "score": "0-1",
+      "update_time": "2025-07-03 08:59:08"
+    },
+    {
+      "game_id": "268527118",
+      "status": "1",
+      "start_ts": "2025-07-03 08:10:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10517",
+          "team1_name": "Milwaukee Brewers",
+          "team1_name_kor": "밀워키",
+          "team1_img": "10517.png"
+        },
+        {
+          "team2_id": "10507",
+          "team2_name": "New York Mets",
+          "team2_name_kor": "뉴욕M",
+          "team2_img": "c5e1ef97cf5319d0dd10dddb05deaca2.png"
+        }
+      ],
+      "location": "Citi Field (New York)",
+      "round": "Game 2",
+      "series": "",
+      "timer": {
+        "time_mark": "3rd Top",
+        "time_mark_kor": "3회초"
+      },
+      "score": "0-5",
+      "update_time": "2025-07-03 08:59:08"
+    },
+    {
+      "game_id": "268472688",
+      "status": "1",
+      "start_ts": "2025-07-03 08:15:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10493",
+          "team1_name": "Los Angeles Angels",
+          "team1_name_kor": "LA 에인절스",
+          "team1_img": "10493.png"
+        },
+        {
+          "team2_id": "10503",
+          "team2_name": "Atlanta Braves",
+          "team2_name_kor": "애틀랜타",
+          "team2_img": "3fbd4144dcace71d0894b8b0717c887e.png"
+        }
+      ],
+      "location": "Truist Park (Atlanta)",
+      "round": "",
+      "series": "",
+      "timer": {
+        "time_mark": "2nd Bottom",
+        "time_mark_kor": "2회말"
+      },
+      "score": "2-0",
+      "update_time": "2025-07-03 08:59:08"
+    },
+    {
+      "game_id": "268472593",
+      "status": "1",
+      "start_ts": "2025-07-03 09:05:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10483",
+          "team1_name": "Baltimore Orioles",
+          "team1_name_kor": "볼티모어",
+          "team1_img": "10483.png"
+        },
+        {
+          "team2_id": "10499",
+          "team2_name": "Texas Rangers",
+          "team2_name_kor": "텍사스",
+          "team2_img": "9fb7f9de5a12bf88624578eaa9e3b85f.png"
+        }
+      ],
+      "location": "Globe Life Field (Arlington)",
+      "round": "",
+      "series": "",
+      "timer": {
+        "time_mark": "1st Top",
+        "time_mark_kor": "1회초"
+      },
+      "score": "0-0",
+      "update_time": "2025-07-03 08:59:08"
+    },
+    {
+      "game_id": "268472693",
+      "status": "1",
+      "start_ts": "2025-07-03 09:05:00",
+      "competition_id": "166775",
+      "competition_name": "MLB",
+      "competition_name_kor": "메이저리그",
+      "competition_cc_name": "USA",
+      "competition_cc_name_kor": "미국",
+      "team": [
+        {
+          "team1_id": "10477",
+          "team1_name": "Cleveland Guardians",
+          "team1_name_kor": "클리블랜드 가디언스",
+          "team1_img": "4eb0ba6049c1f8e8e89dc6837d91a962.png"
+        },
+        {
+          "team2_id": "10513",
+          "team2_name": "Chicago Cubs",
+          "team2_name_kor": "시카고 컵스",
+          "team2_img": "10513.png"
+        }
+      ],
+      "location": "Wrigley Field (Chicago)",
+      "round": "",
+      "series": "",
+      "timer": {
+        "time_mark": "1st Top",
+        "time_mark_kor": "1회초"
+      },
+      "score": "0-0",
+      "update_time": "2025-07-03 08:59:08"
+    }
+  ]
+}

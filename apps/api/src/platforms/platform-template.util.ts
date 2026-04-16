@@ -1,8 +1,9 @@
 type JsonRecord = Record<string, unknown>;
 
 export const DEFAULT_PLATFORM_HOST_SUFFIX =
+  process.env.PLATFORM_ROOT_HOST_SUFFIX?.trim().toLowerCase() ||
   process.env.PLATFORM_HOST_SUFFIX?.trim().toLowerCase() ||
-  'mod.tozinosolution.com';
+  'tozinosolution.com';
 
 export type PlatformTemplateKey = 'HYBRID' | 'CASINO' | 'SPORTS';
 

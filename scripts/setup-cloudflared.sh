@@ -82,12 +82,11 @@ echo "[4/4] DNS CNAME 등록"
 
 DOMAINS=(
   "apisgate.org"
+  "mod.tozinosolution.com"
   "i-on.bet"
   "www.i-on.bet"
   "mod.i-on.bet"
   "agent.i-on.bet"
-  "demo1.i-on.bet"
-  "demo2.i-on.bet"
 )
 
 for DOMAIN in "${DOMAINS[@]}"; do
@@ -107,8 +106,9 @@ echo ""
   echo ""
   echo "  도메인 확인:"
   echo "    https://apisgate.org/health        (API)"
+  echo "    https://mod.tozinosolution.com     (슈퍼어드민)"
   echo "    https://i-on.bet                  (솔루션)"
-  echo "    https://mod.i-on.bet              (관리자)"
+  echo "    https://mod.i-on.bet              (솔루션 어드민)"
   echo "    https://agent.i-on.bet            (총판)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

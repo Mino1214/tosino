@@ -76,7 +76,7 @@ if [ "$WAIT_API" = 1 ]; then
   wait_for_api || true
 fi
 
-if [ ! -f "$DEST/instance.json" ] || [ ! -d "$DEST/solution-web" ]; then
+if [ ! -f "$DEST/instance.json" ] || [ ! -d "$DEST/solution-user" ]; then
   echo "→ 인스턴스 없음 — 프로비저닝 후 바로 서버를 띄웁니다."
   bash "$ROOT/scripts/provision-solution-instance.sh" "$SLUG" "$PORT" "$API_URL"
 else
@@ -95,7 +95,7 @@ j.apiUrl = apiUrl;
 j.updatedAt = new Date().toISOString();
 fs.writeFileSync(path, JSON.stringify(j, null, 2) + '\n');
 NODE
-    ENV_FILE="$DEST/solution-web/.env.local"
+    ENV_FILE="$DEST/solution-user/.env.local"
     if [ -f "$ENV_FILE" ]; then
       if grep -q '^NEXT_PUBLIC_PREVIEW_PORT=' "$ENV_FILE"; then
         sed -i.bak "s/^NEXT_PUBLIC_PREVIEW_PORT=.*/NEXT_PUBLIC_PREVIEW_PORT=${PORT}/" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"

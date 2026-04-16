@@ -59,16 +59,20 @@ module.exports = {
       env: { NODE_ENV: 'production' },
     },
     {
-      name: 'admin-web',
-      ...serveStaticApp('apps/admin-web/out', 3000),
+      name: 'super-admin',
+      ...serveStaticApp('apps/super-admin/out', 3000),
     },
     {
-      name: 'solution-web',
-      ...serveStaticApp('apps/solution-web/out', 3002),
+      name: 'solution-admin',
+      ...serveStaticApp('apps/solution-admin/out', 3001),
     },
     {
-      name: 'agent-web',
-      ...serveStaticApp('apps/agent-web/out', 3003),
+      name: 'solution-user',
+      ...serveStaticApp('apps/solution-user/out', 3002),
+    },
+    {
+      name: 'solution-agent',
+      ...serveStaticApp('apps/solution-agent/out', 3003),
     },
     {
       name: 'cloudflared',

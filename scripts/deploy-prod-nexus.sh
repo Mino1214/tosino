@@ -14,8 +14,8 @@ if [[ ! -f "apps/api/.env" ]]; then
   exit 1
 fi
 
-if [[ ! -f "apps/solution-web/.env.production" ]]; then
-  echo "경고: apps/solution-web/.env.production 없음 — next build 시 기본값 사용. 운영이면 복사해 두세요." >&2
+if [[ ! -f "apps/solution-user/.env.production" ]]; then
+  echo "경고: apps/solution-user/.env.production 없음 — next build 시 기본값 사용. 운영이면 복사해 두세요." >&2
 fi
 
 echo "==> pnpm install"
@@ -36,10 +36,10 @@ if [[ "${RUN_DB_SEED:-0}" == "1" ]]; then
   pnpm db:seed
 fi
 
-echo "==> Build (api + admin + solution + agent)"
+echo "==> Build (api + super-admin + solution-admin + solution-user + solution-agent)"
 pnpm build:apps
 
-for d in apps/admin-web/out apps/solution-web/out apps/agent-web/out; do
+for d in apps/super-admin/out apps/solution-admin/out apps/solution-user/out apps/solution-agent/out; do
   if [[ ! -d "$ROOT/$d" ]]; then
     echo "오류: 빌드 산출물 없음: $d — 웹 빌드가 실패했는지 확인하세요." >&2
     exit 1
@@ -58,7 +58,7 @@ pm2 save || true
 echo ""
 echo "배포 반영 완료."
 echo "  - API:   127.0.0.1:4001 (cwd apps/api → .env 로드)"
-echo "  - 정적: 3000 admin / 3002 solution / 3003 agent"
+echo "  - 정적: 3000 super-admin / 3001 solution-admin / 3002 solution-user / 3003 solution-agent"
 echo "  - nginx: sudo nginx -t && sudo systemctl reload nginx"
 echo "  - 헬스: curl -sk --resolve nexus001.vip:443:127.0.0.1 https://nexus001.vip/health"
 echo ""
