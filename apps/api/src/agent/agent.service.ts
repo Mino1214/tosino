@@ -732,6 +732,27 @@ export class AgentService {
     };
   }
 
+  /** parentUserId부터 올라가며 첫 번째 총판(MASTER_AGENT) user id, 없으면 null */
+  private async findNearestMasterAgentAncestorId(
+    platformId: string,
+    startParentId: string | null,
+  ): Promise<string | null> {
+    let cur: string | null = startParentId;
+    const seen = new Set<string>();
+    while (cur) {
+      if (seen.has(cur)) return null;
+      seen.add(cur);
+      const row = await this.prisma.user.findFirst({
+        where: { id: cur, platformId },
+        select: { role: true, parentUserId: true },
+      });
+      if (!row) return null;
+      if (row.role === UserRole.MASTER_AGENT) return cur;
+      cur = row.parentUserId;
+    }
+    return null;
+  }
+
   private async effectiveShareForAgentUser(
     platformId: string,
     agentUserId: string,
@@ -748,17 +769,14 @@ export class AgentService {
     if (!u.parentUserId) {
       return Number(u.agentPlatformSharePct ?? 0);
     }
-    const parent = await this.prisma.user.findFirst({
-      where: { id: u.parentUserId, platformId },
-      select: { role: true },
-    });
-    if (parent?.role !== UserRole.MASTER_AGENT) {
-      return Number(u.agentPlatformSharePct ?? 0);
-    }
-    const pe = await this.effectiveShareForAgentUser(
+    const uplineMaId = await this.findNearestMasterAgentAncestorId(
       platformId,
       u.parentUserId,
     );
+    if (uplineMaId == null) {
+      return Number(u.agentPlatformSharePct ?? 0);
+    }
+    const pe = await this.effectiveShareForAgentUser(platformId, uplineMaId);
     return (pe * Number(u.agentSplitFromParentPct ?? 0)) / 100;
   }
 

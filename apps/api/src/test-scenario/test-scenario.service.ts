@@ -854,9 +854,14 @@ export class TestScenarioService {
         };
       }
 
-      const roleById = new Map<string, UserRole>(
-        agents.map((a) => [a.id, UserRole.MASTER_AGENT] as const),
+      const testChain = await this.prisma.user.findMany({
+        where: { platformId, loginId: { startsWith: 'test_' } },
+        select: { id: true, role: true, parentUserId: true },
+      });
+      const parentByUserId = new Map(
+        testChain.map((r) => [r.id, r.parentUserId ?? null]),
       );
+      const roleById = new Map(testChain.map((r) => [r.id, r.role]));
       const masters = agents.map((a) => ({
         id: a.id,
         parentUserId: a.parentUserId,
@@ -865,7 +870,11 @@ export class TestScenarioService {
         agentSplitFromParentPct:
           a.agentSplitFromParentPct != null ? Number(a.agentSplitFromParentPct) : null,
       }));
-      const effectiveMap = computeEffectiveAgentShares(masters, roleById);
+      const effectiveMap = computeEffectiveAgentShares(
+        masters,
+        roleById,
+        (uid) => parentByUserId.get(uid) ?? null,
+      );
 
       const getDownlineUserIds = async (agentId: string): Promise<string[]> => {
         const userIds: string[] = [];
@@ -1158,6 +1167,59 @@ export class TestScenarioService {
       this.prisma.pointLedgerEntry.findMany({ where: { userId: { in: ids } }, orderBy: { createdAt: 'asc' } }),
     ]);
 
+    const parentByUserId = new Map<string, string | null>(
+      allTestUsers.map((x) => [x.id, x.parentUserId ?? null]),
+    );
+    const roleById = new Map(allTestUsers.map((x) => [x.id, x.role]));
+    for (;;) {
+      const missing = new Set<string>();
+      for (const pid of parentByUserId.values()) {
+        if (pid != null && !parentByUserId.has(pid)) missing.add(pid);
+      }
+      if (missing.size === 0) break;
+      const chainRows = await this.prisma.user.findMany({
+        where: { platformId, id: { in: [...missing] } },
+        select: { id: true, parentUserId: true, role: true },
+      });
+      const found = new Set(chainRows.map((r) => r.id));
+      for (const id of missing) {
+        if (!found.has(id)) parentByUserId.set(id, null);
+      }
+      for (const r of chainRows) {
+        parentByUserId.set(r.id, r.parentUserId ?? null);
+        roleById.set(r.id, r.role);
+      }
+    }
+
+    const testMasterNodes = allTestUsers
+      .filter((x) => x.role === UserRole.MASTER_AGENT)
+      .map((x) => ({
+        id: x.id,
+        parentUserId: x.parentUserId ?? null,
+        agentPlatformSharePct:
+          x.agentPlatformSharePct != null ? Number(x.agentPlatformSharePct) : null,
+        agentSplitFromParentPct:
+          x.agentSplitFromParentPct != null ? Number(x.agentSplitFromParentPct) : null,
+      }));
+    const effectiveAgentShareMap = computeEffectiveAgentShares(
+      testMasterNodes,
+      roleById,
+      (uid) => parentByUserId.get(uid) ?? null,
+    );
+
+    const metaNote = (meta: Record<string, unknown> | null | undefined): string | null => {
+      const raw = meta?.note;
+      if (raw == null) return null;
+      if (typeof raw === 'string') return raw;
+      try {
+        return JSON.stringify(raw);
+      } catch {
+        return String(raw);
+      }
+    };
+
+    const iso = (d: Date) => d.toISOString();
+
     const buildUserDetail = (u: typeof allTestUsers[0]) => {
       const userLedger = ledgerEntries.filter((l) => l.userId === u.id);
       const userRequests = walletRequests.filter((r) => r.userId === u.id);
@@ -1186,8 +1248,8 @@ export class TestScenarioService {
         parentLoginId: u.parentUserId ? (parentMap.get(u.parentUserId) ?? null) : null,
         wallet: u.wallet
           ? {
-              balance: Number(u.wallet.balance),
-              pointBalance: Number(u.wallet.pointBalance),
+              balance: Number(u.wallet.balance ?? 0),
+              pointBalance: Number(u.wallet.pointBalance ?? 0),
               compBalance: 0,
             }
           : null,
@@ -1200,6 +1262,17 @@ export class TestScenarioService {
           rollingPct: totalRollingReq > 0 ? Math.round((totalRollingAccum / totalRollingReq) * 100) : 0,
           totalPoints,
         },
+        agentCommission:
+          u.role === UserRole.MASTER_AGENT
+            ? {
+                platformSharePct:
+                  u.agentPlatformSharePct != null ? Number(u.agentPlatformSharePct) : null,
+                splitFromParentPct:
+                  u.agentSplitFromParentPct != null ? Number(u.agentSplitFromParentPct) : null,
+                effectiveSharePct:
+                  Math.round((effectiveAgentShareMap.get(u.id) ?? 0) * 1e4) / 1e4,
+              }
+            : null,
         ledger: (() => {
           // BET+WIN 쌍으로 묶어서 "당첨/낙첨" 표기용 betting rows 생성
           const bets = userLedger.filter((l) => l.type === LedgerEntryType.BET);
@@ -1207,8 +1280,8 @@ export class TestScenarioService {
           const winMap = new Map(wins.map((w) => [w.reference ?? w.id, w]));
           const betRows = bets.map((b) => {
             const win = b.reference ? winMap.get(b.reference) : undefined;
-            const betAmt = Math.abs(Number(b.amount));
-            const winAmt = win ? Number(win.amount) : 0;
+            const betAmt = Math.abs(Number(b.amount ?? 0));
+            const winAmt = win ? Number(win.amount ?? 0) : 0;
             const isWin = winAmt > 0;
             return {
               id: b.id,
@@ -1217,9 +1290,11 @@ export class TestScenarioService {
               betAmount: betAmt,
               winAmount: winAmt,
               netResult: winAmt - betAmt,
-              balanceAfter: win ? Number(win.balanceAfter) : Number(b.balanceAfter),
-              note: (b.metaJson as Record<string, unknown> | null)?.note ?? null,
-              createdAt: b.createdAt,
+              balanceAfter: Number(
+                win ? (win.balanceAfter ?? 0) : (b.balanceAfter ?? 0),
+              ),
+              note: metaNote(b.metaJson as Record<string, unknown> | null),
+              createdAt: iso(b.createdAt),
             };
           });
           // CREDIT/DEBIT 등 나머지 항목도 포함
@@ -1231,10 +1306,10 @@ export class TestScenarioService {
             result: null,
             betAmount: 0,
             winAmount: 0,
-            netResult: Number(l.amount),
-            balanceAfter: Number(l.balanceAfter),
-            note: (l.metaJson as Record<string, unknown> | null)?.note ?? null,
-            createdAt: l.createdAt,
+            netResult: Number(l.amount ?? 0),
+            balanceAfter: Number(l.balanceAfter ?? 0),
+            note: metaNote(l.metaJson as Record<string, unknown> | null),
+            createdAt: iso(l.createdAt),
           }));
           return [...betRows, ...others].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         })(),
@@ -1242,34 +1317,34 @@ export class TestScenarioService {
           id: r.id,
           type: r.type,
           status: r.status,
-          amount: Number(r.amount),
+          amount: Number(r.amount ?? 0),
           currency: r.currency ?? 'KRW',
           depositorName: r.depositorName ?? null,
           note: r.note ?? null,
-          createdAt: r.createdAt,
-          processedAt: r.resolvedAt ?? null,
+          createdAt: iso(r.createdAt),
+          processedAt: r.resolvedAt ? iso(r.resolvedAt) : null,
         })),
         usdtTxs: userUsdtTxs.map((t) => ({
           id: t.id,
           txHash: t.txHash,
-          usdtAmount: Number(t.usdtAmount),
-          krwAmount: t.krwAmount ? Number(t.krwAmount) : null,
+          usdtAmount: Number(t.usdtAmount ?? 0),
+          krwAmount: t.krwAmount != null ? Number(t.krwAmount) : null,
           status: t.status,
           note: t.resolverNote ?? null,
-          createdAt: t.createdAt,
+          createdAt: iso(t.createdAt),
         })),
         rolling: userRolling.map((r) => ({
           id: r.id,
-          required: Number(r.requiredTurnover),
-          accumulated: Number(r.appliedTurnover),
+          required: Number(r.requiredTurnover ?? 0),
+          accumulated: Number(r.appliedTurnover ?? 0),
           fulfilled: r.satisfiedAt !== null,
-          createdAt: r.createdAt,
+          createdAt: iso(r.createdAt),
         })),
         points: userPoints.map((p) => ({
           id: p.id,
-          delta: Number(p.amount),
+          delta: Number(p.amount ?? 0),
           reason: p.reference ?? null,
-          createdAt: p.createdAt,
+          createdAt: iso(p.createdAt),
         })),
       };
     };

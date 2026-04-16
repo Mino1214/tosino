@@ -112,6 +112,9 @@ export class UsersService {
       orderBy: { createdAt: 'desc' },
     });
     const roleById = new Map(rows.map((r) => [r.id, r.role]));
+    const parentByUserId = new Map(
+      rows.map((r) => [r.id, r.parentUserId ?? null]),
+    );
     const masterNodes: MasterCommissionNode[] = rows
       .filter((r) => r.role === UserRole.MASTER_AGENT)
       .map((r) => ({
@@ -124,7 +127,11 @@ export class UsersService {
           ? Number(r.agentSplitFromParentPct)
           : null,
       }));
-    const effectiveMap = computeEffectiveAgentShares(masterNodes, roleById);
+    const effectiveMap = computeEffectiveAgentShares(
+      masterNodes,
+      roleById,
+      (uid) => parentByUserId.get(uid) ?? null,
+    );
     const isMasterAgentViewer = actor.role === UserRole.MASTER_AGENT;
     const isPlatformStaff =
       actor.role === UserRole.SUPER_ADMIN ||

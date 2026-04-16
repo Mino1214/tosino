@@ -58,6 +58,12 @@ interface UserDetail {
   signupMode: string;
   usdtWallet: string | null;
   parentLoginId: string | null;
+  /** 총판(MASTER_AGENT)만 */
+  agentCommission: {
+    platformSharePct: number | null;
+    splitFromParentPct: number | null;
+    effectiveSharePct: number;
+  } | null;
   wallet: { balance: number; pointBalance: number; compBalance: number } | null;
   summary: {
     totalBet: number;
@@ -107,14 +113,21 @@ const STEPS = [
 ];
 
 // ─── 유틸 ───────────────────────────────────────────────────
-const krw = (n: number) =>
-  n.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+const krw = (n: number | string | null | undefined) => {
+  const v = typeof n === "string" ? Number(n) : Number(n ?? 0);
+  if (!Number.isFinite(v)) return "0";
+  return v.toLocaleString("ko-KR", { maximumFractionDigits: 0 });
+};
 
-const dt = (s: string) =>
-  new Date(s).toLocaleString("ko-KR", {
+const dt = (s: string | null | undefined) => {
+  if (s == null || s === "") return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("ko-KR", {
     month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
+};
 
 type LogEntry = { ts: string; level: "info" | "error" | "success"; msg: string };
 
@@ -180,7 +193,18 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
                 <span>콤프 <b className="text-zinc-300">{krw(u.wallet.compBalance)}</b></span>
               </>
             )}
-            {!isAgent && (
+            {isAgent && u.agentCommission && (
+              <span className="text-violet-400">
+                실효요율 <b>{u.agentCommission.effectiveSharePct}%</b>
+                {u.agentCommission.platformSharePct != null && (
+                  <> · 플랫폼부여 <b>{u.agentCommission.platformSharePct}%</b></>
+                )}
+                {u.agentCommission.splitFromParentPct != null && (
+                  <> · 상위대비 <b>{u.agentCommission.splitFromParentPct}%</b></>
+                )}
+              </span>
+            )}
+            {!isAgent && u.summary && (
               <>
                 <span>베팅 <b className="text-red-300">{krw(u.summary.totalBet)}원</b></span>
                 <span>수익 <b className={u.summary.netPnl >= 0 ? "text-green-300" : "text-red-300"}>{u.summary.netPnl >= 0 ? "+" : ""}{krw(u.summary.netPnl)}원</b></span>
@@ -198,7 +222,7 @@ function UserCard({ u, defaultOpen = false }: { u: UserDetail; defaultOpen?: boo
       {open && (
         <div className="border-t border-zinc-800">
           {/* 요약 그리드 */}
-          {!isAgent && (
+          {!isAgent && u.summary && (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-zinc-800">
               {[
                 { label: "총 베팅", val: `${krw(u.summary.totalBet)}원`, color: "text-red-300" },

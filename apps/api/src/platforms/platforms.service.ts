@@ -2442,26 +2442,6 @@ export class PlatformsService {
       },
       orderBy: { createdAt: 'asc' },
     });
-    const roleById = new Map<string, UserRole>();
-    for (const agent of agents) {
-      roleById.set(agent.id, UserRole.MASTER_AGENT);
-    }
-    const effectiveMap = computeEffectiveAgentShares(
-      agents.map((agent) => ({
-        id: agent.id,
-        parentUserId: agent.parentUserId ?? null,
-        agentPlatformSharePct:
-          agent.agentPlatformSharePct != null
-            ? Number(agent.agentPlatformSharePct)
-            : null,
-        agentSplitFromParentPct:
-          agent.agentSplitFromParentPct != null
-            ? Number(agent.agentSplitFromParentPct)
-            : null,
-      })),
-      roleById,
-    );
-
     /** 매출 트리: DB parent가 플랫폼 어드민 등(총판 목록 밖)이면 자식이 어디에도 안 붙는 문제를 막기 위해, 상위 체인을 따라 같은 플랫폼의 총판(MASTER_AGENT) 중 가장 가까운 조상을 부모로 쓴다. */
     const agentIdSet = new Set(agents.map((x) => x.id));
     const parentByUserId = new Map<string, string | null>();
@@ -2497,6 +2477,44 @@ export class PlatformsService {
         parentByUserId.set(cr.id, cr.parentUserId ?? null);
       }
     }
+
+    const graphUserIds = new Set<string>();
+    for (const ag of agents) {
+      graphUserIds.add(ag.id);
+      let cur: string | null = ag.parentUserId;
+      const seen = new Set<string>();
+      while (cur) {
+        if (seen.has(cur)) break;
+        seen.add(cur);
+        graphUserIds.add(cur);
+        cur = parentByUserId.get(cur) ?? null;
+      }
+    }
+    const roleRows = await this.prisma.user.findMany({
+      where: { platformId, id: { in: [...graphUserIds] } },
+      select: { id: true, role: true },
+    });
+    const roleById = new Map<string, UserRole>(
+      roleRows.map((r) => [r.id, r.role]),
+    );
+    const masterNodes = agents.map((agent) => ({
+      id: agent.id,
+      parentUserId: agent.parentUserId ?? null,
+      agentPlatformSharePct:
+        agent.agentPlatformSharePct != null
+          ? Number(agent.agentPlatformSharePct)
+          : null,
+      agentSplitFromParentPct:
+        agent.agentSplitFromParentPct != null
+          ? Number(agent.agentSplitFromParentPct)
+          : null,
+    }));
+    const effectiveMap = computeEffectiveAgentShares(
+      masterNodes,
+      roleById,
+      (uid) => parentByUserId.get(uid) ?? null,
+    );
+
     const treeParentAgentIdFor = (a: (typeof agents)[0]): string | null => {
       let cur = a.parentUserId;
       const seen = new Set<string>();
