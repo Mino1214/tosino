@@ -18,6 +18,16 @@ export function JsonLd() {
         availableLanguage: ["Korean", "English"],
       },
     ],
+    knowsAbout: [
+      "토지노개발",
+      "카지노개발",
+      "토토사이트개발",
+      "스포츠북 개발",
+      "아너키",
+      "아너링크",
+      "B2B 엔터테인먼트 플랫폼",
+      "화이트라벨 솔루션",
+    ],
   };
 
   const website = {
@@ -39,8 +49,12 @@ export function JsonLd() {
     areaServed: "Worldwide",
     availableLanguage: ["Korean", "English"],
     serviceType: [
+      "토지노개발",
+      "카지노개발",
+      "토토사이트개발",
       "스포츠 엔터테인먼트 플랫폼 개발",
       "카지노 플랫폼 소프트웨어",
+      "아너키·아너링크 연동",
       "총판·제휴 시스템",
       "결제 연동",
       "관리자 대시보드 및 CRM",
