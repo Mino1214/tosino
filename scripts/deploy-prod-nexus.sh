@@ -58,7 +58,7 @@ pm2 save || true
 echo ""
 echo "배포 반영 완료."
 echo "  - API:   127.0.0.1:4001 (cwd apps/api → .env 로드)"
-echo "  - 정적: 3000 super-admin / 3001 solution-admin / 3002 solution-user / 3003 solution-agent"
+echo "  - 정적: 3000 super-admin / 3001 solution-admin / 3002 solution-user / 3003 solution-agent / 3010 solution-main"
 echo "  - nginx: sudo nginx -t && sudo systemctl reload nginx"
 echo "  - 헬스: curl -sk --resolve nexus001.vip:443:127.0.0.1 https://nexus001.vip/health"
 echo ""

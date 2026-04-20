@@ -77,6 +77,10 @@ module.exports = {
       ...serveStaticApp('apps/solution-agent/out', 3003),
     },
     {
+      name: 'solution-main',
+      ...serveStaticApp('apps/solution-main/out', 3010),
+    },
+    {
       name: 'cloudflared',
       script: CLOUDFLARED,
       args: ['tunnel', '--config', CF_CONFIG, 'run'],
