@@ -1,23 +1,23 @@
 const items = [
   {
-    title: "Sports entertainment startups",
-    desc: "MVP to market-ready stacks with vendor-agnostic integration patterns.",
+    title: "스포츠 엔터테인먼트 스타트업",
+    desc: "MVP부터 시장 투입까지, 벤더에 종속되지 않는 연동 패턴으로 스택을 구성합니다.",
   },
   {
-    title: "Casino & aggregator operators",
-    desc: "Wallet core, session integrity, and reconciliation tooling for complex catalogs.",
+    title: "카지노 · 어그리게이터 운영사",
+    desc: "지갑 코어, 세션 무결성, 복잡한 카탈로그에 맞는 대사·정산 도구.",
   },
   {
-    title: "White label businesses",
-    desc: "Multi-tenant boundaries, branding pipelines, and per-tenant configuration governance.",
+    title: "화이트라벨 사업",
+    desc: "멀티 테넌트 경계, 브랜딩 파이프라인, 테넌트별 설정 거버넌스.",
   },
   {
-    title: "Affiliate & partner networks",
-    desc: "Tracking, payouts, fraud signals, and partner-grade reporting APIs.",
+    title: "총판 · 파트너 네트워크",
+    desc: "추적, 지급, 사기 신호, 파트너용 리포팅 API.",
   },
   {
-    title: "Gaming & entertainment investors",
-    desc: "Technical due diligence, architecture reviews, and post-acquisition integration.",
+    title: "게이밍 · 엔터테인먼트 투자자",
+    desc: "기술 실사, 아키텍처 리뷰, 인수 후 통합 지원.",
   },
 ];
 
@@ -26,11 +26,11 @@ export function Industries() {
     <section id="industries" className="scroll-mt-24 py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <h2 className="font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Industries we support
+          함께하는 산업
         </h2>
         <p className="mt-4 max-w-2xl text-slate-400">
-          From early-stage teams to established groups expanding into new verticals — we align
-          engineering capacity with your regulatory and commercial context.
+          초기 팀부터 신규 버티컬 확장 중인 그룹까지 — 규제·상업적 맥락에 맞춰 엔지니어링 역량을
+          맞춥니다.
         </p>
         <div className="mt-14 columns-1 gap-5 space-y-5 md:columns-2">
           {items.map((item) => (

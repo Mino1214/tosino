@@ -6,15 +6,16 @@ export function JsonLd() {
     "@type": "Organization",
     name: SITE_NAME,
     url: SITE_URL,
+    image: `${SITE_URL}/logo.png`,
     description:
-      "B2B software development and infrastructure for sports entertainment platforms, casino systems, affiliate programs, payments, CRM, and operations tooling. We do not operate consumer gaming sites.",
+      "스포츠 엔터테인먼트·카지노·총판·제휴·결제·CRM·운영 도구를 위한 B2B 소프트웨어 개발 및 인프라. 소비자 대상 게임 사이트는 직접 운영하지 않습니다.",
     sameAs: [] as string[],
     contactPoint: [
       {
         "@type": "ContactPoint",
         contactType: "sales",
         email: contactEmail,
-        availableLanguage: ["English", "Korean"],
+        availableLanguage: ["Korean", "English"],
       },
     ],
   };
@@ -24,8 +25,9 @@ export function JsonLd() {
     "@type": "WebSite",
     name: SITE_NAME,
     url: SITE_URL,
+    inLanguage: "ko-KR",
     description:
-      "Enterprise B2B platform engineering for gaming and entertainment operators — sportsbook, casino, affiliate, payments, and automation.",
+      "엔터프라이즈 B2B 플랫폼 엔지니어링 — 스포츠북, 카지노, 제휴, 결제, 자동화.",
     publisher: { "@type": "Organization", name: SITE_NAME },
   };
 
@@ -35,13 +37,14 @@ export function JsonLd() {
     name: SITE_NAME,
     url: SITE_URL,
     areaServed: "Worldwide",
+    availableLanguage: ["Korean", "English"],
     serviceType: [
-      "Sports entertainment platform development",
-      "Casino platform software",
-      "Affiliate and referral systems",
-      "Payment integration",
-      "Admin dashboards and CRM",
-      "Infrastructure and DevOps",
+      "스포츠 엔터테인먼트 플랫폼 개발",
+      "카지노 플랫폼 소프트웨어",
+      "총판·제휴 시스템",
+      "결제 연동",
+      "관리자 대시보드 및 CRM",
+      "인프라 및 DevOps",
     ],
   };
 

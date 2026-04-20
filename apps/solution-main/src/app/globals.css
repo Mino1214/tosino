@@ -1,12 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --bg-deep: #030712;
-  --bg-elevated: #0c1222;
-  --gold: #d4af37;
-  --gold-soft: rgba(212, 175, 55, 0.15);
-  --blue-glow: #3b82f6;
-  --cyan-accent: #22d3ee;
+  --bg-deep: #050505;
+  --bg-elevated: #0a0a12;
+  --brand-cyan: #22d3ee;
+  --brand-violet: #7c3aed;
+  --brand-line: #a78bfa;
   --border-subtle: rgba(255, 255, 255, 0.08);
   --text-muted: #94a3b8;
 }
@@ -29,8 +28,9 @@ html {
 }
 
 @theme inline {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-noto), ui-sans-serif, system-ui, sans-serif;
+  /* 제목: Sora + 한글 글리프는 Noto 로 폴백 */
+  --font-display: var(--font-sora), var(--font-noto), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
@@ -40,15 +40,15 @@ body {
 }
 
 ::selection {
-  background: rgba(212, 175, 55, 0.35);
+  background: rgba(124, 58, 237, 0.45);
   color: #fff;
 }
 
-/* Ambient grid */
+/* Ambient grid — 로고 톤: 블랙 베이스 */
 .hero-grid {
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
   background-size: 64px 64px;
   mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 20%, transparent 75%);
 }
@@ -66,11 +66,11 @@ body {
 @keyframes pulse-glow {
   0%,
   100% {
-    opacity: 0.4;
+    opacity: 0.35;
     transform: scale(1);
   }
   50% {
-    opacity: 0.75;
+    opacity: 0.7;
     transform: scale(1.05);
   }
 }
@@ -122,21 +122,35 @@ body {
   background: linear-gradient(
     135deg,
     rgba(255, 255, 255, 0.06) 0%,
-    rgba(255, 255, 255, 0.02) 100%
+    rgba(124, 58, 237, 0.04) 50%,
+    rgba(34, 211, 238, 0.03) 100%
   );
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-subtle);
 }
 
-.gold-gradient-text {
-  background: linear-gradient(135deg, #f5e6b8 0%, #d4af37 45%, #b8860b 100%);
+/* 로고 실드: 시안 → 바이올렛 */
+.brand-gradient-text {
+  background: linear-gradient(135deg, #67e8f9 0%, #22d3ee 35%, #a78bfa 70%, #7c3aed 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-.blue-ring {
+.brand-ring {
   box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.25),
-    0 0 60px -10px rgba(59, 130, 246, 0.35);
+    0 0 0 1px rgba(34, 211, 238, 0.2),
+    0 0 0 1px rgba(124, 58, 237, 0.15) inset,
+    0 0 72px -12px rgba(124, 58, 237, 0.35),
+    0 0 48px -16px rgba(34, 211, 238, 0.2);
+}
+
+.brand-cta {
+  background: linear-gradient(135deg, #22d3ee 0%, #6366f1 48%, #7c3aed 100%);
+  color: #050505;
+  box-shadow: 0 12px 40px -8px rgba(124, 58, 237, 0.45), 0 8px 24px -8px rgba(34, 211, 238, 0.25);
+}
+
+.brand-cta:hover {
+  filter: brightness(1.08);
 }
