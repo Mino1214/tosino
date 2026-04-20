@@ -1,3 +1,37 @@
+const highlights = [
+  {
+    stat: "즉시",
+    label: "원터치 충전 → 즉시 작업 가능",
+    hint: "가동 지연 최소화",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    stat: "≤7일",
+    label: "7일 이내 런칭 보장",
+    hint: "표준 스코프 기준",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+        <path d="M8 7V3m8 4V3M5 11h14M5 21h14a2 2 0 002-2v-6H3v6a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+  {
+    stat: "24/7",
+    label: "24/7 운영 지원",
+    hint: "장애·패치 대응",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+        <circle cx="12" cy="12" r="9" strokeLinecap="round" />
+        <path d="M12 7v5l3 2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+];
+
 const widgets = [
   { title: "라이브 유저", meta: "동시 접속 · 지역 히트맵", accent: "from-cyan-500/30 to-violet-600/10" },
   { title: "입금 / 출금", meta: "자금 큐 · 한도", accent: "from-emerald-500/25 to-teal-500/5" },
@@ -25,6 +59,31 @@ export function PlatformMockup() {
             B2B 소프트웨어 범위를 보여주는 일러스트입니다. 최종 모듈은 제품·라이선스·연동 범위에
             따라 달라집니다.
           </p>
+        </div>
+
+        {/* Linear / Vercel 스타일 하이라이트 바 */}
+        <div className="mt-10 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0a0a12]/90 shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]">
+          <div className="grid divide-y divide-white/[0.06] md:grid-cols-3 md:divide-x md:divide-y-0">
+            {highlights.map((h) => (
+              <div
+                key={h.label}
+                className="flex gap-4 px-5 py-5 sm:px-6 sm:py-6 md:flex-col md:gap-3 lg:flex-row lg:items-start"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-cyan-300/90">
+                  {h.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded border border-cyan-500/25 bg-cyan-500/10 px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wide text-cyan-200">
+                      {h.stat}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-slate-600">{h.hint}</span>
+                  </div>
+                  <p className="mt-2 text-sm font-medium leading-snug text-slate-200">{h.label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -63,11 +63,16 @@ export function Hero() {
             더 빠르게, 더 견고하게 — <span className="brand-gradient-text">엔터테인먼트 플랫폼</span>을
             만듭니다
           </h1>
-          <p className="animate-fade-up delay-200 mt-6 max-w-xl text-lg leading-relaxed text-slate-400">
-            스포츠 엔터테인먼트, 카지노 시스템, 총판·제휴, 결제, CRM, 운영 자동화까지 B2B 전 주기를
-            설계·구축·운영합니다. 귀사는 시장 성장과 컴플라이언스에 집중하고, 스택은 저희가
-            책임집니다.
-          </p>
+          <div className="animate-fade-up delay-200 mt-6 max-w-xl space-y-2 text-lg leading-relaxed">
+            <p className="font-medium text-slate-100">
+              한 스택으로 시장까지: 스포츠·카지노·총판·결제·CRM을 설계·구축·운영해 반복 비용과
+              리스크를 줄입니다.
+            </p>
+            <p className="text-base text-slate-400">
+              지금 상담을 남기면 귀사 스펙에 맞는 로드맵·일정·연동 범위를 바로 제안드리고, 착수
+              가능한 형태로 정리해 드립니다.
+            </p>
+          </div>
           <div className="animate-fade-up delay-300 mt-10 flex flex-wrap gap-4">
             <a
               href="#contact"

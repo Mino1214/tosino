@@ -9,7 +9,6 @@ const nav = [
   { href: "#services", label: "솔루션" },
   { href: "#platform", label: "플랫폼" },
   { href: "#why-us", label: "선택 이유" },
-  { href: "#industries", label: "산업" },
   { href: "#process", label: "프로세스" },
   { href: "#testimonials", label: "고객사" },
 ];

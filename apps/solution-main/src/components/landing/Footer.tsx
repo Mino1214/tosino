@@ -16,7 +16,6 @@ const footerCols = [
     links: [
       { href: "#services", label: "서비스 전체" },
       { href: "#platform", label: "플랫폼" },
-      { href: "#industries", label: "산업" },
     ],
   },
   {
