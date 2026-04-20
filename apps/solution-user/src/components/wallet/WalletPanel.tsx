@@ -121,7 +121,18 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
   const [tab, setTab] = useState<"deposit" | "withdraw">(() => getInitialTab(initialOpts));
   const [profile, setProfile] = useState<Profile | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
+  const [totalBalance, setTotalBalance] = useState<string | null>(null);
+  const [withdrawableBalance, setWithdrawableBalance] = useState<string | null>(null);
+  const [pointFree, setPointFree] = useState<string | null>(null);
+  const [compFree, setCompFree] = useState<string | null>(null);
   const [pointBalance, setPointBalance] = useState<string | null>(null);
+  const [showBuckets, setShowBuckets] = useState(false);
+  const [pointRedeemLogs, setPointRedeemLogs] = useState<
+    { id: string; redeemAmount: string; pointsRedeemed: string; createdAt: string }[] | null
+  >(null);
+  const [compLogs, setCompLogs] = useState<
+    { id: string; settlementAmount: string; createdAt: string }[] | null
+  >(null);
   const [activeDeposit, setActiveDeposit] = useState<ActiveDeposit>(null);
   const [history, setHistory] = useState<WReq[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -146,15 +157,29 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
   const hasPayoutAccount = Boolean(profile?.bankCode && profile?.bankAccountNumber && profile?.bankAccountHolder);
   const hasUsdtWallet = Boolean(profile?.usdtWalletAddress?.trim());
 
-  const usdtRate = useMemo(() => {
+  const envUsdtRate = useMemo(() => {
     const n = Number(process.env.NEXT_PUBLIC_USDT_KRW_RATE);
     return Number.isFinite(n) && n > 0 ? n : 1488;
   }, []);
 
+  const [liveUsdtKrwRate, setLiveUsdtKrwRate] = useState<number | null>(null);
+
+  const effectiveUsdtKrwRate = liveUsdtKrwRate ?? envUsdtRate;
+
   const withdrawableUsdt = useMemo(() => {
-    const krw = Number(balance ?? 0);
-    return Number.isFinite(krw) && krw > 0 ? krw / usdtRate : 0;
-  }, [balance, usdtRate]);
+    const krw = Number(withdrawableBalance ?? balance ?? 0);
+    return Number.isFinite(krw) && krw > 0 ? krw / effectiveUsdtKrwRate : 0;
+  }, [withdrawableBalance, balance, effectiveUsdtKrwRate]);
+
+  const fetchLiveUsdtRate = useCallback(async () => {
+    try {
+      const r = await apiFetch<{ krwPerUsdt: string }>("/me/usdt-krw-rate");
+      const n = Number(r.krwPerUsdt);
+      if (Number.isFinite(n) && n > 0) setLiveUsdtKrwRate(n);
+    } catch {
+      /* 폴백: envUsdtRate */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!getAccessToken()) return;
@@ -173,10 +198,21 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
       if (p.role !== "USER") { setErr("일반 회원 전용입니다."); return; }
 
       const [wallet, active] = await Promise.all([
-        apiFetch<{ balance: string; pointBalance: string }>("/me/wallet"),
+        apiFetch<{
+          balance: string;
+          pointBalance: string;
+          totalBalance?: string;
+          withdrawableBalance?: string;
+          pointFree?: string;
+          compFree?: string;
+        }>("/me/wallet"),
         apiFetch<ActiveDeposit>("/me/wallet-requests/active-deposit").catch(() => null),
       ]);
-      setBalance(wallet.balance);
+      setBalance(wallet.totalBalance ?? wallet.balance);
+      setTotalBalance(wallet.totalBalance ?? wallet.balance);
+      setWithdrawableBalance(wallet.withdrawableBalance ?? wallet.balance);
+      setPointFree(wallet.pointFree ?? null);
+      setCompFree(wallet.compFree ?? null);
       setPointBalance(wallet.pointBalance);
       setActiveDeposit(active ?? null);
     } catch (e) {
@@ -194,9 +230,13 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
   useEffect(() => {
     if (isAnonymous) {
       setDepositAmount((p) => (p === "10000" ? "100" : p));
-      setWithdrawAmount((p) => (p === "10000" ? "100" : p));
+      setWithdrawAmount((p) => (p === "10000" || p === "100" ? "50000" : p));
     }
   }, [isAnonymous]);
+
+  useEffect(() => {
+    if (isAnonymous && tab === "withdraw") void fetchLiveUsdtRate();
+  }, [isAnonymous, tab, fetchLiveUsdtRate]);
 
   function setPayoutField<K extends keyof PayoutAccountForm>(k: K, v: PayoutAccountForm[K]) {
     setPayoutForm((p) => ({ ...p, [k]: v }));
@@ -221,6 +261,33 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
       return !v;
     });
   }, [history, loadHistory]);
+
+  const loadPointAndCompLogs = useCallback(async () => {
+    if (!getAccessToken()) return;
+    try {
+      const [pr, cl] = await Promise.all([
+        apiFetch<{ id: string; redeemAmount: string; pointsRedeemed: string; createdAt: string }[]>(
+          "/me/wallet/point-redeem-logs",
+        ),
+        apiFetch<{ id: string; settlementAmount: string; createdAt: string }[]>(
+          "/me/wallet/comp-settlement-logs",
+        ),
+      ]);
+      setPointRedeemLogs(pr);
+      setCompLogs(cl);
+    } catch {
+      setPointRedeemLogs([]);
+      setCompLogs([]);
+    }
+  }, []);
+
+  const toggleBuckets = useCallback(() => {
+    setShowBuckets((v) => {
+      const next = !v;
+      if (next && pointRedeemLogs === null) void loadPointAndCompLogs();
+      return next;
+    });
+  }, [pointRedeemLogs, loadPointAndCompLogs]);
 
   async function submitDeposit(e: React.FormEvent) {
     e.preventDefault();
@@ -276,18 +343,36 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
 
   async function submitWithdrawal(e: React.FormEvent) {
     e.preventDefault();
-    const amount = Number(withdrawAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const raw = Number(withdrawAmount.replace(/,/g, ""));
+    if (!Number.isFinite(raw) || raw <= 0) {
       setErr("출금 금액을 확인해주세요."); return;
     }
     setSubmitting("WITHDRAWAL"); setErr(null); setSuccess(null);
     try {
-      await apiFetch("/me/wallet-requests", {
-        method: "POST",
-        body: JSON.stringify({ type: "WITHDRAWAL", amount, currency: isAnonymous ? "USDT" : "KRW" }),
-      });
-      setWithdrawAmount("10000");
-      setSuccess(isAnonymous ? "테더 출금 신청이 접수되었습니다." : "원화 출금 신청이 접수되었습니다.");
+      if (isAnonymous) {
+        const krw = raw;
+        const rate = effectiveUsdtKrwRate;
+        const usdtAmt = krw / rate;
+        if (!Number.isFinite(usdtAmt) || usdtAmt <= 0) {
+          setErr("환율을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.");
+          setSubmitting(null);
+          return;
+        }
+        const amount = Math.floor(usdtAmt * 1e6) / 1e6;
+        await apiFetch("/me/wallet-requests", {
+          method: "POST",
+          body: JSON.stringify({ type: "WITHDRAWAL", amount, currency: "USDT" }),
+        });
+        setWithdrawAmount("50000");
+        setSuccess("원화 기준으로 환산한 테더 출금 신청이 접수되었습니다.");
+      } else {
+        await apiFetch("/me/wallet-requests", {
+          method: "POST",
+          body: JSON.stringify({ type: "WITHDRAWAL", amount: raw, currency: "KRW" }),
+        });
+        setWithdrawAmount("10000");
+        setSuccess("원화 출금 신청이 접수되었습니다.");
+      }
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "출금 신청 실패");
@@ -347,19 +432,75 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
         <>
           {/* ── 잔액 + 탭 ── */}
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-end gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">보유 잔액</p>
-                <p className="font-mono text-xl font-bold text-main-gold leading-tight">
-                  {formatKrwWithSymbol(balance)}
-                </p>
-              </div>
-              {pointBalance && Number(pointBalance) > 0 && (
-                <div className="pb-0.5">
-                  <p className="text-[9px] text-zinc-600">포인트</p>
-                  <p className="font-mono text-sm font-semibold text-emerald-400 leading-tight">
-                    {Number(pointBalance).toLocaleString("ko-KR")} P
+            <div className="flex flex-col gap-1">
+              <div className="flex items-end gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">총 잔액</p>
+                  <p className="font-mono text-xl font-bold text-main-gold leading-tight">
+                    {formatKrwWithSymbol(totalBalance ?? balance)}
                   </p>
+                </div>
+                {pointBalance && Number(pointBalance) > 0 && (
+                  <div className="pb-0.5">
+                    <p className="text-[9px] text-zinc-600">포인트</p>
+                    <p className="font-mono text-sm font-semibold text-emerald-400 leading-tight">
+                      {Number(pointBalance).toLocaleString("ko-KR")} P
+                    </p>
+                  </div>
+                )}
+              </div>
+              {withdrawableBalance != null && (
+                <p className="text-[10px] text-zinc-500">
+                  출금 가능(롤링 정책 반영):{" "}
+                  <span className="font-mono text-zinc-300">
+                    {formatKrwWithSymbol(withdrawableBalance)}
+                  </span>
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => toggleBuckets()}
+                className="self-start text-[10px] font-medium text-amber-500/90 hover:text-amber-400"
+              >
+                {showBuckets ? "▼ 자금 구성·내역 접기" : "▶ 자금 구성·전환·콤프 내역"}
+              </button>
+              {showBuckets && (
+                <div className="mt-1 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[11px] text-zinc-400 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-zinc-600">포인트 전환 머니</span>
+                      <p className="font-mono text-zinc-200">{formatKrwWithSymbol(pointFree ?? "0")}</p>
+                    </div>
+                    <div>
+                      <span className="text-zinc-600">콤프 적립</span>
+                      <p className="font-mono text-zinc-200">{formatKrwWithSymbol(compFree ?? "0")}</p>
+                    </div>
+                  </div>
+                  {pointRedeemLogs && pointRedeemLogs.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-zinc-500 mb-1">최근 포인트 전환</p>
+                      <ul className="max-h-24 space-y-0.5 overflow-y-auto font-mono text-[10px] text-zinc-300">
+                        {pointRedeemLogs.slice(0, 8).map((r) => (
+                          <li key={r.id}>
+                            −{Number(r.pointsRedeemed).toLocaleString("ko-KR")}P → +{formatKrwWithSymbol(r.redeemAmount)} ·{" "}
+                            {new Date(r.createdAt).toLocaleString("ko-KR")}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {compLogs && compLogs.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-zinc-500 mb-1">최근 콤프 적립</p>
+                      <ul className="max-h-24 space-y-0.5 overflow-y-auto font-mono text-[10px] text-zinc-300">
+                        {compLogs.slice(0, 8).map((r) => (
+                          <li key={r.id}>
+                            +{formatKrwWithSymbol(r.settlementAmount)} · {new Date(r.createdAt).toLocaleString("ko-KR")}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -501,14 +642,29 @@ export function WalletPanel({ initialOpts, onNeedLogin, variant = "modal" }: Wal
                   <UsdtDepositPanel savedAddress={profile?.usdtWalletAddress} krwBalanceDisplay={balance ?? undefined} onSaveAddress={saveUsdtWallet} />
                   {hasUsdtWallet && (
                     <form onSubmit={submitWithdrawal} className="space-y-3">
+                      <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                        <span>업비트 USDT/KRW (출금 환산)</span>
+                        <button
+                          type="button"
+                          onClick={() => void fetchLiveUsdtRate()}
+                          className="text-main-gold/90 hover:underline"
+                        >
+                          {liveUsdtKrwRate ? `₩${Math.round(liveUsdtKrwRate).toLocaleString("ko-KR")}` : "환율 불러오기"}
+                        </button>
+                      </div>
                       <label className="block text-xs text-zinc-400">
-                        출금 수량 (USDT)
+                        출금 금액 (원) — 신청 시 USDT로 환산됩니다
                         <input type="number" min={1} value={withdrawAmount}
                           onChange={(e) => setWithdrawAmount(e.target.value)} className={fieldCls} />
                       </label>
                       <div className="rounded-lg border border-white/8 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-400">
                         환율 기준 출금 가능:{" "}
                         <span className="font-mono font-bold text-main-gold">{formatUsdt(withdrawableUsdt)} USDT</span>
+                        {Number(withdrawAmount) > 0 ? (
+                          <span className="ml-2 text-zinc-500">
+                            (약 {formatUsdt(Number(withdrawAmount) / effectiveUsdtKrwRate)} USDT)
+                          </span>
+                        ) : null}
                       </div>
                       <button type="submit" disabled={submitting === "WITHDRAWAL"}
                         className="w-full rounded-xl bg-gold-gradient py-3 text-sm font-bold text-black disabled:opacity-50"

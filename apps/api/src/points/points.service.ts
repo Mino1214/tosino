@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   LedgerEntryType,
@@ -5,8 +6,15 @@ import {
   Prisma,
   RegistrationStatus,
   UserRole,
+  WalletBucket,
+  WalletTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  pickBucketState,
+  totalFromBuckets,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 function kstYmd(d: Date): string {
   const f = new Intl.DateTimeFormat('en-CA', {
@@ -59,7 +67,10 @@ function readDepositPointTiers(
 
 @Injectable()
 export class PointsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private buckets: WalletBucketsService,
+  ) {}
 
   async attend(userId: string, platformId: string) {
     const wallet = await this.prisma.wallet.findUnique({
@@ -210,14 +221,27 @@ export class PointsService {
     platformId: string,
     points: number,
     currency: 'KRW' | 'USDT',
+    requestId?: string | null,
   ) {
     if (!Number.isFinite(points) || points <= 0) {
       throw new BadRequestException('포인트를 입력하세요');
     }
     const platform = await this.prisma.platform.findUnique({
       where: { id: platformId },
+      select: {
+        id: true,
+        minPointRedeemPoints: true,
+        minPointRedeemKrw: true,
+        minPointRedeemUsdt: true,
+        pointRulesJson: true,
+        flagsJson: true,
+      },
     });
     if (!platform) throw new BadRequestException('플랫폼 오류');
+
+    const flags = readRules(platform.flagsJson);
+    void flags.pointRedeemRollingEnabled;
+    void flags.compSettlementRollingEnabled;
 
     const minPts = platform.minPointRedeemPoints;
     if (minPts != null && points < minPts) {
@@ -260,16 +284,73 @@ export class PointsService {
       throw new BadRequestException('최소 교환 금액 미달입니다');
     }
 
+    const trimmedReq = requestId?.trim();
+    const eventKey = trimmedReq
+      ? `point-redeem:${platformId}:${userId}:${trimmedReq}`.slice(0, 160)
+      : `point-redeem:${platformId}:${userId}:${randomUUID()}`.slice(0, 160);
+
     return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.pointRedeemLog.findUnique({
+        where: { eventKey },
+      });
+      if (existing) {
+        const w = await tx.wallet.findUnique({ where: { userId } });
+        if (!w) throw new BadRequestException('지갑을 찾을 수 없습니다');
+        const rollingN = await tx.rollingObligation.count({
+          where: { userId, satisfiedAt: null },
+        });
+        const rollingBlocked = rollingN > 0;
+        return {
+          success: true,
+          ok: true,
+          idempotent: true,
+          pointBalance: w.pointBalance.toFixed(2),
+          wallet: this.buckets.walletApiShape(w, rollingBlocked),
+          credited: existing.redeemAmount.toFixed(2),
+        };
+      }
+
       const w = await tx.wallet.findUnique({ where: { userId } });
       if (!w) throw new BadRequestException('지갑을 찾을 수 없습니다');
+      if (w.pointBalance.lt(decPts)) {
+        throw new BadRequestException('포인트가 부족합니다');
+      }
+
       const newPoints = w.pointBalance.minus(decPts);
-      const newBal = w.balance.plus(credit);
+      const wb = pickBucketState(w);
+      const balanceBefore = totalFromBuckets(wb);
+      const pointFreeBefore = w.pointFree;
+      const pointFreeAfter = w.pointFree.plus(credit);
+      const nextBuckets = { ...wb, pointFree: pointFreeAfter };
+      const balanceAfter = totalFromBuckets(nextBuckets);
 
       await tx.wallet.update({
         where: { userId },
-        data: { pointBalance: newPoints, balance: newBal },
+        data: {
+          pointBalance: newPoints,
+          pointFree: pointFreeAfter,
+          lockedDeposit: nextBuckets.lockedDeposit,
+          lockedWin: nextBuckets.lockedWin,
+          compFree: nextBuckets.compFree,
+          balance: balanceAfter,
+        },
       });
+
+      await tx.pointRedeemLog.create({
+        data: {
+          platformId,
+          userId,
+          redeemAmount: credit,
+          pointsRedeemed: decPts,
+          pointBefore: w.pointBalance,
+          pointAfter: newPoints,
+          pointFreeBefore,
+          pointFreeAfter,
+          currency,
+          eventKey,
+        },
+      });
+
       await tx.pointLedgerEntry.create({
         data: {
           userId,
@@ -278,7 +359,12 @@ export class PointsService {
           amount: decPts.negated(),
           balanceAfter: newPoints,
           reference: `redeem:${currency}`,
-          metaJson: { currency, credit: credit.toFixed(8) },
+          metaJson: {
+            currency,
+            credit: credit.toFixed(8),
+            pointFreeCredit: true,
+            eventKey,
+          },
         },
       });
       await tx.ledgerEntry.create({
@@ -287,16 +373,42 @@ export class PointsService {
           platformId,
           type: LedgerEntryType.ADJUSTMENT,
           amount: credit,
-          balanceAfter: newBal,
+          balanceAfter,
           reference: `point-redeem:${currency}`,
-          metaJson: { pointRedeem: true, points },
+          metaJson: {
+            pointRedeemPointFree: true,
+            points,
+            eventKey,
+          },
         },
       });
+      await this.buckets.recordWalletTx(tx, {
+        platformId,
+        userId,
+        transactionType: WalletTransactionType.POINT_REDEEM,
+        targetBucket: WalletBucket.POINT_FREE,
+        amount: credit,
+        balanceBefore,
+        balanceAfter,
+        eventKey,
+        metadata: { points: String(points), currency },
+      });
+
+      const rollingN = await tx.rollingObligation.count({
+        where: { userId, satisfiedAt: null },
+      });
+      const rollingBlocked = rollingN > 0;
+      const w2 = await tx.wallet.findUnique({ where: { userId } });
+      if (!w2) throw new BadRequestException('지갑을 찾을 수 없습니다');
+
       return {
+        success: true,
         ok: true,
+        idempotent: false,
         pointBalance: newPoints.toFixed(2),
-        balance: newBal.toFixed(2),
+        wallet: this.buckets.walletApiShape(w2, rollingBlocked),
         credited: credit.toFixed(2),
+        balance: balanceAfter.toFixed(2),
       };
     });
   }

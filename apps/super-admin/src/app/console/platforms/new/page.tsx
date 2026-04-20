@@ -135,8 +135,8 @@ export default function ConsoleNewPlatformPage() {
     [platformMarginPct, upstreamCasinoPct],
   );
   const platformSportsPct = useMemo(
-    () => (rateNumber(upstreamSportsPct) + rateNumber(platformMarginPct)).toFixed(2),
-    [platformMarginPct, upstreamSportsPct],
+    () => rateNumber(upstreamSportsPct).toFixed(2),
+    [upstreamSportsPct],
   );
 
   async function onSubmit(e: React.FormEvent) {
@@ -176,7 +176,6 @@ export default function ConsoleNewPlatformPage() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      setSelectedPlatformId(created.id);
       if (typeof window !== "undefined" && created.previewPort != null) {
         sessionStorage.setItem(
           "tosinoPlatformPreviewHint",
@@ -189,6 +188,7 @@ export default function ConsoleNewPlatformPage() {
         );
       }
       await refresh();
+      setSelectedPlatformId(created.id);
       router.push("/console/theme");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "생성 실패");
@@ -309,8 +309,9 @@ export default function ConsoleNewPlatformPage() {
               상위업체 요율 / 플랫폼 청구율
             </p>
             <p className="mt-1 text-xs text-zinc-500">
-              상위업체 매입 요율과 자동 마진을 넣으면, 플랫폼 청구 요율은 자동으로
-              계산됩니다. 카지노·슬롯·미니는 동일 알 버킷, 스포츠는 별도 요율입니다.
+              자동 마진은 카지노 청구율(상위 카지노 알 + 마진)에만 더해집니다.
+              스포츠 청구율은 상위 스포츠 알값과 같습니다. 카지노·슬롯·미니는 동일 알
+              버킷입니다.
             </p>
           </div>
 
@@ -332,7 +333,7 @@ export default function ConsoleNewPlatformPage() {
               />
             </label>
             <label className="block text-sm text-zinc-400">
-              자동 마진 %
+              자동 마진 % (카지노 청구에만 가산)
               <input
                 value={platformMarginPct}
                 onChange={(e) => setPlatformMarginPct(e.target.value)}

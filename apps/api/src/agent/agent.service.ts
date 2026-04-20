@@ -1119,6 +1119,8 @@ export class AgentService {
         rollingSlotPct: true,
         rollingMinigamePct: true,
         uplinePrivateMemo: true,
+        lastLoginAt: true,
+        lastLoginIp: true,
         wallet: { select: { balance: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -1138,6 +1140,8 @@ export class AgentService {
       rollingMinigamePct: dec(r.rollingMinigamePct),
       uplinePrivateMemo: r.uplinePrivateMemo ?? null,
       balance: r.wallet?.balance?.toFixed(2) ?? '0.00',
+      lastLoginAt: r.lastLoginAt?.toISOString() ?? null,
+      lastLoginIp: r.lastLoginIp ?? null,
     }));
   }
 
@@ -1168,6 +1172,8 @@ export class AgentService {
         registrationStatus: true,
         rollingEnabled: true,
         uplinePrivateMemo: true,
+        lastLoginAt: true,
+        lastLoginIp: true,
         wallet: { select: { balance: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -1185,6 +1191,8 @@ export class AgentService {
         rollingEnabled: r.rollingEnabled,
         uplinePrivateMemo: r.uplinePrivateMemo ?? null,
         balance: r.wallet?.balance?.toFixed(2) ?? '0.00',
+        lastLoginAt: r.lastLoginAt?.toISOString() ?? null,
+        lastLoginIp: r.lastLoginIp ?? null,
       })),
     };
   }

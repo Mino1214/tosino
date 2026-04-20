@@ -14,6 +14,10 @@ import { TrongridService } from './trongrid.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { DepositEventsService } from '../deposit-events/deposit-events.service';
 import { PointsService } from '../points/points.service';
+import {
+  pickBucketState,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 @Injectable()
 export class UsdtDepositService {
@@ -26,6 +30,7 @@ export class UsdtDepositService {
     private rolling: RollingObligationService,
     private depositEvents: DepositEventsService,
     private points: PointsService,
+    private buckets: WalletBucketsService,
   ) {}
 
   /** 모든 플랫폼의 USDT 입금을 폴링·처리 */
@@ -200,11 +205,11 @@ export class UsdtDepositService {
         },
       });
 
-      const newBal = wallet.balance.plus(krwAmount);
-      await tx2.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: newBal },
-      });
+      const next = this.buckets.creditLockedDeposit(
+        pickBucketState(wallet),
+        krwAmount,
+      );
+      const { balance: newBal } = await this.buckets.persist(tx2, wallet.id, next);
 
       await tx2.ledgerEntry.create({
         data: {

@@ -13,8 +13,10 @@ import {
   Prisma,
   SyncJobType,
   UserRole,
+  WalletBucket,
   WalletRequestStatus,
   WalletRequestType,
+  WalletTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlatformDto } from './dto/create-platform.dto';
@@ -32,14 +34,30 @@ import {
   getPlatformTemplatePreset,
   listPlatformTemplatePresets,
 } from './platform-template.util';
+import { derivePlatformBillingPctFromPolicy } from './solution-rate-derive.util';
 import { ReserveBalanceService } from '../reserve-balance/reserve-balance.service';
+import {
+  pickBucketState,
+  totalFromBuckets,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 @Injectable()
 export class PlatformsService {
   constructor(
     private prisma: PrismaService,
     private readonly reserve: ReserveBalanceService,
+    private readonly walletBuckets: WalletBucketsService,
   ) {}
+
+  /** 동일 기간 HQ 포트폴리오 요약 반복 호출 완화 (대시보드·포트폴리오 페이지) */
+  private readonly hqPortfolioSummaryCache = new Map<
+    string,
+    { expiresAt: number; payload: unknown }
+  >();
+  private static readonly HQ_PORTFOLIO_CACHE_TTL_MS = 45_000;
+  /** 대시보드 전용( includeRows=false ) — 무거운 집계 반복 완화 */
+  private static readonly HQ_PORTFOLIO_CACHE_TTL_DASH_MS = 180_000;
 
   private asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === 'object' && !Array.isArray(value)
@@ -141,13 +159,8 @@ export class PlatformsService {
     const upstreamSportsPct = this.normalizePctString(raw.upstreamSportsPct);
     const autoMarginPct =
       this.normalizePctString(raw.autoMarginPct) ?? '1.00';
-    const marginNum = Number(autoMarginPct);
-    const platformCasinoPct =
-      this.normalizePctString(raw.platformCasinoPct) ??
-      ((Number(upstreamCasinoPct ?? '0') + marginNum).toFixed(2) as string);
-    const platformSportsPct =
-      this.normalizePctString(raw.platformSportsPct) ??
-      ((Number(upstreamSportsPct ?? '0') + marginNum).toFixed(2) as string);
+    const platformCasinoPct = derivePlatformBillingPctFromPolicy(raw, 'casino');
+    const platformSportsPct = derivePlatformBillingPctFromPolicy(raw, 'sports');
     return {
       upstreamCasinoPct,
       upstreamSportsPct,
@@ -178,15 +191,19 @@ export class PlatformsService {
       this.normalizePctString(raw.autoMarginPct) ??
       this.normalizePctString(fallback?.autoMarginPct) ??
       '1.00';
-    const marginNum = Number(autoMarginPct);
-    const platformCasinoPct =
-      this.normalizePctString(raw.platformCasinoPct) ??
-      this.normalizePctString(fallback?.platformCasinoPct) ??
-      (Number(upstreamCasinoPct ?? '0') + marginNum).toFixed(2);
-    const platformSportsPct =
-      this.normalizePctString(raw.platformSportsPct) ??
-      this.normalizePctString(fallback?.platformSportsPct) ??
-      (Number(upstreamSportsPct ?? '0') + marginNum).toFixed(2);
+    const mergedPolicy: Record<string, unknown> = {
+      upstreamCasinoPct,
+      upstreamSportsPct,
+      autoMarginPct,
+    };
+    const platformCasinoPct = derivePlatformBillingPctFromPolicy(
+      mergedPolicy,
+      'casino',
+    );
+    const platformSportsPct = derivePlatformBillingPctFromPolicy(
+      mergedPolicy,
+      'sports',
+    );
 
     return {
       upstreamCasinoPct,
@@ -356,6 +373,92 @@ export class PlatformsService {
     ) {
       throw new ForbiddenException();
     }
+  }
+
+  /** 도메인 편집: 총판(MASTER_AGENT)은 제외 */
+  private assertDomainEditor(actor: JwtPayload, platformId: string) {
+    this.assertPlatformScope(actor, platformId);
+    if (actor.role === UserRole.MASTER_AGENT) {
+      throw new ForbiddenException();
+    }
+  }
+
+  private normalizeDomainHost(raw: string): string {
+    const h = raw
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+      .split(':')[0]!
+      .replace(/^\.+|\.+$/g, '');
+    if (!h || h.length < 3) {
+      throw new BadRequestException('유효한 호스트를 입력하세요');
+    }
+    if (!/^[\w.-]+$/.test(h)) {
+      throw new BadRequestException('호스트 형식이 올바르지 않습니다');
+    }
+    return h;
+  }
+
+  private async listDomainHostsForPlatform(platformId: string) {
+    const rows = await this.prisma.platformDomain.findMany({
+      where: { platformId },
+      select: { host: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((r) => ({ host: r.host }));
+  }
+
+  async addPlatformDomain(
+    platformId: string,
+    actor: JwtPayload,
+    rawHost: string,
+  ) {
+    this.assertDomainEditor(actor, platformId);
+    const host = this.normalizeDomainHost(rawHost);
+    const p = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: { id: true },
+    });
+    if (!p) throw new NotFoundException('Platform not found');
+    const taken = await this.prisma.platformDomain.findUnique({
+      where: { host },
+    });
+    if (taken && taken.platformId !== platformId) {
+      throw new ConflictException(
+        '이미 다른 솔루션에서 사용 중인 도메인입니다',
+      );
+    }
+    if (taken) {
+      return { ok: true as const, domains: await this.listDomainHostsForPlatform(platformId) };
+    }
+    await this.prisma.platformDomain.create({
+      data: { host, platformId },
+    });
+    return { ok: true as const, domains: await this.listDomainHostsForPlatform(platformId) };
+  }
+
+  async removePlatformDomain(
+    platformId: string,
+    actor: JwtPayload,
+    rawHost: string,
+  ) {
+    this.assertDomainEditor(actor, platformId);
+    const host = this.normalizeDomainHost(rawHost);
+    const row = await this.prisma.platformDomain.findUnique({
+      where: { host },
+    });
+    if (!row || row.platformId !== platformId) {
+      throw new NotFoundException('해당 도메인을 찾을 수 없습니다');
+    }
+    const count = await this.prisma.platformDomain.count({
+      where: { platformId },
+    });
+    if (count <= 1) {
+      throw new BadRequestException('최소 1개의 도메인은 유지해야 합니다');
+    }
+    await this.prisma.platformDomain.delete({ where: { id: row.id } });
+    return { ok: true as const, domains: await this.listDomainHostsForPlatform(platformId) };
   }
 
   async list(user: JwtPayload) {
@@ -1149,6 +1252,12 @@ export class PlatformsService {
     take = 50,
   ) {
     this.assertPlatformScope(actor, platformId);
+    if (
+      policyType === 'semi_virtual' &&
+      actor.role === UserRole.MASTER_AGENT
+    ) {
+      throw new ForbiddenException();
+    }
     const rows = await this.prisma.platformPolicyHistory.findMany({
       where: {
         platformId,
@@ -1237,12 +1346,46 @@ export class PlatformsService {
     return p;
   }
 
+  private semiVirtualSnapshot(p: {
+    semiVirtualEnabled: boolean;
+    semiVirtualRecipientPhone: string | null;
+    semiVirtualAccountHint: string | null;
+    semiVirtualBankName: string | null;
+    semiVirtualAccountNumber: string | null;
+    semiVirtualAccountHolder: string | null;
+    settlementUsdtWallet: string | null;
+  }) {
+    return {
+      semiVirtualEnabled: p.semiVirtualEnabled,
+      semiVirtualRecipientPhone: p.semiVirtualRecipientPhone,
+      semiVirtualAccountHint: p.semiVirtualAccountHint,
+      semiVirtualBankName: p.semiVirtualBankName,
+      semiVirtualAccountNumber: p.semiVirtualAccountNumber,
+      semiVirtualAccountHolder: p.semiVirtualAccountHolder,
+      settlementUsdtWallet: p.settlementUsdtWallet,
+    };
+  }
+
   async updateSemiVirtual(
     platformId: string,
     actor: JwtPayload,
     dto: UpdateSemiVirtualDto,
   ) {
     this.assertPlatformScope(actor, platformId);
+    const beforeRow = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: {
+        semiVirtualEnabled: true,
+        semiVirtualRecipientPhone: true,
+        semiVirtualAccountHint: true,
+        semiVirtualBankName: true,
+        semiVirtualAccountNumber: true,
+        semiVirtualAccountHolder: true,
+        settlementUsdtWallet: true,
+      },
+    });
+    if (!beforeRow) throw new NotFoundException('Platform not found');
+
     const phone = this.normalizeSemiVirtualPhone(dto.recipientPhone ?? null);
     const hint = dto.accountHint?.trim() || null;
     const bankName = dto.bankName?.trim() || null;
@@ -1281,7 +1424,38 @@ export class PlatformsService {
         settlementUsdtWallet,
       },
     });
-    return this.getSemiVirtual(platformId, actor);
+
+    const after = await this.getSemiVirtual(platformId, actor);
+    const beforeSnap = this.semiVirtualSnapshot(beforeRow);
+    const afterSnap = this.semiVirtualSnapshot(after);
+
+    let note: string | null = null;
+    if (!beforeSnap.semiVirtualEnabled && afterSnap.semiVirtualEnabled) {
+      note = 'SMS·원화 자동 입금 Live 켜짐';
+    } else if (beforeSnap.semiVirtualEnabled && !afterSnap.semiVirtualEnabled) {
+      note = 'SMS·원화 자동 입금 중지(준비 모드)';
+    } else {
+      note = '반가상 계좌·테더 수취 주소·SMS 설정 변경';
+    }
+
+    const editor = await this.prisma.user.findUnique({
+      where: { id: actor.sub },
+      select: { loginId: true },
+    });
+
+    await this.prisma.platformPolicyHistory.create({
+      data: {
+        platformId,
+        policyType: 'semi_virtual',
+        beforeJson: beforeSnap as Prisma.InputJsonValue,
+        afterJson: afterSnap as Prisma.InputJsonValue,
+        changedByUserId: actor.sub,
+        changedByLoginId: editor?.loginId ?? null,
+        note,
+      },
+    });
+
+    return after;
   }
 
   private bankSmsStatusLabelKo(status: BankSmsIngestStatus): string {
@@ -1608,6 +1782,8 @@ export class PlatformsService {
       throw new BadRequestException('콤프 정책이 비활성화되어 있습니다.');
     }
 
+    void this.asRecord(platform.flagsJson).compSettlementRollingEnabled;
+
     const rateNum = compPolicy.ratePct ? Number(compPolicy.ratePct) : NaN;
     if (!Number.isFinite(rateNum) || rateNum <= 0) {
       throw new BadRequestException('유효한 콤프률이 설정되어 있지 않습니다.');
@@ -1689,6 +1865,10 @@ export class PlatformsService {
           select: {
             id: true,
             balance: true,
+            lockedDeposit: true,
+            lockedWin: true,
+            compFree: true,
+            pointFree: true,
           },
         },
       },
@@ -1769,11 +1949,31 @@ export class PlatformsService {
               settledByLoginId: settledByLoginId ?? null,
             },
           });
-          const nextBalance = row.walletBalance.plus(row.amount);
-          const ledgerReference = `comp:${settlement.id}`;
-          await tx.wallet.update({
+          const wFull = await tx.wallet.findUnique({
             where: { id: row.walletId },
-            data: { balance: nextBalance },
+          });
+          if (!wFull) continue;
+          const wb = pickBucketState(wFull);
+          const balanceBefore = totalFromBuckets(wb);
+          const compFreeBefore = wFull.compFree;
+          const compFreeAfter = wFull.compFree.plus(row.amount);
+          const nextBuckets = { ...wb, compFree: compFreeAfter };
+          const balanceAfter = totalFromBuckets(nextBuckets);
+          await this.walletBuckets.persist(tx, row.walletId, nextBuckets);
+          const ledgerReference = `comp:${settlement.id}`;
+          const eventKey = `comp-settlement:${settlement.id}`.slice(0, 160);
+          await tx.compSettlementLedgerLog.create({
+            data: {
+              platformId,
+              userId: row.userId,
+              settlementAmount: row.amount,
+              compFreeBefore,
+              compFreeAfter,
+              settlementPeriodStart: periodFrom,
+              settlementPeriodEnd: periodTo,
+              compSettlementId: settlement.id,
+              eventKey,
+            },
           });
           await tx.ledgerEntry.create({
             data: {
@@ -1781,17 +1981,29 @@ export class PlatformsService {
               platformId,
               type: LedgerEntryType.ADJUSTMENT,
               amount: row.amount,
-              balanceAfter: nextBalance,
+              balanceAfter,
               reference: ledgerReference,
               metaJson: {
                 compSettlement: true,
                 compSettlementId: settlement.id,
+                compFreeCredit: true,
                 baseAmount: row.baseAmount.toFixed(2),
                 ratePct: ratePct.toFixed(4),
                 periodFrom: periodFrom.toISOString(),
                 periodTo: periodTo.toISOString(),
               },
             },
+          });
+          await this.walletBuckets.recordWalletTx(tx, {
+            platformId,
+            userId: row.userId,
+            transactionType: WalletTransactionType.COMP_SETTLEMENT,
+            targetBucket: WalletBucket.COMP_FREE,
+            amount: row.amount,
+            balanceBefore,
+            balanceAfter,
+            eventKey,
+            metadata: { compSettlementId: settlement.id },
           });
           await tx.compSettlement.update({
             where: { id: settlement.id },
@@ -2302,6 +2514,32 @@ export class PlatformsService {
       };
     }
     return out;
+  }
+
+  /**
+   * HQ 포트폴리오 요약 전용: getSalesAgents 대신 루트 총판 지갑 잔액 합으로 정산 부담을 근사.
+   * (플랫폼마다 에이전트 트리 집계를 돌리면 솔루션 수에 비례해 매우 느려진다.)
+   */
+  private async hqApproxTopAgentSettlementKrw(platformId: string): Promise<number> {
+    const agents = await this.prisma.user.findMany({
+      where: { platformId, role: UserRole.MASTER_AGENT },
+      select: { id: true, parentUserId: true },
+    });
+    if (agents.length === 0) return 0;
+    const agentIdSet = new Set(agents.map((a) => a.id));
+    const rootIds = agents
+      .filter((a) => {
+        const p = a.parentUserId;
+        if (!p) return true;
+        return !agentIdSet.has(p);
+      })
+      .map((a) => a.id);
+    if (rootIds.length === 0) return 0;
+    const agg = await this.prisma.wallet.aggregate({
+      where: { platformId, userId: { in: rootIds } },
+      _sum: { balance: true },
+    });
+    return agg._sum.balance?.toNumber() ?? 0;
   }
 
   private approvedWalletWhere(
@@ -3019,9 +3257,17 @@ export class PlatformsService {
     });
   }
 
-  async getSalesLedger(platformId: string, actor: JwtPayload, from?: string, to?: string, limitRaw?: string) {
+  async getSalesLedger(
+    platformId: string,
+    actor: JwtPayload,
+    from?: string,
+    to?: string,
+    limitRaw?: string,
+    orderRaw?: string,
+  ) {
     this.assertPlatformAdmin(actor, platformId);
     const limit = Math.min(500, Math.max(1, Number.parseInt(limitRaw ?? '100', 10) || 100));
+    const dir = orderRaw?.toLowerCase() === 'asc' ? 'asc' : 'desc';
     const dateFilter: Prisma.DateTimeFilter = {};
     if (from) dateFilter.gte = new Date(from);
     if (to) dateFilter.lte = new Date(to);
@@ -3034,7 +3280,7 @@ export class PlatformsService {
         ...(hasDate ? { createdAt: dateFilter } : {}),
       },
       include: { user: { select: { loginId: true, displayName: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: dir }, { id: dir }],
       take: limit,
     });
 
@@ -3066,10 +3312,30 @@ export class PlatformsService {
    * 슈퍼관리자 전용. 운영 중인 모든 솔루션에 대해 매출 요약·총판 차감 후 잔여·상위 알/청구/본사 마진을
    * 동일 기간으로 묶어 포트폴리오(헷징·장부) 관점에서 한 번에 본다.
    */
-  async getHqPortfolioSummary(actor: JwtPayload, from?: string, to?: string) {
+  async getHqPortfolioSummary(
+    actor: JwtPayload,
+    from?: string,
+    to?: string,
+    includeRows = true,
+  ) {
     if (actor.role !== UserRole.SUPER_ADMIN) {
       throw new ForbiddenException();
     }
+    const cacheKey = `${includeRows ? '1' : '0'}\t${from ?? ''}\t${to ?? ''}`;
+    const nowMs = Date.now();
+    const cacheTtlMs = includeRows
+      ? PlatformsService.HQ_PORTFOLIO_CACHE_TTL_MS
+      : PlatformsService.HQ_PORTFOLIO_CACHE_TTL_DASH_MS;
+    const cached = this.hqPortfolioSummaryCache.get(cacheKey);
+    if (cached && cached.expiresAt > nowMs) {
+      return cached.payload;
+    }
+    if (this.hqPortfolioSummaryCache.size > 48) {
+      for (const [k, v] of this.hqPortfolioSummaryCache) {
+        if (v.expiresAt <= nowMs) this.hqPortfolioSummaryCache.delete(k);
+      }
+    }
+
     const platforms = await this.prisma.platform.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
@@ -3110,11 +3376,33 @@ export class PlatformsService {
       upstreamCost: string | null;
       platformCharge: string | null;
       solutionMargin: string | null;
+      depositTotal: string | null;
+      withdrawTotal: string | null;
+      topAgentSettlement: string | null;
       loadError: string | null;
     };
 
-    const batchSize = 4;
+    const countsP = Promise.all([
+      this.prisma.user.count({ where: { role: UserRole.USER } }),
+      this.prisma.user.count({ where: { role: UserRole.MASTER_AGENT } }),
+    ]);
+
+    /** 플랫폼당 Summary + 지갑 근사만 — 배치 폭 넉넉히 (DB 풀 한도 내) */
+    const batchSize = Math.min(24, Math.max(1, platforms.length));
     const rows: HqPortfolioRow[] = [];
+    let accOk = 0;
+    let accHouseEdge = 0;
+    let accCashNet = 0;
+    let accSolutionCashNet = 0;
+    let accSolutionPolicyNet = 0;
+    let accUpstreamCost = 0;
+    let accPlatformCharge = 0;
+    let accSolutionMargin = 0;
+    let accGgr = 0;
+    let accDepositTotal = 0;
+    let accWithdrawTotal = 0;
+    let accTopAgentSettlement = 0;
+
     for (let i = 0; i < platforms.length; i += batchSize) {
       const chunk = platforms.slice(i, i + batchSize);
       const part: HqPortfolioRow[] = await Promise.all(
@@ -3125,19 +3413,13 @@ export class PlatformsService {
           const hedgeUpdatedAt =
             typeof hq.updatedAt === 'string' ? hq.updatedAt : null;
           try {
-            const [summary, agents] = await Promise.all([
-              this.getSalesSummary(p.id, actor, from, to),
-              this.getSalesAgents(p.id, actor, from, to),
-            ]);
+            const summary = await this.getSalesSummary(p.id, actor, from, to);
+            /** getSalesAgents는 플랫폼 수만큼 N배 비용 → 루트 총판 지갑 합으로 근사 */
+            const totalSettle = await this.hqApproxTopAgentSettlementKrw(p.id);
             const deposit = Number(summary.wallet.depositTotal ?? 0);
             const withdraw = Number(summary.wallet.withdrawTotal ?? 0);
             const houseEdge = Number(
               summary.wallet.houseEdge ?? deposit - withdraw,
-            );
-            const topAgents = agents.filter((a) => a.isTopAgent);
-            const totalSettle = topAgents.reduce(
-              (sum, a) => sum + Number(a.myEstimatedSettlement ?? 0),
-              0,
             );
             const realizedMoneyCost = Number(summary.costs.money.total ?? 0);
             const depositBonus = Number(summary.costs.money.depositBonus ?? 0);
@@ -3195,6 +3477,9 @@ export class PlatformsService {
               upstreamCost: upstreamCost.toFixed(2),
               platformCharge: platformCharge.toFixed(2),
               solutionMargin: solutionMargin.toFixed(2),
+              depositTotal: deposit.toFixed(2),
+              withdrawTotal: withdraw.toFixed(2),
+              topAgentSettlement: totalSettle.toFixed(2),
               loadError: null,
             };
           } catch (err) {
@@ -3225,6 +3510,9 @@ export class PlatformsService {
               upstreamCost: null,
               platformCharge: null,
               solutionMargin: null,
+              depositTotal: null,
+              withdrawTotal: null,
+              topAgentSettlement: null,
               loadError:
                 err instanceof Error
                   ? err.message
@@ -3233,65 +3521,53 @@ export class PlatformsService {
           }
         }),
       );
-      rows.push(...part);
+      for (const row of part) {
+        if (includeRows) rows.push(row);
+        if (row.loadError) continue;
+        accOk += 1;
+        accHouseEdge += Number(row.houseEdge ?? 0);
+        accCashNet += Number(row.cashNet ?? 0);
+        accSolutionCashNet += Number(row.solutionCashNet ?? 0);
+        accSolutionPolicyNet += Number(row.solutionPolicyNet ?? 0);
+        accUpstreamCost += Number(row.upstreamCost ?? 0);
+        accPlatformCharge += Number(row.platformCharge ?? 0);
+        accSolutionMargin += Number(row.solutionMargin ?? 0);
+        accGgr += Number(row.ggr ?? 0);
+        accDepositTotal += Number(row.depositTotal ?? 0);
+        accWithdrawTotal += Number(row.withdrawTotal ?? 0);
+        accTopAgentSettlement += Number(row.topAgentSettlement ?? 0);
+      }
     }
 
-    const totals = rows.reduce(
-      (
-        acc: {
-          ok: number;
-          houseEdge: number;
-          cashNet: number;
-          solutionCashNet: number;
-          solutionPolicyNet: number;
-          upstreamCost: number;
-          platformCharge: number;
-          solutionMargin: number;
-          ggr: number;
-        },
-        row,
-      ) => {
-        if (row.loadError) return acc;
-        acc.houseEdge += Number(row.houseEdge ?? 0);
-        acc.cashNet += Number(row.cashNet ?? 0);
-        acc.solutionCashNet += Number(row.solutionCashNet ?? 0);
-        acc.solutionPolicyNet += Number(row.solutionPolicyNet ?? 0);
-        acc.upstreamCost += Number(row.upstreamCost ?? 0);
-        acc.platformCharge += Number(row.platformCharge ?? 0);
-        acc.solutionMargin += Number(row.solutionMargin ?? 0);
-        acc.ggr += Number(row.ggr ?? 0);
-        acc.ok += 1;
-        return acc;
-      },
-      {
-        ok: 0,
-        houseEdge: 0,
-        cashNet: 0,
-        solutionCashNet: 0,
-        solutionPolicyNet: 0,
-        upstreamCost: 0,
-        platformCharge: 0,
-        solutionMargin: 0,
-        ggr: 0,
-      },
-    );
+    const [memberCount, agentCount] = await countsP;
 
-    return {
+    const payload = {
       period: { from: from ?? null, to: to ?? null },
       totals: {
-        solutionsWithMetrics: totals.ok,
+        solutionsWithMetrics: accOk,
         solutionsTotal: platforms.length,
-        houseEdge: totals.houseEdge.toFixed(2),
-        cashNet: totals.cashNet.toFixed(2),
-        solutionCashNet: totals.solutionCashNet.toFixed(2),
-        solutionPolicyNet: totals.solutionPolicyNet.toFixed(2),
-        upstreamCost: totals.upstreamCost.toFixed(2),
-        platformCharge: totals.platformCharge.toFixed(2),
-        solutionMargin: totals.solutionMargin.toFixed(2),
-        ggr: totals.ggr.toFixed(2),
+        memberCount,
+        agentCount,
+        depositTotal: accDepositTotal.toFixed(2),
+        withdrawTotal: accWithdrawTotal.toFixed(2),
+        topAgentSettlement: accTopAgentSettlement.toFixed(2),
+        houseEdge: accHouseEdge.toFixed(2),
+        cashNet: accCashNet.toFixed(2),
+        solutionCashNet: accSolutionCashNet.toFixed(2),
+        solutionPolicyNet: accSolutionPolicyNet.toFixed(2),
+        upstreamCost: accUpstreamCost.toFixed(2),
+        platformCharge: accPlatformCharge.toFixed(2),
+        solutionMargin: accSolutionMargin.toFixed(2),
+        ggr: accGgr.toFixed(2),
       },
-      rows,
+      rows: includeRows ? rows : [],
     };
+
+    this.hqPortfolioSummaryCache.set(cacheKey, {
+      expiresAt: nowMs + cacheTtlMs,
+      payload,
+    });
+    return payload;
   }
 
   async updateHqPortfolioNote(

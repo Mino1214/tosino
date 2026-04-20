@@ -29,6 +29,8 @@ type SubMember = {
   rollingEnabled: boolean;
   uplinePrivateMemo: string | null;
   balance: string;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
 };
 
 type SubMembersRes = {
@@ -47,6 +49,8 @@ type DirectMember = {
   rollingEnabled: boolean;
   uplinePrivateMemo: string | null;
   balance: string;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
 };
 
 function regLabel(s: string) {
@@ -67,6 +71,26 @@ function regColor(s: string) {
   if (s === "PENDING") return "text-amber-600 font-semibold";
   if (s === "REJECTED") return "text-red-500 font-semibold";
   return "text-gray-500";
+}
+
+function LastLoginCell({
+  at,
+  ip,
+}: {
+  at: string | null | undefined;
+  ip: string | null | undefined;
+}) {
+  if (!at) return <span className="text-gray-400">—</span>;
+  return (
+    <div className="text-[11px] text-gray-600">
+      <div className="whitespace-nowrap">
+        {new Date(at).toLocaleString("ko-KR")}
+      </div>
+      {ip ? (
+        <div className="mt-0.5 font-mono text-gray-500">{ip}</div>
+      ) : null}
+    </div>
+  );
 }
 
 function MemberRow({
@@ -114,6 +138,9 @@ function MemberRow({
         >
           상세
         </button>
+      </td>
+      <td className="py-2 pr-3 align-top">
+        <LastLoginCell at={m.lastLoginAt} ip={m.lastLoginIp} />
       </td>
     </tr>
   );
@@ -422,6 +449,7 @@ export default function AgentSubAgentsPage() {
                                 <th className="px-3 py-2">롤링</th>
                                 <th className="px-3 py-2">가입일</th>
                                 <th className="px-3 py-2" />
+                                <th className="px-3 py-2">마지막 로그인</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -463,6 +491,7 @@ export default function AgentSubAgentsPage() {
                       <th className="px-3 py-2">롤링</th>
                       <th className="px-3 py-2">가입일</th>
                       <th className="px-3 py-2" />
+                      <th className="px-3 py-2">마지막 로그인</th>
                     </tr>
                   </thead>
                   <tbody>

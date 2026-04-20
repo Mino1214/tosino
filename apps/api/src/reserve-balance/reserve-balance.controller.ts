@@ -123,6 +123,24 @@ export class ReserveBalanceController {
     throw new BadRequestException(`unsupported type: ${body.type}`);
   }
 
+  /** 플랫폼 알(가상 크레딧) 회수 — 잔액·상한(initial) 동시 감소 */
+  @Post(':platformId/hq-recover')
+  async hqRecover(
+    @Param('platformId') platformId: string,
+    @Body() body: { amountKrw?: number; note?: string },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    if (body?.amountKrw == null || typeof body.amountKrw !== 'number') {
+      throw new BadRequestException('amountKrw required');
+    }
+    return this.svc.hqRecoverCredit(
+      platformId,
+      body.amountKrw,
+      body.note ?? null,
+      user.sub,
+    );
+  }
+
   @Post(':platformId/rollback/:eventKey')
   rollback(
     @Param('platformId') _platformId: string,

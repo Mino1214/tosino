@@ -19,6 +19,8 @@ type DownlineRow = {
   rollingMinigamePct: number | null;
   uplinePrivateMemo: string | null;
   balance: string;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
 };
 
 function regLabel(s: string) {
@@ -45,6 +47,26 @@ function toMult(pct: number | null | undefined): string {
   if (!pct) return "—";
   const m = Math.round(pct * 10 * 10) / 10;
   return `${m}배`;
+}
+
+function LastLoginCell({
+  at,
+  ip,
+}: {
+  at: string | null | undefined;
+  ip: string | null | undefined;
+}) {
+  if (!at) return <span className="text-gray-400">—</span>;
+  return (
+    <div className="text-[11px] text-gray-600">
+      <div className="whitespace-nowrap">
+        {new Date(at).toLocaleString("ko-KR")}
+      </div>
+      {ip ? (
+        <div className="mt-0.5 font-mono text-gray-500">{ip}</div>
+      ) : null}
+    </div>
+  );
 }
 
 export default function AgentMembersPage() {
@@ -126,6 +148,7 @@ export default function AgentMembersPage() {
                 <th className="px-3 py-2">롤링 배율</th>
                 <th className="px-3 py-2">가입일</th>
                 <th className="px-3 py-2">상세</th>
+                <th className="px-3 py-2">마지막 로그인</th>
               </tr>
             </thead>
             <tbody>
@@ -185,6 +208,9 @@ export default function AgentMembersPage() {
                     >
                       회원정보
                     </button>
+                  </td>
+                  <td className="px-3 py-2 align-top">
+                    <LastLoginCell at={r.lastLoginAt} ip={r.lastLoginIp} />
                   </td>
                 </tr>
               ))}

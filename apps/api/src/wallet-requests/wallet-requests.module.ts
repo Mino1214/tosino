@@ -5,9 +5,10 @@ import { RollingModule } from '../rolling/rolling.module';
 import { DepositEventsCoreModule } from '../deposit-events/deposit-events-core.module';
 import { PointsModule } from '../points/points.module';
 import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
+import { WalletBucketsModule } from '../wallet-buckets/wallet-buckets.module';
 
 @Module({
-  imports: [RollingModule, DepositEventsCoreModule, PointsModule],
+  imports: [RollingModule, DepositEventsCoreModule, PointsModule, WalletBucketsModule],
   controllers: [WalletRequestsAdminController],
   providers: [WalletRequestsService, UpbitRateService],
   exports: [WalletRequestsService],

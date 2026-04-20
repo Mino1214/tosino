@@ -3,9 +3,10 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
+  MaxLength,
   Min,
   MinLength,
-  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { LOGIN_ID_PATTERN } from '../../common/login-id.util';
@@ -26,6 +27,12 @@ export class LoginDto {
   @IsOptional()
   @IsString()
   platformId?: string;
+
+  /** host 보다 우선. 솔루션 어드민 등 전용 도메인에서 slug 로 고정할 때 (예: demo) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  platformSlug?: string;
 
   @IsOptional()
   @IsString()

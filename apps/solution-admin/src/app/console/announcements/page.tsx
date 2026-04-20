@@ -67,6 +67,8 @@ export default function ConsoleAnnouncementsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [showOnlyPublished, setShowOnlyPublished] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadAnnouncements = useCallback(() => {
@@ -113,6 +115,14 @@ export default function ConsoleAnnouncementsPage() {
 
   function applyAssetToSelectedSlot(asset: LibraryItem) {
     setRows((prev) => {
+      const filled = prev.filter((r) => r.imageUrl.trim().length > 0).length;
+      const targetIsEmpty = !prev[selectedSlot].imageUrl.trim();
+      if (filled >= MAX && targetIsEmpty) {
+        setErr(
+          `공지 팝업은 최대 ${MAX}개까지만 등록할 수 있습니다. 기존 슬롯을 수정하거나 비워 주세요.`,
+        );
+        return prev;
+      }
       const next = [...prev];
       const i = selectedSlot;
       next[i] = {
@@ -127,10 +137,16 @@ export default function ConsoleAnnouncementsPage() {
     setMsg(`슬롯 ${selectedSlot + 1}에 선택한 이미지를 넣었습니다. 저장을 눌러 반영하세요.`);
   }
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !selectedPlatformId) return;
+  async function uploadFile(file: File) {
+    if (!selectedPlatformId) return;
+    if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type)) {
+      setErr("JPEG / PNG / WebP / GIF 형식의 이미지만 업로드할 수 있습니다.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setErr("이미지 크기는 최대 8MB까지 업로드할 수 있습니다.");
+      return;
+    }
     setMsg(null);
     setErr(null);
     setUploading(true);
@@ -151,6 +167,29 @@ export default function ConsoleAnnouncementsPage() {
     } finally {
       setUploading(false);
     }
+  }
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await uploadFile(file);
+  }
+
+  async function onDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    await uploadFile(file);
+  }
+
+  function onDragEvent(e: React.DragEvent<HTMLDivElement>, active: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (uploading) return;
+    setDragActive(active);
   }
 
   async function deleteAsset(id: string) {
@@ -245,12 +284,25 @@ export default function ConsoleAnnouncementsPage() {
       )}
 
       <section className="rounded-xl border border-gray-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-gray-800">업로드 · 라이브러리</h2>
-        <p className="mt-1 text-xs text-gray-500">
-          먼저 적용할 <strong className="text-gray-500">슬롯</strong>을 고른 뒤
-          파일을 올리면 해당 슬롯에 바로 채워집니다. JPEG / PNG / WebP / GIF,
-          최대 8MB.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">업로드 · 라이브러리</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              먼저 적용할 <strong className="text-gray-500">슬롯</strong>을 고른 뒤
+              파일을 드래그하거나 클릭해 업로드하면 해당 슬롯에 바로 채워집니다.
+              JPEG / PNG / WebP / GIF, 최대 8MB.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={showOnlyPublished}
+              onChange={(e) => setShowOnlyPublished(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            게시중만 보기
+          </label>
+        </div>
         <input
           ref={fileRef}
           type="file"
@@ -258,14 +310,48 @@ export default function ConsoleAnnouncementsPage() {
           className="hidden"
           onChange={onPickFile}
         />
-        <button
-          type="button"
-          disabled={uploading}
-          onClick={() => fileRef.current?.click()}
-          className="mt-3 rounded-lg bg-gray-100 px-4 py-2 text-sm text-black hover:bg-gray-200 disabled:opacity-50"
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          onDragEnter={(e) => onDragEvent(e, true)}
+          onDragOver={(e) => onDragEvent(e, true)}
+          onDragLeave={(e) => onDragEvent(e, false)}
+          onDrop={onDrop}
+          className={`mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${
+            dragActive
+              ? "border-[#3182f6] bg-[#3182f6]/5"
+              : "border-gray-300 bg-gray-50 hover:border-[#3182f6]/50 hover:bg-gray-100"
+          } ${uploading ? "cursor-not-allowed opacity-60" : ""}`}
+          role="button"
+          aria-label="이미지 업로드"
         >
-          {uploading ? "업로드 중…" : "이미지 파일 업로드"}
-        </button>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#3182f6] shadow-sm">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.8}
+              stroke="currentColor"
+              className="h-5 w-5"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-4.5-9L12 3m0 0L7.5 7.5M12 3v13.5"
+              />
+            </svg>
+          </div>
+          <p className="text-sm font-medium text-gray-700">
+            {uploading
+              ? "업로드 중…"
+              : dragActive
+                ? "여기에 파일을 놓으세요"
+                : "여기에 파일을 끌어다 놓거나 클릭해서 선택"}
+          </p>
+          <p className="text-[11px] text-gray-500">
+            권장 규격 약 {SPEC_W}×{SPEC_H}px · JPEG/PNG/WebP/GIF · 최대 8MB
+          </p>
+        </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {library.length === 0 ? (
@@ -315,11 +401,36 @@ export default function ConsoleAnnouncementsPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">
-          공지 슬롯 (최대 {MAX}개)
-        </h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-800">
+            공지 슬롯 (최대 {MAX}개)
+          </h2>
+          <p className="text-[11px] text-gray-500">
+            채워진 슬롯 {rows.filter((r) => r.imageUrl.trim().length > 0).length} / {MAX} ·
+            게시중{" "}
+            {
+              rows.filter(
+                (r) => r.imageUrl.trim().length > 0 && r.active,
+              ).length
+            }
+            개
+          </p>
+        </div>
+        {showOnlyPublished &&
+        rows.every((r) => !(r.imageUrl.trim().length > 0 && r.active)) ? (
+          <p className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-center text-xs text-gray-500">
+            현재 게시중인 공지가 없습니다. &ldquo;게시중만 보기&rdquo;를 꺼서 비활성 슬롯을
+            확인하거나 새 이미지를 등록하세요.
+          </p>
+        ) : null}
         <div className="space-y-4">
           {rows.map((row, i) => {
+            if (
+              showOnlyPublished &&
+              !(row.imageUrl.trim().length > 0 && row.active)
+            ) {
+              return null;
+            }
             const preview =
               row.imageUrl.trim().startsWith("http") ||
               row.imageUrl.trim().startsWith("/")

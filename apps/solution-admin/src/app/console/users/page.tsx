@@ -34,6 +34,8 @@ type Row = {
   agentPlatformSharePct?: number | null;
   agentSplitFromParentPct?: number | null;
   effectiveAgentSharePct?: number | null;
+  lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
 };
 
 
@@ -46,6 +48,24 @@ function rowLoginLabel(r: Pick<Row, "loginId" | "email">): string {
 
 function signupModeLabel(mode: string | null | undefined): string {
   return mode === "anonymous" ? "무기명" : "일반";
+}
+
+function LastLoginCell({
+  at,
+  ip,
+}: {
+  at: string | null | undefined;
+  ip: string | null | undefined;
+}) {
+  if (!at) return <span className="text-gray-400">—</span>;
+  return (
+    <div className="whitespace-nowrap text-xs text-gray-600">
+      <div>{new Date(at).toLocaleString("ko-KR")}</div>
+      {ip ? (
+        <div className="mt-0.5 font-mono text-[11px] text-gray-500">{ip}</div>
+      ) : null}
+    </div>
+  );
 }
 
 
@@ -714,13 +734,14 @@ export default function ConsoleUsersPage() {
                   {canCreate && (
                     <th className="px-4 py-2">요율</th>
                   )}
+                  <th className="px-4 py-2">마지막 로그인</th>
                 </tr>
               </thead>
               <tbody>
                 {masters.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={canCreate ? 11 : 10}
+                      colSpan={canCreate ? 12 : 11}
                       className="px-4 py-6 text-center text-gray-500"
                     >
                       등록된 총판이 없습니다.
@@ -844,6 +865,12 @@ export default function ConsoleUsersPage() {
                             </span>
                           </td>
                         )}
+                        <td className="px-4 py-2 align-top">
+                          <LastLoginCell
+                            at={r.lastLoginAt}
+                            ip={r.lastLoginIp}
+                          />
+                        </td>
                       </tr>
                     );
                   })
@@ -898,6 +925,7 @@ export default function ConsoleUsersPage() {
                         {canCreate && (
                           <th className="px-3 py-2">롤링 이력</th>
                         )}
+                        <th className="px-3 py-2">마지막 로그인</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -954,6 +982,12 @@ export default function ConsoleUsersPage() {
                               </button>
                             </td>
                           )}
+                          <td className="px-3 py-2 align-top">
+                            <LastLoginCell
+                              at={u.lastLoginAt}
+                              ip={u.lastLoginIp}
+                            />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -984,13 +1018,14 @@ export default function ConsoleUsersPage() {
                   {canCreate && (
                     <th className="px-4 py-2">롤링 이력</th>
                   )}
+                  <th className="px-4 py-2">마지막 로그인</th>
                 </tr>
               </thead>
               <tbody>
                 {endUsers.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={canCreate ? 11 : 10}
+                      colSpan={canCreate ? 12 : 11}
                       className="px-4 py-6 text-center text-gray-500"
                     >
                       일반 유저가 없습니다.
@@ -1085,6 +1120,12 @@ export default function ConsoleUsersPage() {
                             </button>
                           </td>
                         )}
+                        <td className="px-4 py-2 align-top">
+                          <LastLoginCell
+                            at={r.lastLoginAt}
+                            ip={r.lastLoginIp}
+                          />
+                        </td>
                       </tr>
                     );
                   })
@@ -1112,6 +1153,7 @@ export default function ConsoleUsersPage() {
                   <th className="px-4 py-2">아이디</th>
                   <th className="px-4 py-2">역할</th>
                   <th className="px-4 py-2">표시명</th>
+                  <th className="px-4 py-2">마지막 로그인</th>
                 </tr>
               </thead>
               <tbody>
@@ -1125,6 +1167,9 @@ export default function ConsoleUsersPage() {
                     </td>
                     <td className="px-4 py-2 text-gray-500">
                       {r.displayName ?? "—"}
+                    </td>
+                    <td className="px-4 py-2 align-top">
+                      <LastLoginCell at={r.lastLoginAt} ip={r.lastLoginIp} />
                     </td>
                   </tr>
                 ))}

@@ -29,6 +29,7 @@ import {
   ListSolutionBillingSettlementsDto,
 } from './dto/execute-solution-billing.dto';
 import { UpdateHqPortfolioNoteDto } from './dto/update-hq-portfolio-note.dto';
+import { AddPlatformDomainDto } from './dto/add-platform-domain.dto';
 import { PointsService } from '../points/points.service';
 import { CompSettlementSchedulerService } from './comp-settlement-scheduler.service';
 
@@ -61,8 +62,16 @@ export class PlatformsController {
     @CurrentUser() user: JwtPayload,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('includeRows') includeRowsRaw?: string,
   ) {
-    return this.platforms.getHqPortfolioSummary(user, from, to);
+    const includeRows =
+      includeRowsRaw === '0' || includeRowsRaw === 'false' ? false : true;
+    return this.platforms.getHqPortfolioSummary(
+      user,
+      from,
+      to,
+      includeRows,
+    );
   }
 
   @Post()
@@ -88,7 +97,7 @@ export class PlatformsController {
 
   @Get(':platformId/semi-virtual')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
   getSemiVirtual(
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
@@ -98,7 +107,7 @@ export class PlatformsController {
 
   @Patch(':platformId/semi-virtual')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
   updateSemiVirtual(
     @Param('platformId') platformId: string,
     @Body() dto: UpdateSemiVirtualDto,
@@ -120,7 +129,7 @@ export class PlatformsController {
 
   @Get(':platformId/bank-sms-ingests')
   @UseGuards(PlatformScopeGuard)
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
   listBankSms(
     @Param('platformId') platformId: string,
     @CurrentUser() user: JwtPayload,
@@ -142,6 +151,28 @@ export class PlatformsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.platforms.getDetail(platformId, user);
+  }
+
+  @Post(':platformId/domains')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  addPlatformDomain(
+    @Param('platformId') platformId: string,
+    @Body() dto: AddPlatformDomainDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.addPlatformDomain(platformId, user, dto.host);
+  }
+
+  @Delete(':platformId/domains')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  removePlatformDomain(
+    @Param('platformId') platformId: string,
+    @Query('host') host: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.removePlatformDomain(platformId, user, host ?? '');
   }
 
   @Patch(':platformId/theme')
@@ -291,8 +322,9 @@ export class PlatformsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('limit') limit?: string,
+    @Query('order') order?: string,
   ) {
-    return this.platforms.getSalesLedger(platformId, user, from, to, limit);
+    return this.platforms.getSalesLedger(platformId, user, from, to, limit, order);
   }
 
   /* ── Credit Requests (per-platform) ── */

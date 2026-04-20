@@ -100,6 +100,54 @@ export class BlacklistService {
     }));
   }
 
+  /** HQ: 전 솔루션 차단 회원 집계 */
+  async listAllBlockedForHq(actor: JwtPayload) {
+    if (actor.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException();
+    }
+    const users = await this.prisma.user.findMany({
+      where: { isBlocked: true, platformId: { not: null } },
+      orderBy: { blockedAt: 'desc' },
+      select: {
+        id: true,
+        loginId: true,
+        email: true,
+        displayName: true,
+        phone: true,
+        platformId: true,
+        blockedReason: true,
+        blockedAt: true,
+        blockedByUserId: true,
+        platform: { select: { id: true, slug: true, name: true } },
+      },
+    });
+    const blockerIds = Array.from(
+      new Set(users.map((u) => u.blockedByUserId).filter(Boolean) as string[]),
+    );
+    const blockers = blockerIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: blockerIds } },
+          select: { id: true, loginId: true },
+        })
+      : [];
+    const blockerMap = new Map(blockers.map((b) => [b.id, b]));
+    return users.map((u) => ({
+      id: u.id,
+      loginId: u.loginId,
+      email: u.email,
+      displayName: u.displayName,
+      phone: u.phone,
+      platformId: u.platformId,
+      platform: u.platform,
+      blockedReason: u.blockedReason,
+      blockedAt: u.blockedAt?.toISOString() ?? null,
+      blockedByUserId: u.blockedByUserId,
+      blockedByLoginId: u.blockedByUserId
+        ? blockerMap.get(u.blockedByUserId)?.loginId ?? null
+        : null,
+    }));
+  }
+
   async block(
     platformId: string,
     targetUserId: string,

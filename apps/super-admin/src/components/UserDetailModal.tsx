@@ -43,6 +43,12 @@ type OverviewData = {
   wallet: {
     balance: string;
     pointBalance: string;
+    lockedDeposit?: string;
+    lockedWin?: string;
+    compFree?: string;
+    pointFree?: string;
+    totalBalance?: string;
+    withdrawableBalance?: string;
     withdrawCurrency: string;
     withdrawBlocked: boolean;
     withdrawableKrw: string;
@@ -56,6 +62,14 @@ type OverviewData = {
     remainingTurnover: string;
     achievementPct: number;
     openCount: number;
+    obligations?: {
+      id: string;
+      sourceRef: string;
+      principalAmount: string;
+      requiredTurnover: string;
+      appliedTurnover: string;
+      createdAt: string;
+    }[];
   };
   pointExchange: {
     redeemKrwPerPoint: string | null;
@@ -341,8 +355,8 @@ export default function UserDetailModal({ user, platformId, onClose }: Props) {
                 {/* 잔액 카드 4개 */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
-                    { label: "현재 잔액", val: `${krw(overview.wallet.balance)}원`, color: "text-amber-300" },
-                    { label: "출금 가능", val: overview.wallet.withdrawCurrency === "USDT" ? `${usdt2(overview.wallet.withdrawableUsdt)} USDT` : `${krw(overview.wallet.withdrawableKrw)}원`, color: "text-zinc-100" },
+                    { label: "총 잔액", val: `${krw(overview.wallet.totalBalance ?? overview.wallet.balance)}원`, color: "text-amber-300" },
+                    { label: "출금 가능(정책)", val: overview.wallet.withdrawCurrency === "USDT" ? `${usdt2(overview.wallet.withdrawableUsdt)} USDT` : `${krw(overview.wallet.withdrawableBalance ?? overview.wallet.withdrawableKrw)}원`, color: "text-zinc-100" },
                     { label: "롤링 달성", val: `${overview.rolling.achievementPct}%`, color: "text-cyan-300" },
                     { label: "포인트", val: `${krw(overview.wallet.pointBalance)} P`, color: "text-emerald-300" },
                   ].map((c) => (
@@ -352,6 +366,26 @@ export default function UserDetailModal({ user, platformId, onClose }: Props) {
                     </div>
                   ))}
                 </div>
+
+                <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-zinc-100">자금 출처별 버킷</h3>
+                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                    {[
+                      ["잠금 입금", overview.wallet.lockedDeposit ?? "0"],
+                      ["잠금 당첨", overview.wallet.lockedWin ?? "0"],
+                      ["콤프 적립", overview.wallet.compFree ?? "0"],
+                      ["포인트 전환", overview.wallet.pointFree ?? "0"],
+                    ].map(([label, amt]) => (
+                      <div key={label} className="rounded border border-zinc-800 bg-black/20 px-2 py-2">
+                        <p className="text-zinc-500">{label}</p>
+                        <p className="mt-1 font-mono text-zinc-200">{krw(amt)}원</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] text-zinc-600">
+                    출금 가능액(API): 롤링 미충족 시 콤프·포인트 전환 풀만, 충족 시 전 버킷 합산과 동일하게 표시됩니다.
+                  </p>
+                </section>
 
                 <div className="grid gap-4 xl:grid-cols-2">
                   {/* 기본 정보 */}
@@ -404,6 +438,16 @@ export default function UserDetailModal({ user, platformId, onClose }: Props) {
                         </div>
                       ))}
                     </div>
+                    {overview.rolling.obligations && overview.rolling.obligations.length > 0 && (
+                      <div className="mt-3 max-h-32 space-y-1 overflow-y-auto rounded border border-zinc-800 bg-black/30 p-2 text-[10px]">
+                        <p className="font-semibold text-zinc-400">진행 중 의무</p>
+                        {overview.rolling.obligations.map((o) => (
+                          <div key={o.id} className="font-mono text-zinc-300">
+                            {o.sourceRef.slice(0, 24)}… 본금 {krw(o.principalAmount)} / 필요 {krw(o.requiredTurnover)} / 적용 {krw(o.appliedTurnover)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="mt-3 grid grid-cols-5 gap-1.5 text-[10px]">
                       {[
                         ["국내", overview.user.rollingSportsDomesticPct],

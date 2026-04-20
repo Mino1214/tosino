@@ -24,9 +24,11 @@ import { VinusLaunchDto } from '../vinus/dto/vinus-launch.dto';
 import { UpdatePayoutAccountDto } from './dto/update-payout-account.dto';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { PointsService } from '../points/points.service';
+import { WalletBucketsService } from '../wallet-buckets/wallet-buckets.service';
 import { resolvePublicMediaUrl } from '../common/utils/media-url.util';
 import { RedeemPointsDto } from './dto/redeem-points.dto';
 import { UpdateUsdtWalletDto } from './dto/update-usdt-wallet.dto';
+import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
 
 @Controller('me')
 @UseGuards(AuthGuard('jwt'))
@@ -37,12 +39,22 @@ export class MeController {
     private vinus: VinusService,
     private rolling: RollingObligationService,
     private points: PointsService,
+    private upbit: UpbitRateService,
+    private walletBuckets: WalletBucketsService,
   ) {}
 
   private assertEndUser(payload: JwtPayload) {
     if (payload.role !== UserRole.USER) {
       throw new ForbiddenException('솔루션 회원 전용입니다');
     }
+  }
+
+  /** 무기명(USDT) 출금 시 원화→USDT 환산용 — 업비트 KRW-USDT 체결가(실패 시 ENV 폴백) */
+  @Get('usdt-krw-rate')
+  async usdtKrwRate(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    const rate = await this.upbit.getKrwPerUsdt();
+    return { krwPerUsdt: rate.toFixed(2) };
   }
 
   @Get('profile')
@@ -155,12 +167,37 @@ export class MeController {
   @Get('wallet')
   async wallet(@CurrentUser() user: JwtPayload) {
     this.assertEndUser(user);
-    const w = await this.prisma.wallet.findUnique({
-      where: { userId: user.sub },
-    });
+    const [w, rollingN] = await Promise.all([
+      this.prisma.wallet.findUnique({
+        where: { userId: user.sub },
+      }),
+      this.prisma.rollingObligation.count({
+        where: { userId: user.sub, satisfiedAt: null },
+      }),
+    ]);
+    if (!w) {
+      return {
+        balance: '0.00',
+        pointBalance: '0.00',
+        lockedDeposit: '0.00',
+        lockedWin: '0.00',
+        compFree: '0.00',
+        pointFree: '0.00',
+        totalBalance: '0.00',
+        withdrawableBalance: '0.00',
+      };
+    }
+    const rollingBlocked = rollingN > 0;
+    const wb = this.walletBuckets.walletApiShape(w, rollingBlocked);
     return {
-      balance: w?.balance?.toFixed(2) ?? '0.00',
-      pointBalance: w?.pointBalance?.toFixed(2) ?? '0.00',
+      balance: wb.totalBalance,
+      pointBalance: wb.pointBalance,
+      lockedDeposit: wb.lockedDeposit,
+      lockedWin: wb.lockedWin,
+      compFree: wb.compFree,
+      pointFree: wb.pointFree,
+      totalBalance: wb.totalBalance,
+      withdrawableBalance: wb.withdrawableBalance,
     };
   }
 
@@ -368,11 +405,16 @@ export class MeController {
     if (!user.platformId) {
       throw new ForbiddenException('플랫폼 소속 회원만 이용할 수 있습니다');
     }
+    const pts = dto.amount ?? dto.points;
+    if (pts == null) {
+      throw new BadRequestException('amount 또는 points 를 입력하세요');
+    }
     return this.points.redeem(
       user.sub,
       user.platformId,
-      dto.points,
+      pts,
       dto.currency,
+      dto.requestId,
     );
   }
 
@@ -380,6 +422,66 @@ export class MeController {
   pointLedger(@CurrentUser() user: JwtPayload) {
     this.assertEndUser(user);
     return this.points.listLedger(user.sub);
+  }
+
+  @Get('wallet/point-redeem-logs')
+  async pointRedeemLogs(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    const rows = await this.prisma.pointRedeemLog.findMany({
+      where: { userId: user.sub },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        redeemAmount: true,
+        pointsRedeemed: true,
+        pointBefore: true,
+        pointAfter: true,
+        pointFreeBefore: true,
+        pointFreeAfter: true,
+        currency: true,
+        createdAt: true,
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      redeemAmount: r.redeemAmount.toFixed(2),
+      pointsRedeemed: r.pointsRedeemed.toFixed(2),
+      pointBefore: r.pointBefore.toFixed(2),
+      pointAfter: r.pointAfter.toFixed(2),
+      pointFreeBefore: r.pointFreeBefore.toFixed(2),
+      pointFreeAfter: r.pointFreeAfter.toFixed(2),
+      currency: r.currency,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  @Get('wallet/comp-settlement-logs')
+  async compSettlementLogs(@CurrentUser() user: JwtPayload) {
+    this.assertEndUser(user);
+    const rows = await this.prisma.compSettlementLedgerLog.findMany({
+      where: { userId: user.sub },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        settlementAmount: true,
+        compFreeBefore: true,
+        compFreeAfter: true,
+        settlementPeriodStart: true,
+        settlementPeriodEnd: true,
+        createdAt: true,
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      settlementAmount: r.settlementAmount.toFixed(2),
+      compFreeBefore: r.compFreeBefore.toFixed(2),
+      compFreeAfter: r.compFreeAfter.toFixed(2),
+      settlementPeriodStart: r.settlementPeriodStart.toISOString(),
+      settlementPeriodEnd: r.settlementPeriodEnd.toISOString(),
+      createdAt: r.createdAt.toISOString(),
+    }));
   }
 
   @Post('wallet-requests')

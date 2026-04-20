@@ -7,6 +7,7 @@ import { RollingModule } from '../rolling/rolling.module';
 import { PointsModule } from '../points/points.module';
 import { UsdtDepositModule } from '../usdt-deposit/usdt-deposit.module';
 import { ReserveBalanceModule } from '../reserve-balance/reserve-balance.module';
+import { WalletBucketsModule } from '../wallet-buckets/wallet-buckets.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ReserveBalanceModule } from '../reserve-balance/reserve-balance.module'
     PointsModule,
     UsdtDepositModule,
     ReserveBalanceModule,
+    WalletBucketsModule,
   ],
   controllers: [TestScenarioController],
   providers: [TestScenarioService],

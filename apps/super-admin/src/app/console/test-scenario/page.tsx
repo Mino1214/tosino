@@ -589,8 +589,16 @@ function AccountSection({ title, users, defaultOpen }: { title: string; users: U
 
 // ─── 메인 페이지 ─────────────────────────────────────────────
 export default function TestScenarioPage() {
-  const { selectedPlatformId } = usePlatform();
+  const { platforms } = usePlatform();
+  const [scenarioPlatformId, setScenarioPlatformId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setScenarioPlatformId((prev) => {
+      if (prev && platforms.some((p) => p.id === prev)) return prev;
+      return platforms[0]?.id ?? null;
+    });
+  }, [platforms]);
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -605,17 +613,19 @@ export default function TestScenarioPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
+  /** 체크 시 예전과 동일한 고정 입금·베팅 단위(재현용). 해제(기본)면 실행마다 금액이 달라짐 */
+  const [fixedAmounts, setFixedAmounts] = useState(false);
 
   const addLog = useCallback((level: LogEntry["level"], msg: string) => {
     setLogs((prev) => [...prev, { ts: new Date().toLocaleTimeString("ko-KR"), level, msg }]);
   }, []);
 
   const loadDetail = useCallback(async () => {
-    if (!selectedPlatformId) return;
+    if (!scenarioPlatformId) return;
     setDetailLoading(true);
     try {
       const data = await apiFetch<DetailedState>(
-        `/test-scenario/state/detail?platformId=${selectedPlatformId}`
+        `/test-scenario/state/detail?platformId=${scenarioPlatformId}`
       );
       setDetail(data);
     } catch (e) {
@@ -627,7 +637,7 @@ export default function TestScenarioPage() {
     } finally {
       setDetailLoading(false);
     }
-  }, [selectedPlatformId, addLog]);
+  }, [scenarioPlatformId, addLog]);
 
   useEffect(() => {
     loadDetail();
@@ -640,7 +650,7 @@ export default function TestScenarioPage() {
   };
 
   const runScenario = async () => {
-    if (!selectedPlatformId) { addLog("error", "플랫폼을 먼저 선택하세요."); return; }
+    if (!scenarioPlatformId) { addLog("error", "플랫폼을 먼저 선택하세요."); return; }
     if (currencies.length === 0) { addLog("error", "통화를 하나 이상 선택하세요."); return; }
     setLoading(true);
     setResult(null);
@@ -648,10 +658,32 @@ export default function TestScenarioPage() {
     try {
       const data = await apiFetch<Record<string, unknown>>(`/test-scenario/run`, {
         method: "POST",
-        body: JSON.stringify({ fromStep, toStep, platformId: selectedPlatformId, currencies }),
+        body: JSON.stringify({
+          fromStep,
+          toStep,
+          platformId: scenarioPlatformId,
+          currencies,
+          randomize: !fixedAmounts,
+        }),
       });
       setResult(data);
       addLog("success", `✓ 완료!`);
+      const am = data.scenarioAmounts as
+        | {
+            krwDeposit: number;
+            betUnit: number;
+            usdtOk: number;
+            usdtFail: number;
+            grantPoints: number;
+            withdrawPct: number;
+          }
+        | undefined;
+      if (am && !fixedAmounts && fromStep <= 1) {
+        addLog(
+          "info",
+          `이번 실행 금액: KRW입금 ${Math.round(am.krwDeposit).toLocaleString("ko-KR")}원/인 · 베팅단위 ${Math.round(am.betUnit).toLocaleString("ko-KR")}원 · USDT ${am.usdtOk}/${am.usdtFail} · 포인트 ${am.grantPoints} · 출금비율 ${(am.withdrawPct * 100).toFixed(1)}%`,
+        );
+      }
       await loadDetail();
     } catch (e: unknown) {
       addLog("error", `실패: ${e instanceof Error ? e.message : String(e)}`);
@@ -661,13 +693,13 @@ export default function TestScenarioPage() {
   };
 
   const runCleanup = async () => {
-    if (!selectedPlatformId) return;
+    if (!scenarioPlatformId) return;
     if (!confirm("테스트 데이터를 전부 삭제하시겠습니까?")) return;
     setCleanupLoading(true);
     addLog("info", "🗑️ 테스트 데이터 삭제 중...");
     try {
       const data = await apiFetch<{ message: string }>(
-        `/test-scenario/cleanup/${selectedPlatformId}`,
+        `/test-scenario/cleanup/${scenarioPlatformId}`,
         { method: "DELETE" }
       );
       addLog("success", data.message);
@@ -703,7 +735,7 @@ export default function TestScenarioPage() {
         <p className="mt-1 text-sm text-gray-500">
           단계별 전체 플로우를 버튼으로 실행합니다. 생성된 계정·잔액·베팅내역 등 모든 데이터를 아래에서 확인할 수 있습니다.
           <span className="mt-1 block text-[#3182f6]/90">
-            출금까지(종료 Step 8) 실행하면 총판 정산(Step 9)이 자동으로 이어집니다. API가 최신인지(배포) 확인하세요.
+            출금까지(종료 Step 8) 실행하면 총판 정산(Step 9)이 자동으로 이어집니다. Step 1부터 돌릴 때 기본은 입금·베팅·포인트·출금 비율이 매번 달라집니다(고정 체크 시 예전 고정값).
           </span>
         </p>
       </div>
@@ -759,6 +791,23 @@ export default function TestScenarioPage() {
           ))}
         </div>
 
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="min-w-[12rem]">
+            <label className="mb-1 block text-xs text-gray-500">솔루션</label>
+            <select
+              value={scenarioPlatformId ?? ""}
+              onChange={(e) => setScenarioPlatformId(e.target.value || null)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+            >
+              {platforms.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-xs text-gray-500">시작 Step</label>
@@ -795,17 +844,26 @@ export default function TestScenarioPage() {
               ))}
             </div>
           </div>
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={fixedAmounts}
+              onChange={(e) => setFixedAmounts(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            고정 금액 (재현용)
+          </label>
           <button
             type="button"
             onClick={runScenario}
-            disabled={loading || !selectedPlatformId}
+            disabled={loading || !scenarioPlatformId}
             className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
               <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>실행 중...</>
             ) : `▶ 실행 (Step ${fromStep}→${toStep})`}
           </button>
-          {!selectedPlatformId && <p className="text-xs text-red-400">⚠ 플랫폼을 먼저 선택하세요.</p>}
+          {!scenarioPlatformId && <p className="text-xs text-red-400">⚠ 솔루션이 없습니다. 시드를 실행했는지 확인하세요.</p>}
         </div>
       </div>
 
@@ -890,7 +948,7 @@ export default function TestScenarioPage() {
           <button
             type="button"
             onClick={runCleanup}
-            disabled={cleanupLoading || !selectedPlatformId}
+            disabled={cleanupLoading || !scenarioPlatformId}
             className="shrink-0 rounded-lg border border-red-700 bg-red-900/30 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/60 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {cleanupLoading ? "삭제 중..." : "🗑️ 테스트 데이터 삭제"}

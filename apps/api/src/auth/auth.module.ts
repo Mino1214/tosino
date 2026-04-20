@@ -14,7 +14,9 @@ import { PublicModule } from '../public/public.module';
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '15m' },
+        signOptions: {
+          expiresIn: config.get<string>('JWT_ACCESS_EXPIRES_IN')?.trim() || '15m',
+        },
       }),
       inject: [ConfigService],
     }),

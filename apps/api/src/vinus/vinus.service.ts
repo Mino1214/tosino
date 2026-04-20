@@ -20,6 +20,10 @@ import {
   resolveLedgerVerticalFromVinus,
   withLedgerVerticalMeta,
 } from './vinus-ledger-vertical.util';
+import {
+  pickBucketState,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 /** 문서: 15~25자 토큰 (랜덤 + 시간 일부). 0/O·1/I/l 등 헷갈리는 문자 제외 */
 function generateVinusToken(): string {
@@ -502,6 +506,7 @@ export class VinusService {
     private rolling: RollingObligationService,
     private points: PointsService,
     private reserve: ReserveBalanceService,
+    private buckets: WalletBucketsService,
   ) {}
 
   private assertConfigured() {
@@ -1124,11 +1129,8 @@ export class VinusService {
       if (w0.balance.lt(amount)) {
         return fail(31, w0.balance);
       }
-      const newBal = w0.balance.minus(amount);
-      await tx.wallet.update({
-        where: { id: w0.id },
-        data: { balance: newBal },
-      });
+      const next = this.buckets.deductStake(pickBucketState(w0), amount);
+      const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
       await tx.sportsBetReservation.update({
         where: { id: res.id },
         data: {
@@ -1327,11 +1329,11 @@ export class VinusService {
         if (delta.gt(0) && w0.balance.lt(delta)) {
           return fail(31, w0.balance);
         }
-        const newBal = w0.balance.minus(delta);
-        await tx.wallet.update({
-          where: { id: w0.id },
-          data: { balance: newBal },
-        });
+        const next = this.buckets.applySportsBetChangeDelta(
+          pickBucketState(w0),
+          delta,
+        );
+        const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
         await tx.sportsBetActual.update({
           where: { id: actual!.id },
           data: { amount: newAmt },
@@ -1440,11 +1442,11 @@ export class VinusService {
       if (legDelta.gt(0) && w0.balance.lt(legDelta)) {
         return fail(31, w0.balance);
       }
-      const newBal = w0.balance.minus(legDelta);
-      await tx.wallet.update({
-        where: { id: w0.id },
-        data: { balance: newBal },
-      });
+      const next = this.buckets.applySportsBetChangeDelta(
+        pickBucketState(w0),
+        legDelta,
+      );
+      const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
       await tx.casinoVinusTx.update({
         where: { externalId: origTx!.externalId },
         data: { stake: newAmt },
@@ -1634,11 +1636,13 @@ export class VinusService {
         where: { userId: userRow.id },
       });
       if (!w0) return fail(99);
-      const newBal = w0.balance.plus(payout);
-      await tx.wallet.update({
-        where: { id: w0.id },
-        data: { balance: newBal },
-      });
+      const openRolling = await this.buckets.hasOpenRollingTx(tx, userRow.id);
+      const next = this.buckets.applySignedPayout(
+        pickBucketState(w0),
+        payout,
+        openRolling,
+      );
+      const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
       await tx.casinoVinusTx.create({
         data: {
           platformId,
@@ -2213,11 +2217,8 @@ export class VinusService {
           if (w0.balance.lt(amount)) {
             return fail(31, w0.balance);
           }
-          const newBal = w0.balance.minus(amount);
-          await tx.wallet.update({
-            where: { id: w0.id },
-            data: { balance: newBal },
-          });
+          const next = this.buckets.deductStake(pickBucketState(w0), amount);
+          const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
           await tx.casinoVinusTx.create({
             data: {
               platformId,
@@ -2326,11 +2327,17 @@ export class VinusService {
           if (w0.balance.lt(bet)) {
             return fail(31, w0.balance);
           }
-          const newBal = w0.balance.plus(net);
-          await tx.wallet.update({
-            where: { id: w0.id },
-            data: { balance: newBal },
-          });
+          const openRolling = await this.buckets.hasOpenRollingTx(
+            tx,
+            userRow!.id,
+          );
+          const next = this.buckets.applyBetAndWin(
+            pickBucketState(w0),
+            bet,
+            win,
+            openRolling,
+          );
+          const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
           await tx.casinoVinusTx.create({
             data: {
               platformId,
@@ -2481,11 +2488,16 @@ export class VinusService {
             where: { userId: userRow!.id },
           });
           if (!w0) return fail(99);
-          const newBal = w0.balance.plus(amount);
-          await tx.wallet.update({
-            where: { id: w0.id },
-            data: { balance: newBal },
-          });
+          const openRolling = await this.buckets.hasOpenRollingTx(
+            tx,
+            userRow!.id,
+          );
+          const next = this.buckets.creditWin(
+            pickBucketState(w0),
+            amount,
+            openRolling,
+          );
+          const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
           await tx.casinoVinusTx.create({
             data: {
               platformId,
@@ -2612,11 +2624,11 @@ export class VinusService {
           } else if (cur.kind === 'BET_WIN' && cur.stake && cur.payout) {
             delta = cur.payout.minus(cur.stake).negated();
           }
-          const newBal = w0.balance.plus(delta);
-          await tx.wallet.update({
-            where: { id: w0.id },
-            data: { balance: newBal },
-          });
+          const next = this.buckets.applyCancelOrRefundDelta(
+            pickBucketState(w0),
+            delta,
+          );
+          const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
           await tx.casinoVinusTx.update({
             where: { id: cur.id },
             data: { cancelledAt: new Date() },
@@ -2703,11 +2715,11 @@ export class VinusService {
           const refundAmt = openBet.stake!.lte(amount)
             ? openBet.stake!
             : amount;
-          const newBal = w0.balance.plus(refundAmt);
-          await tx.wallet.update({
-            where: { id: w0.id },
-            data: { balance: newBal },
-          });
+          const next = this.buckets.refundToLockedDeposit(
+            pickBucketState(w0),
+            refundAmt,
+          );
+          const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
           await tx.casinoVinusTx.update({
             where: { id: openBet.id },
             data: { refundedAt: new Date() },
@@ -2780,11 +2792,16 @@ export class VinusService {
             where: { userId: userRow!.id },
           });
           if (!w0) return fail(99);
-          const newBal = w0.balance.plus(amount);
-          await tx.wallet.update({
-            where: { id: w0.id },
-            data: { balance: newBal },
-          });
+          const openRolling = await this.buckets.hasOpenRollingTx(
+            tx,
+            userRow!.id,
+          );
+          const next = this.buckets.creditWin(
+            pickBucketState(w0),
+            amount,
+            openRolling,
+          );
+          const { balance: newBal } = await this.buckets.persist(tx, w0.id, next);
           await tx.casinoVinusTx.create({
             data: {
               platformId,

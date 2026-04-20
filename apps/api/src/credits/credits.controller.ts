@@ -39,10 +39,15 @@ export class CreditsController {
   listVendorDeposits(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('includeSimulation') includeSimulation?: string,
   ) {
+    const inc =
+      includeSimulation === '1' ||
+      includeSimulation?.toLowerCase() === 'true';
     return this.svc.listVendorDeposits(
       limit ? parseInt(limit, 10) : 50,
       offset ? parseInt(offset, 10) : 0,
+      inc,
     );
   }
 

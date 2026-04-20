@@ -6,6 +6,10 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
+import {
+  pickBucketState,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 function toDec(v: unknown): Prisma.Decimal | null {
   if (v === undefined || v === null) return null;
@@ -43,6 +47,7 @@ export class DepositEventsService {
   constructor(
     private prisma: PrismaService,
     private rolling: RollingObligationService,
+    private buckets: WalletBucketsService,
   ) {}
 
   /**
@@ -140,11 +145,8 @@ export class DepositEventsService {
     const { userId, platformId, bonus, ref, eventId } = params;
     const wallet = await tx.wallet.findUnique({ where: { userId } });
     if (!wallet) return;
-    const newBal = wallet.balance.plus(bonus);
-    await tx.wallet.update({
-      where: { id: wallet.id },
-      data: { balance: newBal },
-    });
+    const next = this.buckets.creditLockedDeposit(pickBucketState(wallet), bonus);
+    const { balance: newBal } = await this.buckets.persist(tx, wallet.id, next);
     await tx.ledgerEntry.create({
       data: {
         userId,

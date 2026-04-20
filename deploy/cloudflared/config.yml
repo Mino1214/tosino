@@ -3,15 +3,16 @@
 # ─────────────────────────────────────────────────────────────
 #
 # ── 도메인 → 서비스 매핑 ────────────────────────────────────
-#   apisgate.org           → API (NestJS :4001) + sms-ingest (:4050)
-#   mod.tozinosolution.com → super-admin   :3000
-#   mod.tozinosoltion.com  → super-admin   :3000
-#   tozinosolution.com     → super-admin   :3000
-#   user.i-on.bet          → solution-user :3002
-#   i-on.bet               → solution-user :3002
-#   www.i-on.bet           → solution-user :3002
-#   mod.i-on.bet           → solution-admin:3001
-#   agent.i-on.bet         → solution-agent:3003
+#   apisgate.org               → API (NestJS :4001) + sms-ingest (:4050)
+#   tozinosolution.com         → solution-main :3010   (공식 홍보/소개 사이트)
+#   www.tozinosolution.com     → solution-main :3010
+#   mod.tozinosolution.com     → super-admin   :3000   (마스터 총괄 어드민)
+#   mod.tozinosoltion.com      → super-admin   :3000   (오타 도메인 호환)
+#   user.i-on.bet              → solution-user :3002
+#   i-on.bet                   → solution-user :3002
+#   www.i-on.bet               → solution-user :3002
+#   mod.i-on.bet               → solution-admin:3001
+#   agent.i-on.bet             → solution-agent:3003
 # ─────────────────────────────────────────────────────────────
 
 tunnel: 50a78d10-c684-4f59-a74e-6385131744d1
@@ -35,15 +36,23 @@ ingress:
     service: http://localhost:4001
 
   # ══════════════════════════════════════════════════
-  # mod.tozinosolution.com — 슈퍼어드민 (super-admin :3000)
+  # tozinosolution.com — 공식 홍보/소개 사이트 (solution-main :3010)
+  #   ※ 루트/www 만 solution-main. 'mod.*' 서브도메인은 슈퍼어드민으로 간다.
+  # ══════════════════════════════════════════════════
+  - hostname: tozinosolution.com
+    service: http://localhost:3010
+
+  - hostname: www.tozinosolution.com
+    service: http://localhost:3010
+
+  # ══════════════════════════════════════════════════
+  # mod.tozinosolution.com — 마스터 총괄 어드민 (super-admin :3000)
   # ══════════════════════════════════════════════════
   - hostname: mod.tozinosolution.com
     service: http://localhost:3000
 
+  # 과거 오타 도메인 호환 (일부 북마크가 남아있어 유지)
   - hostname: mod.tozinosoltion.com
-    service: http://localhost:3000
-
-  - hostname: tozinosolution.com
     service: http://localhost:3000
 
   # ══════════════════════════════════════════════════

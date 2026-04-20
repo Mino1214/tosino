@@ -77,6 +77,17 @@ export function PlatformProvider({ children }: { children: React.ReactNode }) {
       }
       return;
     }
+    if (user?.role === "SUPER_ADMIN") {
+      if (typeof window === "undefined") return;
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved && list.some((p) => p.id === saved)) {
+        setSelectedPlatformIdState(saved);
+        return;
+      }
+      setSelectedPlatformIdState(null);
+      sessionStorage.removeItem(STORAGE_KEY);
+      return;
+    }
     if (typeof window === "undefined") return;
     const saved = sessionStorage.getItem(STORAGE_KEY);
     if (saved && list.some((p) => p.id === saved)) {

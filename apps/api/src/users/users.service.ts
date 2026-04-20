@@ -20,12 +20,18 @@ import {
 import { UpdateAgentCommissionDto } from './dto/update-agent-commission.dto';
 import { RateRevisionService } from '../rate-revision/rate-revision.service';
 import { normalizeLoginId } from '../common/login-id.util';
+import {
+  pickBucketState,
+  totalFromBuckets,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private prisma: PrismaService,
     private rateRevision: RateRevisionService,
+    private walletBuckets: WalletBucketsService,
   ) {}
 
   private async generateUniqueReferralCode(
@@ -106,6 +112,8 @@ export class UsersService {
         phone: true,
         bankAccountNumber: true,
         bankAccountHolder: true,
+        lastLoginAt: true,
+        lastLoginIp: true,
         referredBy: {
           select: {
             id: true,
@@ -177,6 +185,8 @@ export class UsersService {
         r.role === UserRole.MASTER_AGENT
           ? Math.round((effectiveMap.get(r.id) ?? 0) * 1e4) / 1e4
           : null,
+      lastLoginAt: r.lastLoginAt?.toISOString() ?? null,
+      lastLoginIp: r.lastLoginIp ?? null,
     }));
   }
 
@@ -249,6 +259,10 @@ export class UsersService {
           select: {
             balance: true,
             pointBalance: true,
+            lockedDeposit: true,
+            lockedWin: true,
+            compFree: true,
+            pointFree: true,
           },
         }),
         this.prisma.platform.findUnique({
@@ -334,14 +348,21 @@ export class UsersService {
       Math.max(0, Math.round(rawAchievementPct * 100) / 100),
     );
 
-    const balance = wallet?.balance ?? new Prisma.Decimal(0);
+    const wbuckets = pickBucketState({
+      lockedDeposit: wallet?.lockedDeposit ?? new Prisma.Decimal(0),
+      lockedWin: wallet?.lockedWin ?? new Prisma.Decimal(0),
+      compFree: wallet?.compFree ?? new Prisma.Decimal(0),
+      pointFree: wallet?.pointFree ?? new Prisma.Decimal(0),
+    });
+    const balance = wallet?.balance ?? totalFromBuckets(wbuckets);
     const pointBalance = wallet?.pointBalance ?? new Prisma.Decimal(0);
     const withdrawBlocked = remaining.gt(0);
     const usdtRate = this.getUsdtKrwRate();
-    const withdrawableKrw = withdrawBlocked ? new Prisma.Decimal(0) : balance;
-    const withdrawableUsdt = withdrawBlocked
-      ? new Prisma.Decimal(0)
-      : balance.div(usdtRate);
+    const withdrawableKrw = this.walletBuckets.withdrawableDisplay(
+      wbuckets,
+      withdrawBlocked,
+    );
+    const withdrawableUsdt = withdrawableKrw.div(usdtRate);
 
     const rules = this.readPointRules(platform?.pointRulesJson);
     const redeemKrwPerPoint =
@@ -389,6 +410,12 @@ export class UsersService {
       wallet: {
         balance: balance.toFixed(2),
         pointBalance: pointBalance.toFixed(2),
+        lockedDeposit: wbuckets.lockedDeposit.toFixed(2),
+        lockedWin: wbuckets.lockedWin.toFixed(2),
+        compFree: wbuckets.compFree.toFixed(2),
+        pointFree: wbuckets.pointFree.toFixed(2),
+        totalBalance: balance.toFixed(2),
+        withdrawableBalance: withdrawableKrw.toFixed(2),
         withdrawCurrency: target.signupMode === 'anonymous' ? 'USDT' : 'KRW',
         withdrawBlocked,
         withdrawableKrw: withdrawableKrw.toFixed(2),
@@ -1135,5 +1162,78 @@ export class UsersService {
         createdAt: r.createdAt,
       })),
     };
+  }
+
+  private static readonly hqRoleRank: Record<string, number> = {
+    PLATFORM_ADMIN: 0,
+    MASTER_AGENT: 1,
+    USER: 2,
+  };
+
+  /** 본사(HQ): 모든 솔루션 소속 계정 목록 — 등급(역할) 정렬 기본 */
+  async listAllForHq(
+    actor: JwtPayload,
+    opts: {
+      platformId?: string;
+      role?: UserRole;
+      sort?: 'role' | 'created';
+    },
+  ) {
+    if (actor.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException();
+    }
+    const where: Prisma.UserWhereInput = {
+      platformId: opts.platformId
+        ? opts.platformId
+        : { not: null },
+      ...(opts.role ? { role: opts.role } : {}),
+    };
+    const rows = await this.prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        loginId: true,
+        email: true,
+        role: true,
+        platformId: true,
+        parentUserId: true,
+        displayName: true,
+        createdAt: true,
+        registrationStatus: true,
+        referralCode: true,
+        isBlocked: true,
+        lastLoginAt: true,
+        lastLoginIp: true,
+        platform: { select: { id: true, slug: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 8000,
+    });
+    const sort = opts.sort ?? 'role';
+    const ranked = [...rows];
+    if (sort === 'role') {
+      ranked.sort((a, b) => {
+        const ra = UsersService.hqRoleRank[a.role] ?? 99;
+        const rb = UsersService.hqRoleRank[b.role] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return a.loginId.localeCompare(b.loginId);
+      });
+    }
+    return ranked.map((r) => ({
+      id: r.id,
+      loginId: r.loginId,
+      email: r.email,
+      role: r.role,
+      platformId: r.platformId,
+      platform: r.platform,
+      parentUserId: r.parentUserId,
+      displayName: r.displayName,
+      createdAt: r.createdAt.toISOString(),
+      registrationStatus: r.registrationStatus,
+      referralCode: r.referralCode,
+      isBlocked: r.isBlocked,
+      lastLoginAt: r.lastLoginAt?.toISOString() ?? null,
+      lastLoginIp: r.lastLoginIp ?? null,
+    }));
   }
 }

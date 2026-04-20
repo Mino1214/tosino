@@ -19,6 +19,8 @@ export default function LoginPage() {
     try {
       const loginPlatformId =
         process.env.NEXT_PUBLIC_LOGIN_PLATFORM_ID?.trim() || undefined;
+      const loginPlatformSlug =
+        process.env.NEXT_PUBLIC_LOGIN_PLATFORM_SLUG?.trim() || undefined;
       const data = await apiFetch<{
         accessToken: string;
         refreshToken: string;
@@ -36,7 +38,9 @@ export default function LoginPage() {
           password,
           ...(loginPlatformId
             ? { platformId: loginPlatformId }
-            : buildLoginPlatformBody(window.location.host)),
+            : loginPlatformSlug
+              ? { platformSlug: loginPlatformSlug }
+              : buildLoginPlatformBody(window.location.host)),
         }),
       });
       if (data.user.role !== "PLATFORM_ADMIN") {
@@ -70,6 +74,24 @@ export default function LoginPage() {
           </div>
           <h1 className="mt-4 text-[22px] font-bold text-black">Solution Admin</h1>
           <p className="mt-1 text-[14px] text-gray-500">운영에서 부여한 플랫폼 관리자 계정으로 로그인하세요</p>
+          <p className="mt-3 text-[12px] leading-relaxed text-gray-400">
+            데모(시드): <span className="font-mono text-gray-600">platform@tosino.local</span> /{" "}
+            <span className="font-mono text-gray-600">Admin123!</span>
+            <br />
+            <span className="text-gray-500">
+              회원·유저 데모 페이지가 없을 때는 솔루션 어드민만{" "}
+              <span className="font-mono">mod.i-on.bet</span> 등으로 접속해 동일 데모 플랫폼을 관리할 수 있습니다.
+            </span>
+            <br />
+            <a
+              href="https://i-on.bet"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-[#3182f6] hover:underline"
+            >
+              유저 사이트 (i-on.bet) 열기
+            </a>
+          </p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
           {error && (

@@ -14,6 +14,7 @@ import { WalletRequestsModule } from './wallet-requests/wallet-requests.module';
 import { MeModule } from './me/me.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { HealthController } from './health.controller';
+import { HqHealthController } from './hq-health.controller';
 import { AgentModule } from './agent/agent.module';
 import { AgentInquiriesModule } from './agent-inquiries/agent-inquiries.module';
 import { RateRevisionModule } from './rate-revision/rate-revision.module';
@@ -25,8 +26,9 @@ import { OddsApiWsModule } from './odds-api-ws/odds-api-ws.module';
 import { SemiVirtualModule } from './semi-virtual/semi-virtual.module';
 import { BlacklistModule } from './blacklist/blacklist.module';
 import { ReserveBalanceModule } from './reserve-balance/reserve-balance.module';
+import { IpAccessModule } from './ip-access/ip-access.module';
 @Module({
-  controllers: [HealthController],
+  controllers: [HealthController, HqHealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     BullModule.forRootAsync({
@@ -67,6 +69,7 @@ import { ReserveBalanceModule } from './reserve-balance/reserve-balance.module';
     SemiVirtualModule,
     BlacklistModule,
     ReserveBalanceModule,
+    IpAccessModule,
   ],
 })
 export class AppModule {}

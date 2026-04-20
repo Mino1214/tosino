@@ -650,6 +650,111 @@ async function ensureHostsOnPlatform(
   }
 }
 
+/**
+ * SEED_EXTRA_DEMO_COUNT=N (1~5) — 본 데모(demo) 외에 `demo-sat-1` … 플랫폼을 추가합니다.
+ * 각 솔루션: 도메인 `demo-sat-{i}.seed.local`, 플랫폼관리·총판·전용 회원 1명씩 (비밀번호 동일 DEMO_PASSWORD).
+ * 회원 loginId 는 `user-sat{i}@tosino.local` — 메인 데모 `user@tosino.local` 과 구분됩니다.
+ * 테스트 시나리오는 슈퍼어드민에서 플랫폼 선택 후 솔루션마다 실행하면 됩니다.
+ */
+async function seedExtraDemoPlatforms(passwordHash: string): Promise<void> {
+  const raw = Number.parseInt(process.env.SEED_EXTRA_DEMO_COUNT ?? '0', 10);
+  if (!Number.isFinite(raw) || raw < 1) return;
+  const cap = Math.min(raw, 5);
+  for (let i = 1; i <= cap; i++) {
+    const slug = `demo-sat-${i}`;
+    const name = `데모 솔루션 ${i}`;
+    const host = `demo-sat-${i}.seed.local`;
+    let p = await prisma.platform.findUnique({ where: { slug } });
+    if (!p) {
+      const portTaken = await prisma.platform.findFirst({
+        where: { previewPort: 3200 + i },
+      });
+      const previewPort = portTaken ? null : 3200 + i;
+      p = await prisma.platform.create({
+        data: {
+          slug,
+          name,
+          previewPort,
+          themeJson: {
+            primaryColor: '#6b7280',
+            logoUrl: null,
+            siteName: name,
+            bannerUrls: [],
+          },
+          flagsJson: { sports: true, casino: true },
+          integrationsJson: DEMO_INTEGRATIONS_JSON,
+          domains: { create: [{ host }] },
+        },
+      });
+      console.log(`Created satellite demo platform ${slug} (host ${host})`);
+    }
+    const paEmail = `platform-sat${i}@tosino.local`;
+    let pa = await prisma.user.findFirst({
+      where: { loginId: loginIdOf(paEmail), platformId: p.id },
+    });
+    if (!pa) {
+      pa = await prisma.user.create({
+        data: {
+          loginId: loginIdOf(paEmail),
+          email: paEmail,
+          passwordHash,
+          role: UserRole.PLATFORM_ADMIN,
+          platformId: p.id,
+          displayName: `위성 관리자 ${i}`,
+        },
+      });
+      await prisma.wallet.create({
+        data: { userId: pa.id, platformId: p.id, balance: 0 },
+      });
+      console.log(`  → PLATFORM_ADMIN ${paEmail}`);
+    }
+    const maEmail = `master-sat${i}@tosino.local`;
+    let ma = await prisma.user.findFirst({
+      where: { loginId: loginIdOf(maEmail), platformId: p.id },
+    });
+    if (!ma) {
+      ma = await prisma.user.create({
+        data: {
+          loginId: loginIdOf(maEmail),
+          email: maEmail,
+          passwordHash,
+          role: UserRole.MASTER_AGENT,
+          platformId: p.id,
+          displayName: `위성 총판 ${i}`,
+          referralCode: `DEMOSAT${i}K`,
+          agentPlatformSharePct: new Prisma.Decimal(35),
+        },
+      });
+      await prisma.wallet.create({
+        data: { userId: ma.id, platformId: p.id, balance: 0 },
+      });
+      console.log(`  → MASTER_AGENT ${maEmail} (추천 ${`DEMOSAT${i}K`})`);
+    }
+    const uEmail = `user-sat${i}@tosino.local`;
+    let demoUser = await prisma.user.findFirst({
+      where: { loginId: loginIdOf(uEmail), platformId: p.id },
+    });
+    if (!demoUser && ma) {
+      demoUser = await prisma.user.create({
+        data: {
+          loginId: loginIdOf(uEmail),
+          email: uEmail,
+          passwordHash,
+          role: UserRole.USER,
+          platformId: p.id,
+          parentUserId: ma.id,
+          displayName: `위성 데모 회원 ${i}`,
+          registrationStatus: RegistrationStatus.APPROVED,
+        },
+      });
+      await prisma.wallet.create({
+        data: { userId: demoUser.id, platformId: p.id, balance: 0 },
+      });
+      console.log(`  → USER ${uEmail} (전용 · 상위 ${maEmail})`);
+    }
+  }
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   const superEmail = 'super@tosino.local';
@@ -1096,6 +1201,13 @@ async function main() {
       parentUserId: ma2.id,
       displayName: '총판2소속회원',
     });
+  }
+
+  await seedExtraDemoPlatforms(passwordHash);
+  if (Number.parseInt(process.env.SEED_EXTRA_DEMO_COUNT ?? '0', 10) > 0) {
+    console.log(
+      '위성 데모 플랫폼이 추가되었습니다. 각각 `platform-satN@tosino.local` / `master-satN@tosino.local` (동일 비밀번호). 테스트 시나리오는 솔루션마다 실행하세요.',
+    );
   }
 
   console.log('');

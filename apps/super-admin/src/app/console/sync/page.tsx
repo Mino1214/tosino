@@ -31,11 +31,19 @@ function StatusBadge({ status, ms }: { status: PingStatus; ms: number | null }) 
 }
 
 export default function ConsoleSyncPage() {
-  const { platforms, selectedPlatformId, loading: platformLoading } = usePlatform();
+  const { platforms, loading: platformLoading } = usePlatform();
+  const [scopePlatformId, setScopePlatformId] = useState<string | null>(null);
   const [checks, setChecks] = useState<EndpointCheck[]>([]);
   const [running, setRunning] = useState(false);
 
-  const selected = platforms.find((p) => p.id === selectedPlatformId) ?? null;
+  useEffect(() => {
+    setScopePlatformId((prev) => {
+      if (prev && platforms.some((p) => p.id === prev)) return prev;
+      return platforms[0]?.id ?? null;
+    });
+  }, [platforms]);
+
+  const selected = platforms.find((p) => p.id === scopePlatformId) ?? null;
   const apiBase = getApiBase().replace(/\/$/, "");
 
 
@@ -137,12 +145,29 @@ export default function ConsoleSyncPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-500">System</p>
-          <h1 className="mt-1.5 text-2xl font-bold text-gray-900">헬스체크</h1>
-          <p className="mt-1 text-sm text-gray-500">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-gray-500 dark:text-zinc-500">System</p>
+          <h1 className="mt-1.5 text-2xl font-bold text-gray-900 dark:text-zinc-100">헬스체크</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-zinc-400">
             API 서버, 솔루션 사이트, 연동 API 정상 여부를 한 화면에서 확인합니다.
           </p>
+          <div className="mt-3 max-w-xs">
+            <label htmlFor="sync-platform" className="mb-1 block text-xs text-gray-500 dark:text-zinc-500">
+              솔루션 (어드민·유저 URL 검사용)
+            </label>
+            <select
+              id="sync-platform"
+              value={scopePlatformId ?? ""}
+              onChange={(e) => setScopePlatformId(e.target.value || null)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+            >
+              {platforms.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <button
           type="button"
@@ -207,10 +232,10 @@ export default function ConsoleSyncPage() {
         ))}
       </div>
 
-      {!selectedPlatformId && (
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4">
-          <p className="text-sm text-blue-700">
-            좌측에서 솔루션을 선택하면 해당 솔루션의 어드민·유저 사이트 헬스체크도 확인할 수 있습니다.
+      {!scopePlatformId && !platformLoading && (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900/50">
+          <p className="text-sm text-gray-600 dark:text-zinc-400">
+            등록된 솔루션이 없으면 어드민·유저 사이트 항목을 검사할 수 없습니다.
           </p>
         </div>
       )}

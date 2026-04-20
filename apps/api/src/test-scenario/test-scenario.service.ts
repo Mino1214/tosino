@@ -16,6 +16,11 @@ import { PointsService } from '../points/points.service';
 import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
 import { computeEffectiveAgentShares } from '../common/agent-commission.util';
 import { ReserveBalanceService } from '../reserve-balance/reserve-balance.service';
+import { derivePlatformBillingPctFromPolicy } from '../platforms/solution-rate-derive.util';
+import {
+  pickBucketState,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 const TAG = '[TEST]';
 const DEFAULT_PWD = 'Test1234!';
@@ -25,6 +30,38 @@ const USDT_DEPOSIT_FAIL = 49;    // 최소치 미달 시나리오
 const USDT_MIN_DEPOSIT = 50;
 const CASINO_ROUNDS = 8;
 const BET_UNIT_KRW = 20_000;     // 한 라운드 베팅금
+
+/** Step 2~7 에 쓰는 금액 묶음 (randomize 시 매 실행마다 새로 뽑음) */
+export interface ScenarioAmounts {
+  krwDeposit: number;
+  betUnit: number;
+  usdtOk: number;
+  usdtFail: number;
+  grantPoints: number;
+  /** 출금 신청 시 잔액 대비 비율 */
+  withdrawPct: number;
+}
+
+function drawScenarioAmounts(randomize: boolean): ScenarioAmounts {
+  if (!randomize) {
+    return {
+      krwDeposit: KRW_DEPOSIT,
+      betUnit: BET_UNIT_KRW,
+      usdtOk: USDT_DEPOSIT_OK,
+      usdtFail: USDT_DEPOSIT_FAIL,
+      grantPoints: 500,
+      withdrawPct: 0.8,
+    };
+  }
+  const round1k = (n: number) => Math.max(1_000, Math.round(n / 1000) * 1000);
+  const betUnit = round1k(BET_UNIT_KRW + (Math.random() * 28_000 - 8_000));
+  const krwDeposit = round1k(380_000 + Math.random() * 340_000);
+  const usdtOk = USDT_MIN_DEPOSIT + Math.floor(Math.random() * 31);
+  const usdtFail = 40 + Math.floor(Math.random() * (USDT_MIN_DEPOSIT - 40));
+  const grantPoints = 220 + Math.floor(Math.random() * 780);
+  const withdrawPct = 0.62 + Math.random() * 0.26;
+  return { krwDeposit, betUnit, usdtOk, usdtFail, grantPoints, withdrawPct };
+}
 
 export interface StepResult {
   step: number;
@@ -54,27 +91,32 @@ export interface ScenarioState {
   subAgents: { id: string; loginId: string; parentLoginId: string }[];
   krwUsers: { id: string; loginId: string; agentLoginId: string; betProfile?: BetProfile }[];
   usdtUsers: { id: string; loginId: string; wallet: string; betProfile?: BetProfile }[];
+  /** Step 1 직후 주입. Step 1 생략 시 없으면 고정 기본값 사용 */
+  scenarioAmounts?: ScenarioAmounts;
 }
 
-// loginId → betProfile 정적 매핑 (loadState 복원용)
+/**
+ * loginId → betProfile (loadState 복원용).
+ * 계정 ID는 aa / aaa / aaaa … , bb / bbb … 처럼 글자를 늘려 서로 안 겹치게 함.
+ */
 const LOGIN_PROFILE_MAP: Record<string, BetProfile> = {
-  'test_user_a1_1': 'winner_jackpot',
-  'test_user_a1_2': 'loser_extreme',
-  'test_user_a1_3': 'balanced',
-  'test_user_a2_1': 'winner_moderate',
-  'test_user_a2_2': 'loser_heavy',
-  'test_user_a2_3': 'loser_extreme',
-  'test_user_a2_4': 'winner_jackpot',
-  'test_user_b1_1': 'balanced',
-  'test_user_b1_2': 'loser_heavy',
-  'test_user_b1_3': 'winner_jackpot',
-  'test_user_b2_1': 'winner_moderate',
-  'test_user_b2_2': 'loser_extreme',
-  'test_user_b2_3': 'loser_heavy',
-  'test_user_b2_4': 'balanced',
-  'test_usdt_user_1': 'winner_moderate',
-  'test_usdt_user_2': 'loser_heavy',
-  'test_usdt_user_3_belowmin': 'balanced',
+  test_aaaaa: 'winner_jackpot',
+  test_aaaaaa: 'loser_extreme',
+  test_aaaaaaa: 'balanced',
+  test_aaaaaaaa: 'winner_moderate',
+  test_aaaaaaaaa: 'loser_heavy',
+  test_aaaaaaaaaa: 'loser_extreme',
+  test_aaaaaaaaaaa: 'winner_jackpot',
+  test_bbbbb: 'balanced',
+  test_bbbbbb: 'loser_heavy',
+  test_bbbbbbb: 'winner_jackpot',
+  test_bbbbbbbbb: 'winner_moderate',
+  test_bbbbbbbbbb: 'loser_extreme',
+  test_bbbbbbbbbbb: 'loser_heavy',
+  test_bbbbbbbbbbbb: 'balanced',
+  test_bbbbbbbbbbbbb: 'winner_moderate',
+  test_bbbbbbbbbbbbbb: 'loser_heavy',
+  test_bbbbbbbbbbbbbbb_belowmin: 'balanced',
 };
 
 // 프로필별 배팅 라운드 시나리오 (vertical + gameType 분류 포함)
@@ -157,7 +199,12 @@ export class TestScenarioService {
     private points: PointsService,
     private upbit: UpbitRateService,
     private reserve: ReserveBalanceService,
+    private buckets: WalletBucketsService,
   ) {}
+
+  private resolveAmounts(state: ScenarioState): ScenarioAmounts {
+    return state.scenarioAmounts ?? drawScenarioAmounts(false);
+  }
 
   // ─── 메인 진입점 ─────────────────────────────────────────
   async run(
@@ -165,11 +212,14 @@ export class TestScenarioService {
     toStep: number,
     platformId: string,
     currencies: ('KRW' | 'USDT')[],
+    randomize = true,
   ) {
     const results: StepResult[] = [];
     const start = Math.max(1, Math.min(9, fromStep));
     const end = Math.max(start, Math.min(9, toStep));
     const runStep = (n: number) => start <= n && n <= end;
+    const useRandomAmounts = randomize && runStep(1);
+    const scenarioAmounts = drawScenarioAmounts(useRandomAmounts);
 
     // STEP 1: 테스트 데이터 셋업
     let state: ScenarioState;
@@ -178,10 +228,12 @@ export class TestScenarioService {
       results.push(r);
       if (r.status === 'error') return { results, state: null };
       state = r.data as ScenarioState;
+      state.scenarioAmounts = scenarioAmounts;
     } else {
       const s = await this.loadState(platformId);
       if (!s) return { results: [{ step: 1, name: 'LOAD_STATE', status: 'error' as const, error: 'step 1 데이터가 없습니다. fromStep=1 부터 다시 실행하세요.' }], state: null };
       state = s;
+      state.scenarioAmounts = state.scenarioAmounts ?? drawScenarioAmounts(false);
     }
 
     const usersKrw = state.krwUsers;
@@ -205,7 +257,13 @@ export class TestScenarioService {
         ...(currencies.includes('KRW') ? usersKrw : []),
         ...(currencies.includes('USDT') ? usersUsdt : []),
       ];
-      results.push(await this.step4_casinoPlay(platformId, allUsers));
+      results.push(
+        await this.step4_casinoPlay(
+          platformId,
+          allUsers,
+          this.resolveAmounts(state).betUnit,
+        ),
+      );
     }
 
     // STEP 5: 롤링 충족 확인 + 추가 베팅
@@ -214,12 +272,12 @@ export class TestScenarioService {
         ...(currencies.includes('KRW') ? usersKrw : []),
         ...(currencies.includes('USDT') ? usersUsdt : []),
       ];
-      results.push(await this.step5_fulfillRolling(platformId, allUsers));
+      results.push(await this.step5_fulfillRolling(platformId, allUsers, state));
     }
 
     // STEP 6: 콤프 + 포인트 지급
     if (runStep(6)) {
-      results.push(await this.step6_compPoints(platformId));
+      results.push(await this.step6_compPoints(platformId, state));
     }
 
     // STEP 7: 출금 신청
@@ -249,7 +307,7 @@ export class TestScenarioService {
       results.push(await this.step10_creditSim(platformId));
     }
 
-    return { results, state };
+    return { results, state, scenarioAmounts: state.scenarioAmounts };
   }
 
   // ─── STEP 1: 셋업 ─────────────────────────────────────────
@@ -283,8 +341,8 @@ export class TestScenarioService {
       // ── 최상위 총판 2명 ──
       // 상위 총판은 플랫폼 GGR의 일정 %를 받음 (하위 총판에 split 후 순수익 = 상위% - 하위실효%)
       const topAgentDefs = [
-        { loginId: 'test_top_agent_a', name: `${TAG} 최상위총판A`, sharePct: 10 },
-        { loginId: 'test_top_agent_b', name: `${TAG} 최상위총판B`, sharePct: 8 },
+        { loginId: 'test_aa', name: `${TAG} 최상위총판A(aa)`, sharePct: 10 },
+        { loginId: 'test_bb', name: `${TAG} 최상위총판B(bb)`, sharePct: 8 },
       ];
 
       for (const def of topAgentDefs) {
@@ -300,12 +358,10 @@ export class TestScenarioService {
 
       // ── 각 최상위 총판의 하위 총판 ──
       const subAgentDefs = [
-        // 하위 split 30~40% 범위: 상위A(10%) × 40% = 하위 실효 4%, 상위 순수익 6%
-        { parentLoginId: 'test_top_agent_a', loginId: 'test_sub_agent_a1', name: `${TAG} 하위총판A-1`, splitPct: 40 },
-        { parentLoginId: 'test_top_agent_a', loginId: 'test_sub_agent_a2', name: `${TAG} 하위총판A-2`, splitPct: 35 },
-        // 상위B(8%) × 40% = 하위 실효 3.2%, 상위 순수익 4.8%
-        { parentLoginId: 'test_top_agent_b', loginId: 'test_sub_agent_b1', name: `${TAG} 하위총판B-1`, splitPct: 40 },
-        { parentLoginId: 'test_top_agent_b', loginId: 'test_sub_agent_b2', name: `${TAG} 하위총판B-2`, splitPct: 30 },
+        { parentLoginId: 'test_aa', loginId: 'test_aaa', name: `${TAG} 하위총판(aaa)`, splitPct: 40 },
+        { parentLoginId: 'test_aa', loginId: 'test_aaaa', name: `${TAG} 하위총판(aaaa)`, splitPct: 35 },
+        { parentLoginId: 'test_bb', loginId: 'test_bbb', name: `${TAG} 하위총판(bbb)`, splitPct: 40 },
+        { parentLoginId: 'test_bb', loginId: 'test_bbbb', name: `${TAG} 하위총판(bbbb)`, splitPct: 30 },
       ];
 
       for (const def of subAgentDefs) {
@@ -323,24 +379,20 @@ export class TestScenarioService {
 
       // ── KRW 유저 (하위총판별 3~4명, 프로필 다양화) ──
       const krwUserDefs: Array<{ agentLoginId: string; loginId: string; name: string; bankHolder: string; bankCode: string; bankNum: string; betProfile: BetProfile }> = [
-        // 하위총판 A-1: 대박유저 + 전패유저
-        { agentLoginId: 'test_sub_agent_a1', loginId: 'test_user_a1_1', name: `${TAG} 유저A1-1[대박]`, bankHolder: '김대박', bankCode: '4', bankNum: '123456789012', betProfile: 'winner_jackpot' },
-        { agentLoginId: 'test_sub_agent_a1', loginId: 'test_user_a1_2', name: `${TAG} 유저A1-2[전패]`, bankHolder: '이전패', bankCode: '41', bankNum: '110123456789', betProfile: 'loser_extreme' },
-        { agentLoginId: 'test_sub_agent_a1', loginId: 'test_user_a1_3', name: `${TAG} 유저A1-3[보통]`, bankHolder: '박보통', bankCode: '4', bankNum: '123456789099', betProfile: 'balanced' },
-        // 하위총판 A-2: 승리우세 + 대패 + 보통
-        { agentLoginId: 'test_sub_agent_a2', loginId: 'test_user_a2_1', name: `${TAG} 유저A2-1[승우세]`, bankHolder: '박승우', bankCode: '40', bankNum: '781234567890', betProfile: 'winner_moderate' },
-        { agentLoginId: 'test_sub_agent_a2', loginId: 'test_user_a2_2', name: `${TAG} 유저A2-2[대패]`, bankHolder: '정대패', bankCode: '43', bankNum: '333012345678', betProfile: 'loser_heavy' },
-        { agentLoginId: 'test_sub_agent_a2', loginId: 'test_user_a2_3', name: `${TAG} 유저A2-3[전패]`, bankHolder: '홍전패', bankCode: '8', bankNum: '302123456789', betProfile: 'loser_extreme' },
-        { agentLoginId: 'test_sub_agent_a2', loginId: 'test_user_a2_4', name: `${TAG} 유저A2-4[대박]`, bankHolder: '홍대박', bankCode: '8', bankNum: '302123456700', betProfile: 'winner_jackpot' },
-        // 하위총판 B-1: 보통 + 대패
-        { agentLoginId: 'test_sub_agent_b1', loginId: 'test_user_b1_1', name: `${TAG} 유저B1-1[보통]`, bankHolder: '최보통', bankCode: '10', bankNum: '1002123456789', betProfile: 'balanced' },
-        { agentLoginId: 'test_sub_agent_b1', loginId: 'test_user_b1_2', name: `${TAG} 유저B1-2[대패]`, bankHolder: '오대패', bankCode: '11', bankNum: '23704567890', betProfile: 'loser_heavy' },
-        { agentLoginId: 'test_sub_agent_b1', loginId: 'test_user_b1_3', name: `${TAG} 유저B1-3[대박]`, bankHolder: '오대박', bankCode: '11', bankNum: '23704567891', betProfile: 'winner_jackpot' },
-        // 하위총판 B-2: 승리우세 + 전패 + 보통
-        { agentLoginId: 'test_sub_agent_b2', loginId: 'test_user_b2_1', name: `${TAG} 유저B2-1[승우세]`, bankHolder: '강승우', bankCode: '3', bankNum: '00432123456789', betProfile: 'winner_moderate' },
-        { agentLoginId: 'test_sub_agent_b2', loginId: 'test_user_b2_2', name: `${TAG} 유저B2-2[전패]`, bankHolder: '윤전패', bankCode: '6', bankNum: '10301234567890', betProfile: 'loser_extreme' },
-        { agentLoginId: 'test_sub_agent_b2', loginId: 'test_user_b2_3', name: `${TAG} 유저B2-3[대패]`, bankHolder: '윤대패', bankCode: '6', bankNum: '10301234567891', betProfile: 'loser_heavy' },
-        { agentLoginId: 'test_sub_agent_b2', loginId: 'test_user_b2_4', name: `${TAG} 유저B2-4[보통]`, bankHolder: '이보통', bankCode: '20', bankNum: '10321234567890', betProfile: 'balanced' },
+        { agentLoginId: 'test_aaa', loginId: 'test_aaaaa', name: `${TAG} KRW(aaaaa)[대박]`, bankHolder: '김대박', bankCode: '4', bankNum: '123456789012', betProfile: 'winner_jackpot' },
+        { agentLoginId: 'test_aaa', loginId: 'test_aaaaaa', name: `${TAG} KRW(aaaaaa)[전패]`, bankHolder: '이전패', bankCode: '41', bankNum: '110123456789', betProfile: 'loser_extreme' },
+        { agentLoginId: 'test_aaa', loginId: 'test_aaaaaaa', name: `${TAG} KRW(aaaaaaa)[보통]`, bankHolder: '박보통', bankCode: '4', bankNum: '123456789099', betProfile: 'balanced' },
+        { agentLoginId: 'test_aaaa', loginId: 'test_aaaaaaaa', name: `${TAG} KRW(aaaaaaaa)[승우세]`, bankHolder: '박승우', bankCode: '40', bankNum: '781234567890', betProfile: 'winner_moderate' },
+        { agentLoginId: 'test_aaaa', loginId: 'test_aaaaaaaaa', name: `${TAG} KRW(aaaaaaaaa)[대패]`, bankHolder: '정대패', bankCode: '43', bankNum: '333012345678', betProfile: 'loser_heavy' },
+        { agentLoginId: 'test_aaaa', loginId: 'test_aaaaaaaaaa', name: `${TAG} KRW(aaaaaaaaaa)[전패]`, bankHolder: '홍전패', bankCode: '8', bankNum: '302123456789', betProfile: 'loser_extreme' },
+        { agentLoginId: 'test_aaaa', loginId: 'test_aaaaaaaaaaa', name: `${TAG} KRW(aaaaaaaaaaa)[대박]`, bankHolder: '홍대박', bankCode: '8', bankNum: '302123456700', betProfile: 'winner_jackpot' },
+        { agentLoginId: 'test_bbb', loginId: 'test_bbbbb', name: `${TAG} KRW(bbbbb)[보통]`, bankHolder: '최보통', bankCode: '10', bankNum: '1002123456789', betProfile: 'balanced' },
+        { agentLoginId: 'test_bbb', loginId: 'test_bbbbbb', name: `${TAG} KRW(bbbbbb)[대패]`, bankHolder: '오대패', bankCode: '11', bankNum: '23704567890', betProfile: 'loser_heavy' },
+        { agentLoginId: 'test_bbb', loginId: 'test_bbbbbbb', name: `${TAG} KRW(bbbbbbb)[대박]`, bankHolder: '오대박', bankCode: '11', bankNum: '23704567891', betProfile: 'winner_jackpot' },
+        { agentLoginId: 'test_bbbb', loginId: 'test_bbbbbbbbb', name: `${TAG} KRW(bbbbbbbbb)[승우세]`, bankHolder: '강승우', bankCode: '3', bankNum: '00432123456789', betProfile: 'winner_moderate' },
+        { agentLoginId: 'test_bbbb', loginId: 'test_bbbbbbbbbb', name: `${TAG} KRW(bbbbbbbbbb)[전패]`, bankHolder: '윤전패', bankCode: '6', bankNum: '10301234567890', betProfile: 'loser_extreme' },
+        { agentLoginId: 'test_bbbb', loginId: 'test_bbbbbbbbbbb', name: `${TAG} KRW(bbbbbbbbbb)[대패]`, bankHolder: '윤대패', bankCode: '6', bankNum: '10301234567891', betProfile: 'loser_heavy' },
+        { agentLoginId: 'test_bbbb', loginId: 'test_bbbbbbbbbbbb', name: `${TAG} KRW(bbbbbbbbbbb)[보통]`, bankHolder: '이보통', bankCode: '20', bankNum: '10321234567890', betProfile: 'balanced' },
       ];
 
       for (const def of krwUserDefs) {
@@ -360,9 +412,9 @@ export class TestScenarioService {
 
       // ── USDT(무기명) 유저 ──
       const usdtUserDefs: Array<{ agentLoginId: string; loginId: string; name: string; wallet: string; betProfile: BetProfile }> = [
-        { agentLoginId: 'test_sub_agent_a1', loginId: 'test_usdt_user_1', name: `${TAG} USDT유저1[승우세]`, wallet: 'TTestWallet111111111111111111111', betProfile: 'winner_moderate' },
-        { agentLoginId: 'test_sub_agent_b1', loginId: 'test_usdt_user_2', name: `${TAG} USDT유저2[대패]`, wallet: 'TTestWallet222222222222222222222', betProfile: 'loser_heavy' },
-        { agentLoginId: 'test_sub_agent_b2', loginId: 'test_usdt_user_3_belowmin', name: `${TAG} USDT유저3(최소미달)[보통]`, wallet: 'TTestWallet333333333333333333333', betProfile: 'balanced' },
+        { agentLoginId: 'test_aaa', loginId: 'test_bbbbbbbbbbbbb', name: `${TAG} USDT(b…)[승우세]`, wallet: 'TTestWallet111111111111111111111', betProfile: 'winner_moderate' },
+        { agentLoginId: 'test_bbb', loginId: 'test_bbbbbbbbbbbbbb', name: `${TAG} USDT(b…)[대패]`, wallet: 'TTestWallet222222222222222222222', betProfile: 'loser_heavy' },
+        { agentLoginId: 'test_bbbb', loginId: 'test_bbbbbbbbbbbbbbb_belowmin', name: `${TAG} USDT(최소미달)[보통]`, wallet: 'TTestWallet333333333333333333333', betProfile: 'balanced' },
       ];
 
       for (const def of usdtUserDefs) {
@@ -384,7 +436,7 @@ export class TestScenarioService {
         step: 1, name: 'SETUP', status: 'ok',
         data: {
           ...created,
-          summary: `최상위총판 ${created.topAgents.length}명, 하위총판 ${created.subAgents.length}명, KRW유저 ${created.krwUsers.length}명, USDT유저 ${created.usdtUsers.length}명 생성`,
+          summary: `최상위총판 ${created.topAgents.length}명, 하위총판 ${created.subAgents.length}명, KRW유저 ${created.krwUsers.length}명, USDT유저 ${created.usdtUsers.length}명 생성 (이후 스텝 금액은 run()에서 주입)`,
           defaultPassword: DEFAULT_PWD,
         },
       };
@@ -397,7 +449,7 @@ export class TestScenarioService {
   private async step2_krwDepositRequests(state: ScenarioState): Promise<StepResult> {
     try {
       const requests: unknown[] = [];
-      const adminActor = this.makeAdminActor(state.platformId);
+      const krwDeposit = this.resolveAmounts(state).krwDeposit;
 
       for (const u of state.krwUsers) {
         // 이미 PENDING 있으면 스킵
@@ -412,15 +464,15 @@ export class TestScenarioService {
             userId: u.id,
             type: WalletRequestType.DEPOSIT,
             currency: 'KRW',
-            amount: KRW_DEPOSIT,
+            amount: krwDeposit,
             status: WalletRequestStatus.PENDING,
             depositorName: (await this.prisma.user.findUnique({ where: { id: u.id }, select: { bankAccountHolder: true } }))?.bankAccountHolder ?? '테스트',
             note: `${TAG} 테스트 입금신청`,
           },
         });
-        requests.push({ userId: u.id, loginId: u.loginId, requestId: req.id, amount: KRW_DEPOSIT });
+        requests.push({ userId: u.id, loginId: u.loginId, requestId: req.id, amount: krwDeposit });
       }
-      return { step: 2, name: 'KRW_DEPOSIT_REQUEST', status: 'ok', data: { count: requests.length, requests } };
+      return { step: 2, name: 'KRW_DEPOSIT_REQUEST', status: 'ok', data: { count: requests.length, requests, krwDepositPerUser: krwDeposit } };
     } catch (e) {
       return { step: 2, name: 'KRW_DEPOSIT_REQUEST', status: 'error', error: String(e) };
     }
@@ -429,6 +481,7 @@ export class TestScenarioService {
   // ─── STEP 2b: USDT 입금 시뮬레이션 ────────────────────────
   private async step2_usdtDepositSimulate(state: ScenarioState): Promise<StepResult> {
     try {
+      const { usdtOk, usdtFail } = this.resolveAmounts(state);
       const platform = await this.prisma.platform.findUnique({ where: { id: state.platformId }, select: { settlementUsdtWallet: true } });
       const toAddr = platform?.settlementUsdtWallet ?? 'TSettlementWalletAddress000000000';
       const rate = await this.upbit.getKrwPerUsdt();
@@ -436,7 +489,7 @@ export class TestScenarioService {
 
       for (const u of state.usdtUsers) {
         const isBelowMin = u.loginId.includes('belowmin');
-        const usdtAmt = isBelowMin ? USDT_DEPOSIT_FAIL : USDT_DEPOSIT_OK;
+        const usdtAmt = isBelowMin ? usdtFail : usdtOk;
         const krwAmt = new Prisma.Decimal(usdtAmt).times(rate);
         const txHash = `TEST_TX_${u.loginId}_${Date.now()}`;
 
@@ -459,7 +512,7 @@ export class TestScenarioService {
         });
         txs.push({ userId: u.id, loginId: u.loginId, txHash: tx.txHash, usdtAmt, isbelowMin: isBelowMin, status: tx.status });
       }
-      return { step: 2, name: 'USDT_DEPOSIT_SIMULATE', status: 'ok', data: { count: txs.length, txs, note: 'belowmin 유저는 최소입금 미달 → PENDING 상태, 관리자가 수동 처리해야 함' } };
+      return { step: 2, name: 'USDT_DEPOSIT_SIMULATE', status: 'ok', data: { count: txs.length, txs, usdtOk, usdtFail, note: 'belowmin 유저는 최소입금 미달 → PENDING 상태, 관리자가 수동 처리해야 함' } };
     } catch (e) {
       return { step: 2, name: 'USDT_DEPOSIT_SIMULATE', status: 'error', error: String(e) };
     }
@@ -521,11 +574,16 @@ export class TestScenarioService {
         if (!wallet) continue;
 
         const krwCredit = tx.krwAmount;
-        const newBal = wallet.balance.plus(krwCredit);
         const ref = `usdt:${tx.txHash}`;
 
+        let newBal = wallet.balance;
         await this.prisma.$transaction(async (txn) => {
-          await txn.wallet.update({ where: { id: wallet.id }, data: { balance: newBal } });
+          const next = this.buckets.creditLockedDeposit(
+            pickBucketState(wallet),
+            krwCredit,
+          );
+          const persisted = await this.buckets.persist(txn, wallet.id, next);
+          newBal = persisted.balance;
           await txn.ledgerEntry.create({
             data: { platformId, userId: tx.userId!, type: LedgerEntryType.DEPOSIT, amount: krwCredit, balanceAfter: newBal, reference: ref, metaJson: { note: `USDT ${tx.usdtAmount} 업비트환율 자동크레딧 ${TAG}` } },
           });
@@ -558,7 +616,11 @@ export class TestScenarioService {
   }
 
   // ─── STEP 4: 카지노 플레이 시뮬레이션 ─────────────────────
-  private async step4_casinoPlay(platformId: string, users: { id: string; loginId: string; betProfile?: BetProfile }[]): Promise<StepResult> {
+  private async step4_casinoPlay(
+    platformId: string,
+    users: { id: string; loginId: string; betProfile?: BetProfile }[],
+    betUnitKrw: number,
+  ): Promise<StepResult> {
     try {
       const summary: unknown[] = [];
 
@@ -570,7 +632,7 @@ export class TestScenarioService {
         }
 
         // 유저별 배팅 프로필 적용
-        const rounds = getBetRounds(u.betProfile ?? 'balanced', BET_UNIT_KRW);
+        const rounds = getBetRounds(u.betProfile ?? 'balanced', betUnitKrw);
 
         let balance = wallet.balance;
         const userRounds: unknown[] = [];
@@ -586,9 +648,17 @@ export class TestScenarioService {
           const ref = `bet:${TAG}:${u.loginId}:r${i + 1}:${Date.now()}`;
 
           await this.prisma.$transaction(async (txn) => {
-            // BET: 차감
-            balance = balance.minus(stake);
-            await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
+            const wNow = await txn.wallet.findUnique({ where: { id: wallet.id } });
+            if (!wNow) return;
+            const openRolling = await this.buckets.hasOpenRollingTx(txn, u.id);
+            let b = pickBucketState(wNow);
+            b = this.buckets.deductStake(b, stake);
+            let { balance: balAfterBet } = await this.buckets.persist(
+              txn,
+              wallet.id,
+              b,
+            );
+            balance = balAfterBet;
             await txn.ledgerEntry.create({
               data: {
                 platformId,
@@ -607,10 +677,10 @@ export class TestScenarioService {
               },
             });
 
-            // WIN: 지급
             if (didWin) {
-              balance = balance.plus(winAmt);
-              await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
+              b = this.buckets.creditWin(b, winAmt, openRolling);
+              const persisted = await this.buckets.persist(txn, wallet.id, b);
+              balance = persisted.balance;
               await txn.ledgerEntry.create({
                 data: {
                   platformId,
@@ -647,16 +717,21 @@ export class TestScenarioService {
         summary.push({ userId: u.id, loginId: u.loginId, betProfile: u.betProfile ?? 'balanced', rounds: userRounds, finalBalance: balance.toFixed(2) });
       }
 
-      return { step: 4, name: 'CASINO_PLAY', status: 'ok', data: { users: summary } };
+      return { step: 4, name: 'CASINO_PLAY', status: 'ok', data: { users: summary, betUnitKrw } };
     } catch (e) {
       return { step: 4, name: 'CASINO_PLAY', status: 'error', error: String(e) };
     }
   }
 
   // ─── STEP 5: 롤링 충족 ────────────────────────────────────
-  private async step5_fulfillRolling(platformId: string, users: { id: string; loginId: string; betProfile?: BetProfile }[]): Promise<StepResult> {
+  private async step5_fulfillRolling(
+    platformId: string,
+    users: { id: string; loginId: string; betProfile?: BetProfile }[],
+    state: ScenarioState,
+  ): Promise<StepResult> {
     try {
       const results: unknown[] = [];
+      const { krwDeposit, betUnit } = this.resolveAmounts(state);
 
       for (const u of users) {
         const summary = await this.rolling.getSummaryForUser(u.id);
@@ -679,7 +754,7 @@ export class TestScenarioService {
 
         let balance = wallet.balance;
         // 최소 보호 잔액: 입금액의 30% (잔액이 여기까지 줄면 롤링 중단)
-        const minBuffer = new Prisma.Decimal(KRW_DEPOSIT).times(0.3);
+        const minBuffer = new Prisma.Decimal(krwDeposit).times(0.3);
         let toFulfill = remaining;
         const extraRounds: unknown[] = [];
         let roundNum = 0;
@@ -687,14 +762,23 @@ export class TestScenarioService {
         while (toFulfill.gt(0) && balance.gt(minBuffer)) {
           roundNum++;
           const usable = balance.minus(minBuffer);
-          const stake = Prisma.Decimal.min(toFulfill, new Prisma.Decimal(BET_UNIT_KRW), usable);
+          const stake = Prisma.Decimal.min(toFulfill, new Prisma.Decimal(betUnit), usable);
           const didWin = roundNum % 3 === 0; // 3번에 1번 승리
           const winAmt = didWin ? stake.times(1.9) : new Prisma.Decimal(0);
           const ref = `roll:${TAG}:${u.loginId}:r${roundNum}:${Date.now()}`;
 
           await this.prisma.$transaction(async (txn) => {
-            balance = balance.minus(stake);
-            await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
+            const wNow = await txn.wallet.findUnique({ where: { id: wallet.id } });
+            if (!wNow) return;
+            const openRolling = await this.buckets.hasOpenRollingTx(txn, u.id);
+            let b = pickBucketState(wNow);
+            b = this.buckets.deductStake(b, stake);
+            let { balance: balAfterBet } = await this.buckets.persist(
+              txn,
+              wallet.id,
+              b,
+            );
+            balance = balAfterBet;
             await txn.ledgerEntry.create({
               data: {
                 platformId,
@@ -712,8 +796,9 @@ export class TestScenarioService {
             });
 
             if (didWin) {
-              balance = balance.plus(winAmt);
-              await txn.wallet.update({ where: { id: wallet.id }, data: { balance } });
+              b = this.buckets.creditWin(b, winAmt, openRolling);
+              const persisted = await this.buckets.persist(txn, wallet.id, b);
+              balance = persisted.balance;
               await txn.ledgerEntry.create({
                 data: {
                   platformId,
@@ -754,10 +839,10 @@ export class TestScenarioService {
   }
 
   // ─── STEP 6: 콤프 + 포인트 지급 ──────────────────────────
-  private async step6_compPoints(platformId: string): Promise<StepResult> {
+  private async step6_compPoints(platformId: string, state: ScenarioState): Promise<StepResult> {
     try {
-      // 플랫폼 전체 유저에게 일괄 포인트 지급 (테스트용 500포인트)
-      await this.points.grantAllForPlatform(platformId, 500, `${TAG} 테스트 일괄 포인트 지급`);
+      const grantPoints = this.resolveAmounts(state).grantPoints;
+      await this.points.grantAllForPlatform(platformId, grantPoints, `${TAG} 테스트 일괄 포인트 지급`);
 
       const users = await this.prisma.user.findMany({
         where: { platformId, role: UserRole.USER, registrationStatus: RegistrationStatus.APPROVED, loginId: { startsWith: 'test_' } },
@@ -770,7 +855,7 @@ export class TestScenarioService {
         balance: u.wallet?.balance ?? '0',
       }));
 
-      return { step: 6, name: 'COMP_POINTS', status: 'ok', data: { grantedPoints: 500, users: data } };
+      return { step: 6, name: 'COMP_POINTS', status: 'ok', data: { grantedPoints: grantPoints, users: data } };
     } catch (e) {
       return { step: 6, name: 'COMP_POINTS', status: 'error', error: String(e) };
     }
@@ -780,6 +865,7 @@ export class TestScenarioService {
   private async step7_withdrawalRequests(state: ScenarioState, users: { id: string; loginId: string; betProfile?: BetProfile }[]): Promise<StepResult> {
     try {
       const requests: unknown[] = [];
+      const usdtKrwRate = await this.upbit.getKrwPerUsdt();
 
       for (const u of users) {
         const wallet = await this.prisma.wallet.findUnique({ where: { userId: u.id } });
@@ -804,21 +890,33 @@ export class TestScenarioService {
         const user = await this.prisma.user.findUnique({ where: { id: u.id }, select: { signupMode: true, bankCode: true, bankAccountNumber: true, bankAccountHolder: true, usdtWalletAddress: true } });
         const isAnonymous = user?.signupMode === 'anonymous';
 
-        // 출금 가능 금액 = 잔액의 80% (일부 수수료 가정)
-        const withdrawAmt = wallet.balance.times(0.8).toDecimalPlaces(0);
+        const pct = this.resolveAmounts(state).withdrawPct;
+        const withdrawKrw = wallet.balance.times(pct).toDecimalPlaces(0);
+        const currency = isAnonymous ? 'USDT' : 'KRW';
+        const amount = isAnonymous
+          ? withdrawKrw.div(usdtKrwRate).toDecimalPlaces(6)
+          : withdrawKrw;
 
         const req = await this.prisma.walletRequest.create({
           data: {
             platformId: state.platformId,
             userId: u.id,
             type: WalletRequestType.WITHDRAWAL,
-            currency: isAnonymous ? 'USDT' : 'KRW',
-            amount: withdrawAmt,
+            currency,
+            amount,
             status: WalletRequestStatus.PENDING,
             note: `${TAG} 테스트 출금신청`,
           },
         });
-        requests.push({ userId: u.id, loginId: u.loginId, requestId: req.id, amount: withdrawAmt.toFixed(2), currency: req.currency });
+        requests.push({
+          userId: u.id,
+          loginId: u.loginId,
+          requestId: req.id,
+          amount: amount.toFixed(isAnonymous ? 6 : 2),
+          currency: req.currency,
+          withdrawKrw: withdrawKrw.toFixed(0),
+          usdtKrwRate: usdtKrwRate.toFixed(2),
+        });
       }
       return { step: 7, name: 'WITHDRAWAL_REQUEST', status: 'ok', data: { count: requests.length, requests } };
     } catch (e) {
@@ -843,8 +941,14 @@ export class TestScenarioService {
 
         try {
           const result = await this.walletRequests.approve(platformId, req.id, adminActor, `${TAG} 테스트 출금승인`);
-          const krwAmt = new Prisma.Decimal(req.amount);
-          const usdtEquivalent = krwAmt.div(rate).toDecimalPlaces(4);
+          const krwAmt =
+            req.currency === 'USDT'
+              ? new Prisma.Decimal(req.amount).times(rate)
+              : new Prisma.Decimal(req.amount);
+          const usdtEquivalent =
+            req.currency === 'USDT'
+              ? new Prisma.Decimal(req.amount)
+              : krwAmt.div(rate).toDecimalPlaces(4);
 
           approved.push({
             requestId: req.id,
@@ -1009,7 +1113,9 @@ export class TestScenarioService {
       const flags = (platform.flagsJson ?? {}) as Record<string, unknown>;
       const ratePolicy = (flags.solutionRatePolicy ?? {}) as Record<string, unknown>;
       const upstreamPct = Number(ratePolicy.upstreamCasinoPct ?? 0);
-      const platformPct = Number(ratePolicy.platformCasinoPct ?? 0);
+      const platformPct = Number(
+        derivePlatformBillingPctFromPolicy(ratePolicy, 'casino'),
+      );
       if (upstreamPct === 0 && platformPct === 0) {
         return {
           step: 10,
@@ -1459,7 +1565,17 @@ export class TestScenarioService {
       await this.prisma.ledgerEntry.deleteMany({ where: { userId: agent.id } });
       const existingWallet = await this.prisma.wallet.findUnique({ where: { userId: agent.id } });
       if (existingWallet) {
-        await this.prisma.wallet.update({ where: { id: existingWallet.id }, data: { balance: new Prisma.Decimal(0), pointBalance: new Prisma.Decimal(0) } });
+        await this.prisma.wallet.update({
+          where: { id: existingWallet.id },
+          data: {
+            balance: new Prisma.Decimal(0),
+            lockedDeposit: new Prisma.Decimal(0),
+            lockedWin: new Prisma.Decimal(0),
+            compFree: new Prisma.Decimal(0),
+            pointFree: new Prisma.Decimal(0),
+            pointBalance: new Prisma.Decimal(0),
+          },
+        });
       } else {
         await this.prisma.wallet.create({ data: { userId: agent.id, platformId, balance: new Prisma.Decimal(0), pointBalance: new Prisma.Decimal(0) } });
       }
@@ -1504,7 +1620,17 @@ export class TestScenarioService {
       // 지갑 잔액 리셋
       const existingWallet = await this.prisma.wallet.findUnique({ where: { userId: user.id } });
       if (existingWallet) {
-        await this.prisma.wallet.update({ where: { id: existingWallet.id }, data: { balance: new Prisma.Decimal(0), pointBalance: new Prisma.Decimal(0) } });
+        await this.prisma.wallet.update({
+          where: { id: existingWallet.id },
+          data: {
+            balance: new Prisma.Decimal(0),
+            lockedDeposit: new Prisma.Decimal(0),
+            lockedWin: new Prisma.Decimal(0),
+            compFree: new Prisma.Decimal(0),
+            pointFree: new Prisma.Decimal(0),
+            pointBalance: new Prisma.Decimal(0),
+          },
+        });
       } else {
         await this.prisma.wallet.create({ data: { userId: user.id, platformId, balance: new Prisma.Decimal(0), pointBalance: new Prisma.Decimal(0) } });
       }
@@ -1887,8 +2013,20 @@ export class TestScenarioService {
             : agentWallet.balance.negated();
         }
 
-        const newBal = agentWallet.balance.plus(agentDelta);
-        await tx.wallet.update({ where: { id: agentWallet.id }, data: { balance: newBal } });
+        const awb = pickBucketState(agentWallet);
+        let nextAgent;
+        if (agentDelta.gt(0)) {
+          nextAgent = this.buckets.creditLockedDeposit(awb, agentDelta);
+        } else {
+          const take = agentDelta.abs();
+          this.buckets.assertSufficientTotal(awb, take);
+          nextAgent = this.buckets.applyWithdraw(awb, take);
+        }
+        const { balance: newBal } = await this.buckets.persist(
+          tx,
+          agentWallet.id,
+          nextAgent,
+        );
         await tx.ledgerEntry.create({
           data: {
             userId: agentId,
@@ -1937,6 +2075,11 @@ export class TestScenarioService {
     await this.prisma.rollingObligation.deleteMany({ where: { userId: { in: ids } } });
     await this.prisma.ledgerEntry.deleteMany({ where: { userId: { in: ids } } });
     await this.prisma.pointLedgerEntry.deleteMany({ where: { userId: { in: ids } } });
+    await this.prisma.pointRedeemLog.deleteMany({ where: { userId: { in: ids } } });
+    await this.prisma.compSettlementLedgerLog.deleteMany({
+      where: { userId: { in: ids } },
+    });
+    await this.prisma.walletTransaction.deleteMany({ where: { userId: { in: ids } } });
     await this.prisma.wallet.deleteMany({ where: { userId: { in: ids } } });
     await this.prisma.agentCommissionRevision.deleteMany({ where: { userId: { in: ids } } });
     await this.prisma.rollingRateRevision.deleteMany({ where: { userId: { in: ids } } });

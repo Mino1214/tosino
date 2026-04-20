@@ -20,6 +20,10 @@ import { DepositEventsService } from '../deposit-events/deposit-events.service';
 import { PointsService } from '../points/points.service';
 import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
 import { computeEffectiveAgentShares } from '../common/agent-commission.util';
+import {
+  pickBucketState,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 @Injectable()
 export class WalletRequestsService {
@@ -29,6 +33,7 @@ export class WalletRequestsService {
     private depositEvents: DepositEventsService,
     private points: PointsService,
     private upbit: UpbitRateService,
+    private buckets: WalletBucketsService,
   ) {}
 
   private async getUsdtKrwRate(): Promise<Prisma.Decimal> {
@@ -369,12 +374,16 @@ export class WalletRequestsService {
       } else {
         delta = walletDeltaBase.negated();
       }
-      const newBal = wallet.balance.plus(delta);
+      const wb = pickBucketState(wallet);
+      let nextBuckets;
+      if (req.type === WalletRequestType.DEPOSIT) {
+        nextBuckets = this.buckets.creditLockedDeposit(wb, walletDeltaBase);
+      } else {
+        this.buckets.assertSufficientTotal(wb, walletDeltaBase);
+        nextBuckets = this.buckets.applyWithdraw(wb, walletDeltaBase);
+      }
+      const { balance: newBal } = await this.buckets.persist(tx, wallet.id, nextBuckets);
       if (newBal.lt(0)) throw new BadRequestException('Insufficient balance');
-      await tx.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: newBal },
-      });
       await tx.ledgerEntry.create({
         data: {
           userId: req.userId,
@@ -511,8 +520,20 @@ export class WalletRequestsService {
             : agentWallet.balance.negated();
         }
 
-        const newAgentBal = agentWallet.balance.plus(agentDelta);
-        await tx.wallet.update({ where: { id: agentWallet.id }, data: { balance: newAgentBal } });
+        const awb = pickBucketState(agentWallet);
+        let nextAgent;
+        if (agentDelta.gt(0)) {
+          nextAgent = this.buckets.creditLockedDeposit(awb, agentDelta);
+        } else {
+          const take = agentDelta.abs();
+          this.buckets.assertSufficientTotal(awb, take);
+          nextAgent = this.buckets.applyWithdraw(awb, take);
+        }
+        const { balance: newAgentBal } = await this.buckets.persist(
+          tx,
+          agentWallet.id,
+          nextAgent,
+        );
         await tx.ledgerEntry.create({
           data: {
             userId: agentId,

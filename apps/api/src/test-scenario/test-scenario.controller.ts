@@ -34,13 +34,16 @@ export class TestScenarioController {
       toStep?: number;
       platformId: string;
       currencies?: ('KRW' | 'USDT')[];
+      /** false면 예전과 동일한 고정 입금·베팅 단위(재현용). 기본 true = 실행마다 금액 변동 */
+      randomize?: boolean;
     },
   ) {
     this.assertAdmin(user);
     const fromStep = Math.max(1, Math.min(9, dto.fromStep ?? 1));
     const toStep = Math.max(fromStep, Math.min(9, dto.toStep ?? 9));
     const currencies = dto.currencies ?? ['KRW', 'USDT'];
-    return this.svc.run(fromStep, toStep, dto.platformId, currencies);
+    const randomize = dto.randomize !== false;
+    return this.svc.run(fromStep, toStep, dto.platformId, currencies, randomize);
   }
 
   /**

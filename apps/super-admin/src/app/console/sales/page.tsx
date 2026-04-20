@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
@@ -188,6 +189,20 @@ function dt(s: string) {
 function vertLabel(v: string) {
   return { casino: "🎰 카지노", sports: "⚽ 스포츠", minigame: "🕹️ 미니게임", slot: "🎰 슬롯" }[v] ?? v;
 }
+function ledgerRowVisuals(type: string, amountStr: string) {
+  const amt = Number(amountStr);
+  const isWin = type === "WIN";
+  const positive = amt > 0;
+  const negative = amt < 0;
+  const label = isWin ? "WIN" : positive ? "정산" : "BET";
+  const badgeClass = positive
+    ? "bg-emerald-400/10 text-[#3182f6]"
+    : negative
+      ? "bg-red-400/10 text-red-400"
+      : "bg-gray-200/80 text-gray-600";
+  const amtClass = positive ? "text-[#3182f6]" : negative ? "text-red-400" : "text-gray-500";
+  return { label, badgeClass, amtClass, amtPrefix: positive ? "+" : "", amt };
+}
 function ggrColor(v: string | number) {
   const n = Number(v);
   return n > 0 ? "text-[#3182f6]" : n < 0 ? "text-red-400" : "text-gray-500";
@@ -207,9 +222,57 @@ function compCycleLabel(
 
 type InnerTab = "summary" | "agents" | "ledger" | "solution";
 
-export default function SalesPage() {
-  const { selectedPlatformId } = usePlatform();
+type HqPortfolioRow = {
+  platformId: string;
+  name: string;
+  slug: string;
+  loadError: string | null;
+  depositTotal?: string | null;
+  withdrawTotal?: string | null;
+  houseEdge?: string | null;
+  topAgentSettlement?: string | null;
+  cashNet?: string | null;
+  upstreamCost?: string | null;
+  solutionMargin?: string | null;
+};
+
+type HqPortfolioResponse = {
+  totals: {
+    solutionsTotal: number;
+    solutionsWithMetrics: number;
+    depositTotal: string;
+    withdrawTotal: string;
+    houseEdge: string;
+    topAgentSettlement: string;
+    cashNet: string;
+    upstreamCost: string;
+    solutionMargin: string;
+  };
+  rows: HqPortfolioRow[];
+};
+
+function SalesPageBody() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { platforms } = usePlatform();
   const isSuperAdmin = getStoredUser()?.role === "SUPER_ADMIN";
+
+  const platformFromUrl = searchParams.get("platform");
+  const viewPid = useMemo(() => {
+    if (!platformFromUrl) return null;
+    return platforms.some((p) => p.id === platformFromUrl) ? platformFromUrl : null;
+  }, [platformFromUrl, platforms]);
+
+  const setViewPlatform = useCallback(
+    (id: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (id) params.set("platform", id);
+      else params.delete("platform");
+      const qs = params.toString();
+      router.replace(qs ? `/console/sales?${qs}` : "/console/sales", { scroll: false });
+    },
+    [router, searchParams],
+  );
 
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = today.slice(0, 7) + "-01";
@@ -233,20 +296,44 @@ export default function SalesPage() {
   const [msg, setMsg] = useState<string | null>(null);
   // 에이전트 트리 펼침 상태 (agentId 집합)
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const [ledgerOrder, setLedgerOrder] = useState<"asc" | "desc">("asc");
+  const [portfolio, setPortfolio] = useState<HqPortfolioResponse | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+
+  const loadPortfolio = useCallback(async () => {
+    if (viewPid || !isSuperAdmin) {
+      setPortfolio(null);
+      return;
+    }
+    setPortfolioLoading(true);
+    setErr(null);
+    const q = `from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`;
+    try {
+      const data = await apiFetch<HqPortfolioResponse>(`/platforms/hq/portfolio-summary?${q}`);
+      setPortfolio(data);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "전체 요약 조회 실패");
+      setPortfolio(null);
+    } finally {
+      setPortfolioLoading(false);
+    }
+  }, [viewPid, from, to, isSuperAdmin]);
 
   const load = useCallback(async () => {
-    if (!selectedPlatformId) return;
+    if (!viewPid) return;
     setLoading(true);
     setErr(null);
     const q = `from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z`;
     try {
       const [s, a, l, billing] = await Promise.all([
-        apiFetch<Summary>(`/platforms/${selectedPlatformId}/sales/summary?${q}`),
-        apiFetch<AgentRow[]>(`/platforms/${selectedPlatformId}/sales/agents?${q}`),
-        apiFetch<LedgerRow[]>(`/platforms/${selectedPlatformId}/sales/ledger?${q}&limit=200`),
+        apiFetch<Summary>(`/platforms/${viewPid}/sales/summary?${q}`),
+        apiFetch<AgentRow[]>(`/platforms/${viewPid}/sales/agents?${q}`),
+        apiFetch<LedgerRow[]>(
+          `/platforms/${viewPid}/sales/ledger?${q}&limit=200&order=${ledgerOrder}`,
+        ),
         isSuperAdmin
           ? apiFetch<SolutionBillingListResponse>(
-              `/platforms/${selectedPlatformId}/solution-billing-settlements?take=20`,
+              `/platforms/${viewPid}/solution-billing-settlements?take=20`,
             )
           : Promise.resolve(null),
       ]);
@@ -260,12 +347,27 @@ export default function SalesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedPlatformId, from, to, isSuperAdmin]);
+  }, [viewPid, from, to, isSuperAdmin, ledgerOrder]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!viewPid) {
+      setSummary(null);
+      setAgents(null);
+      setLedger(null);
+      setSolutionBilling(null);
+    }
+  }, [viewPid]);
+
+  useEffect(() => {
+    void loadPortfolio();
+  }, [loadPortfolio]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function runSolutionBilling(dryRun: boolean) {
-    if (!selectedPlatformId || !isSuperAdmin) return;
+    if (!viewPid || !isSuperAdmin) return;
     if (!from || !to) {
       setErr("솔루션 청구 기간을 확인해주세요.");
       return;
@@ -281,7 +383,7 @@ export default function SalesPage() {
 
     try {
       const result = await apiFetch<SolutionBillingRunResult>(
-        `/platforms/${selectedPlatformId}/solution-billing-settlements/run`,
+        `/platforms/${viewPid}/solution-billing-settlements/run`,
         {
           method: "POST",
           body: JSON.stringify({
@@ -326,18 +428,37 @@ export default function SalesPage() {
       : []),
   ];
 
+  const selectedPlatformLabel = platforms.find((p) => p.id === viewPid)?.name ?? "";
+
   return (
     <div className="space-y-5 px-1">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">전체 매출 / 정산</h1>
-          <p className="mt-1 text-xs text-gray-500">
-            선택한 솔루션의 현금 흐름, 총판 정산, 상위 알 원가, 플랫폼 청구액과
-            본사 마진을 함께 봅니다. 본사 총괄 대시보드의 drill-down 화면으로
-            생각하면 됩니다.
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-zinc-100">청구 / 정산</h1>
+          <p className="mt-1 text-xs text-gray-500 dark:text-zinc-400">
+            {viewPid
+              ? `${selectedPlatformLabel} 상세 · 기간별 매출·총판·원장`
+              : "전체 솔루션 합계입니다. 행 또는 선택 상자에서 솔루션을 고르면 상세 탭이 열립니다."}
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label htmlFor="sales-platform" className="text-xs text-gray-500 dark:text-zinc-500">
+              솔루션
+            </label>
+            <select
+              id="sales-platform"
+              value={viewPid ?? ""}
+              onChange={(e) => setViewPlatform(e.target.value || null)}
+              className="max-w-[min(100%,20rem)] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+            >
+              <option value="">전체 요약</option>
+              {platforms.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        {/* 기간 필터 */}
         <div className="flex items-center gap-2 flex-wrap">
           {[
             { label: "오늘", from: today, to: today },
@@ -346,27 +467,32 @@ export default function SalesPage() {
           ].map((p) => (
             <button
               key={p.label}
+              type="button"
               onClick={() => { setFrom(p.from); setTo(p.to); }}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                 from === p.from && to === p.to
-                  ? "bg-amber-600/20 text-[#3182f6]"
-                  : "bg-gray-100 text-gray-500 hover:text-gray-800"
+                  ? "bg-gray-200 text-gray-900 dark:bg-zinc-700 dark:text-zinc-100"
+                  : "bg-gray-100 text-gray-500 hover:text-gray-800 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
               }`}
             >
               {p.label}
             </button>
           ))}
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700" />
+            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200" />
           <span className="text-gray-400 text-xs">~</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700" />
+            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200" />
           <button
-            onClick={load}
-            disabled={loading}
-            className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-[#3182f6] disabled:opacity-50"
+            type="button"
+            onClick={() => {
+              if (viewPid) void load();
+              else void loadPortfolio();
+            }}
+            disabled={viewPid ? loading : portfolioLoading}
+            className="rounded-lg bg-gray-900 px-4 py-1.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
           >
-            {loading ? "조회중..." : "조회"}
+            {viewPid ? (loading ? "조회중…" : "조회") : portfolioLoading ? "조회중…" : "조회"}
           </button>
         </div>
       </div>
@@ -375,26 +501,95 @@ export default function SalesPage() {
         <div className="rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-200">{err}</div>
       )}
       {msg && (
-        <div className="rounded-xl border border-[#3182f6]/20 bg-[#3182f6]/5 px-4 py-3 text-sm text-[#3182f6]">{msg}</div>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">{msg}</div>
       )}
 
-      {/* 이너 탭 */}
-      <div className="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 w-fit">
+      {!viewPid && isSuperAdmin ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-gray-800 dark:text-zinc-200">솔루션별 요약</h2>
+          {portfolioLoading && !portfolio ? (
+            <p className="text-sm text-gray-500 dark:text-zinc-400">불러오는 중…</p>
+          ) : portfolio ? (
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-zinc-800">
+              <table className="w-full min-w-[720px] text-left text-xs">
+                <thead className="border-b border-gray-200 bg-gray-50 dark:border-zinc-800 dark:bg-zinc-900/80">
+                  <tr>
+                    {["솔루션", "충전", "환전", "낙첨", "총판정산", "현금순익", "알원가", "본사마진", ""].map((h) => (
+                      <th key={h} className="whitespace-nowrap px-3 py-2 font-medium text-gray-600 dark:text-zinc-400">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {portfolio.rows.map((row) => (
+                    <tr
+                      key={row.platformId}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setViewPlatform(row.platformId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setViewPlatform(row.platformId);
+                        }
+                      }}
+                      className="cursor-pointer border-b border-gray-100 transition hover:bg-gray-50 dark:border-zinc-800/80 dark:hover:bg-zinc-900"
+                    >
+                      <td className="px-3 py-2 font-medium text-gray-900 dark:text-zinc-100">{row.name}</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-zinc-300">{krw(row.depositTotal)}원</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-zinc-300">{krw(row.withdrawTotal)}원</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-zinc-300">{krw(row.houseEdge)}원</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-zinc-300">{krw(row.topAgentSettlement)}원</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-zinc-300">{krw(row.cashNet)}원</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-zinc-300">{krw(row.upstreamCost)}원</td>
+                      <td className="px-3 py-2 font-mono text-gray-700 dark:text-zinc-300">{krw(row.solutionMargin)}원</td>
+                      <td className="px-3 py-2 text-gray-500 dark:text-zinc-500">
+                        {row.loadError ? <span className="text-red-500">오류</span> : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-gray-200 bg-gray-50/80 font-semibold dark:border-zinc-800 dark:bg-zinc-900/50">
+                  <tr>
+                    <td className="px-3 py-2 text-gray-800 dark:text-zinc-200">합계 ({portfolio.totals.solutionsWithMetrics}/{portfolio.totals.solutionsTotal})</td>
+                    <td className="px-3 py-2 font-mono dark:text-zinc-200">{krw(portfolio.totals.depositTotal)}원</td>
+                    <td className="px-3 py-2 font-mono dark:text-zinc-200">{krw(portfolio.totals.withdrawTotal)}원</td>
+                    <td className="px-3 py-2 font-mono dark:text-zinc-200">{krw(portfolio.totals.houseEdge)}원</td>
+                    <td className="px-3 py-2 font-mono dark:text-zinc-200">{krw(portfolio.totals.topAgentSettlement)}원</td>
+                    <td className="px-3 py-2 font-mono dark:text-zinc-200">{krw(portfolio.totals.cashNet)}원</td>
+                    <td className="px-3 py-2 font-mono dark:text-zinc-200">{krw(portfolio.totals.upstreamCost)}원</td>
+                    <td className="px-3 py-2 font-mono dark:text-zinc-200">{krw(portfolio.totals.solutionMargin)}원</td>
+                    <td className="px-3 py-2" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">요약 데이터가 없습니다.</p>
+          )}
+        </section>
+      ) : null}
+
+      {viewPid ? (
+      <div className="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 w-fit dark:border-zinc-800 dark:bg-zinc-900">
         {TABS.map((t) => (
           <button
             key={t.key}
+            type="button"
             onClick={() => setTab(t.key)}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
               tab === t.key
-                ? "bg-amber-600/20 text-[#3182f6]"
-                : "text-gray-500 hover:text-gray-700"
+                ? "bg-white text-gray-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100"
+                : "text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200"
             }`}
           >
             {t.label}
           </button>
         ))}
       </div>
+      ) : null}
 
+      {viewPid ? (
+      <>
       {/* ── 매출 요약 탭 ── */}
       {tab === "summary" && summary && (() => {
         const deposit = Number(summary.wallet.depositTotal);
@@ -760,7 +955,7 @@ export default function SalesPage() {
 
       {/* ── 에이전트 정산 탭 (트리 뷰) ── */}
       {tab === "agents" && (() => {
-        if (!selectedPlatformId) {
+        if (!viewPid) {
           return (
             <p className="text-sm text-[#3182f6]/90">
               플랫폼을 선택해 주세요.
@@ -1215,6 +1410,31 @@ export default function SalesPage() {
       {/* ── 배팅 원장 탭 ── */}
       {tab === "ledger" && (
         <div>
+          <div className="flex flex-wrap items-center justify-end gap-2 mb-3 text-[11px] text-gray-600">
+            <span className="text-gray-500">원장 정렬</span>
+            <button
+              type="button"
+              onClick={() => setLedgerOrder("asc")}
+              className={`rounded-lg border px-2.5 py-1 transition ${
+                ledgerOrder === "asc"
+                  ? "border-[#3182f6] bg-blue-50 font-semibold text-[#1e4e8c]"
+                  : "border-gray-200 bg-white hover:bg-gray-50"
+              }`}
+            >
+              오래된순
+            </button>
+            <button
+              type="button"
+              onClick={() => setLedgerOrder("desc")}
+              className={`rounded-lg border px-2.5 py-1 transition ${
+                ledgerOrder === "desc"
+                  ? "border-[#3182f6] bg-blue-50 font-semibold text-[#1e4e8c]"
+                  : "border-gray-200 bg-white hover:bg-gray-50"
+              }`}
+            >
+              최신순
+            </button>
+          </div>
           {loading ? (
             <p className="py-6 text-sm text-gray-500">불러오는 중...</p>
           ) : ledger && ledger.length === 0 ? (
@@ -1231,23 +1451,24 @@ export default function SalesPage() {
                 </thead>
                 <tbody>
                   {ledger?.map((r) => {
-                    const isBet = r.type === "BET";
-                    const amt = Number(r.amount);
+                    const { label, badgeClass, amtClass, amtPrefix, amt } = ledgerRowVisuals(
+                      r.type,
+                      r.amount,
+                    );
                     return (
                       <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
                         <td className="px-3 py-2 whitespace-nowrap text-gray-500">{dt(r.createdAt)}</td>
                         <td className="px-3 py-2 font-mono text-gray-800">{r.userLoginId}</td>
                         <td className="px-3 py-2">
-                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                            isBet ? "bg-red-400/10 text-red-400" : "bg-emerald-400/10 text-[#3182f6]"
-                          }`}>
-                            {isBet ? "BET" : "WIN"}
+                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${badgeClass}`}>
+                            {label}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate">{r.gameName || "—"}</td>
                         <td className="px-3 py-2 text-gray-500">{vertLabel(r.vertical)}</td>
-                        <td className={`px-3 py-2 font-mono font-bold ${isBet ? "text-red-400" : "text-[#3182f6]"}`}>
-                          {isBet ? "" : "+"}{krw(amt)}원
+                        <td className={`px-3 py-2 font-mono font-bold ${amtClass}`}>
+                          {amtPrefix}
+                          {krw(amt)}원
                         </td>
                         <td className="px-3 py-2 font-mono text-gray-500">{krw(r.balanceAfter)}원</td>
                         <td className="px-3 py-2 font-mono text-zinc-700 max-w-[100px] truncate" title={r.reference ?? ""}>
@@ -1262,6 +1483,20 @@ export default function SalesPage() {
           )}
         </div>
       )}
+      </>
+      ) : null}
     </div>
+  );
+}
+
+export default function SalesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="px-1 py-10 text-center text-sm text-gray-500 dark:text-zinc-400">불러오는 중…</div>
+      }
+    >
+      <SalesPageBody />
+    </Suspense>
   );
 }

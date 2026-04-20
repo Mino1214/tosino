@@ -31,12 +31,12 @@ type ActionBtn = {
 };
 
 const PLATFORM_ACTIONS: ActionBtn[] = [
-  { label: "청구 / 정산", path: "/console/sales", color: "border-blue-200 text-blue-600 hover:bg-blue-50" },
-  { label: "알값 / 정책", path: "/console/operational", color: "border-purple-200 text-purple-600 hover:bg-purple-50" },
-  { label: "반가상 설정", path: "/console/assets", color: "border-cyan-200 text-cyan-600 hover:bg-cyan-50" },
-  { label: "운영 계정", path: "/console/users", color: "border-gray-200 text-gray-600 hover:bg-gray-50" },
-  { label: "도메인 / 헬스체크", path: "/console/sync", color: "border-gray-200 text-gray-600 hover:bg-gray-50" },
-  { label: "테스트 시나리오", path: "/console/test-scenario", color: "border-green-200 text-green-600 hover:bg-green-50" },
+  { label: "청구 / 정산", path: "/console/sales", color: "border-gray-200 text-gray-800 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" },
+  { label: "알값 / 정책", path: "/console/operational", color: "border-gray-200 text-gray-800 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800" },
+  { label: "알값 허브", path: "/console/credits", color: "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800" },
+  { label: "반가상 설정", path: "/console/semi/settings", color: "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800" },
+  { label: "헬스체크", path: "/console/sync", color: "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800" },
+  { label: "테스트 시나리오", path: "/console/test-scenario", color: "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800" },
 ];
 
 export default function ConsolePlatformsPage() {
@@ -53,6 +53,9 @@ export default function ConsolePlatformsPage() {
   const [saveErr, setSaveErr] = useState<string | null>(null);
   // In-session change log (client-side only - shows what was changed this session)
   const [changeLog, setChangeLog] = useState<Record<string, ChangeLog[]>>({});
+  const [newHostByPlatform, setNewHostByPlatform] = useState<Record<string, string>>({});
+  const [domainBusyId, setDomainBusyId] = useState<string | null>(null);
+  const [domainErrByPid, setDomainErrByPid] = useState<Record<string, string>>({});
 
   const totals = useMemo(
     () => ({
@@ -64,6 +67,14 @@ export default function ConsolePlatformsPage() {
   );
 
   function openConsole(pid: string, path: string) {
+    if (path === "/console/sales") {
+      router.push(`/console/sales?platform=${encodeURIComponent(pid)}`);
+      return;
+    }
+    if (path === "/console/credits" || path === "/console/sync" || path === "/console/test-scenario") {
+      router.push(path);
+      return;
+    }
     setSelectedPlatformId(pid);
     router.push(path);
   }
@@ -131,6 +142,59 @@ export default function ConsolePlatformsPage() {
       setSaveErr(e instanceof Error ? e.message : "저장 실패");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function addDomain(platformId: string) {
+    const host = (newHostByPlatform[platformId] ?? "").trim();
+    if (!host) {
+      setDomainErrByPid((cur) => ({ ...cur, [platformId]: "도메인(호스트)를 입력하세요." }));
+      return;
+    }
+    setDomainErrByPid((cur) => {
+      const n = { ...cur };
+      delete n[platformId];
+      return n;
+    });
+    setDomainBusyId(platformId);
+    try {
+      await apiFetch<{ domains: { host: string }[] }>(`/platforms/${platformId}/domains`, {
+        method: "POST",
+        body: JSON.stringify({ host }),
+      });
+      setNewHostByPlatform((cur) => ({ ...cur, [platformId]: "" }));
+      await refresh();
+    } catch (e) {
+      setDomainErrByPid((cur) => ({
+        ...cur,
+        [platformId]: e instanceof Error ? e.message : "도메인 추가 실패",
+      }));
+    } finally {
+      setDomainBusyId(null);
+    }
+  }
+
+  async function removeDomain(platformId: string, host: string) {
+    if (!confirm(`도메인을 제거할까요?\n${host}`)) return;
+    setDomainErrByPid((cur) => {
+      const n = { ...cur };
+      delete n[platformId];
+      return n;
+    });
+    setDomainBusyId(platformId);
+    try {
+      await apiFetch<{ domains: { host: string }[] }>(
+        `/platforms/${platformId}/domains?host=${encodeURIComponent(host)}`,
+        { method: "DELETE" },
+      );
+      await refresh();
+    } catch (e) {
+      setDomainErrByPid((cur) => ({
+        ...cur,
+        [platformId]: e instanceof Error ? e.message : "도메인 제거 실패",
+      }));
+    } finally {
+      setDomainBusyId(null);
     }
   }
 
@@ -267,7 +331,9 @@ export default function ConsolePlatformsPage() {
                         className="t-input font-mono" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">자동 마진 %</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        자동 마진 % (카지노 청구에만 가산)
+                      </label>
                       <input type="text" value={editDraft.autoMarginPct}
                         onChange={(e) => setEditDraft({ ...editDraft, autoMarginPct: e.target.value })}
                         className="t-input font-mono" />
@@ -281,8 +347,9 @@ export default function ConsolePlatformsPage() {
                     <div className="rounded-xl border border-blue-200 bg-white px-4 py-3">
                       <p className="text-[10px] text-gray-400">스포츠 청구율 (예상)</p>
                       <p className="mt-0.5 font-mono text-lg font-bold text-blue-600">
-                        {((Number(editDraft.upstreamSportsPct) || 0) + (Number(editDraft.autoMarginPct) || 0)).toFixed(2)}%
+                        {(Number(editDraft.upstreamSportsPct) || 0).toFixed(2)}%
                       </p>
+                      <p className="mt-1 text-[10px] text-gray-400">상위 스포츠 알값만 반영</p>
                     </div>
                   </div>
                   {saveErr && <p className="mt-3 text-sm text-red-600">{saveErr}</p>}
@@ -341,6 +408,53 @@ export default function ConsolePlatformsPage() {
                       </div>
                     ))}
                   </div>
+
+                  {(user?.role === "SUPER_ADMIN" || user?.role === "PLATFORM_ADMIN") && (
+                    <div className="rounded-xl border border-[#3182f6]/25 bg-[#3182f6]/5 px-4 py-3">
+                      <p className="text-xs font-bold text-[#3182f6]">연결된 도메인 (PlatformDomain)</p>
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        호스트만 입력 (예: brand.com). 최소 1개는 유지됩니다. 슈퍼/플랫폼 관리자만 편집됩니다.
+                      </p>
+                      <ul className="mt-2 space-y-1.5">
+                        {platform.domains.map((d) => (
+                          <li key={d.host} className="flex flex-wrap items-center gap-2 font-mono text-xs text-gray-800">
+                            <span className="break-all">{d.host}</span>
+                            <button
+                              type="button"
+                              disabled={domainBusyId === platform.id || platform.domains.length <= 1}
+                              onClick={() => removeDomain(platform.id, d.host)}
+                              className="rounded border border-red-200 px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              제거
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={newHostByPlatform[platform.id] ?? ""}
+                          onChange={(e) =>
+                            setNewHostByPlatform((cur) => ({ ...cur, [platform.id]: e.target.value }))
+                          }
+                          placeholder="새 호스트 (예: my-brand.com)"
+                          className="t-input min-w-[12rem] flex-1 font-mono text-xs"
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          disabled={domainBusyId === platform.id}
+                          onClick={() => addDomain(platform.id)}
+                          className="t-btn-primary shrink-0 px-3 py-1.5 text-xs"
+                        >
+                          {domainBusyId === platform.id ? "처리 중…" : "도메인 추가"}
+                        </button>
+                      </div>
+                      {domainErrByPid[platform.id] ? (
+                        <p className="mt-2 text-xs text-red-600">{domainErrByPid[platform.id]}</p>
+                      ) : null}
+                    </div>
+                  )}
 
                   {user?.role === "SUPER_ADMIN" && (
                     <div className="rounded-xl border border-red-200 bg-red-50 p-3">

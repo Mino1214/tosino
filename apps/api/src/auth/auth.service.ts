@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -34,10 +35,26 @@ export class AuthService {
   }
 
   private async resolveLoginPlatformId(
-    dto: Pick<LoginDto, 'platformId' | 'host' | 'port' | 'previewSecret'>,
+    dto: Pick<
+      LoginDto,
+      'platformId' | 'platformSlug' | 'host' | 'port' | 'previewSecret'
+    >,
   ): Promise<string | undefined> {
     const pid = dto.platformId?.trim();
     if (pid) return pid;
+    const slug = dto.platformSlug?.trim();
+    if (slug) {
+      const p = await this.prisma.platform.findUnique({
+        where: { slug },
+        select: { id: true },
+      });
+      if (!p) {
+        throw new NotFoundException(
+          `플랫폼 slug "${slug}" 가 없습니다. DB 시드 또는 슈퍼어드민에서 플랫폼을 확인하세요.`,
+        );
+      }
+      return p.id;
+    }
     const host = dto.host?.trim();
     const hasPort =
       dto.port !== undefined && dto.port !== null && Number(dto.port) > 0;
@@ -52,7 +69,7 @@ export class AuthService {
     return undefined;
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, clientIp: string | null = null) {
     const loginId = normalizeLoginId(dto.loginId);
     const resolvedPlatformId = await this.resolveLoginPlatformId(dto);
 
@@ -107,6 +124,15 @@ export class AuthService {
         throw new UnauthorizedException('가입이 거절되었습니다.');
       }
     }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: new Date(),
+        lastLoginIp: clientIp,
+      },
+    });
+
     const tokens = this.signTokens(user.id, user.role, user.platformId);
     return {
       ...tokens,
@@ -135,8 +161,10 @@ export class AuthService {
       platformId,
       type: 'refresh',
     };
+    const accessExpires =
+      this.config.get<string>('JWT_ACCESS_EXPIRES_IN')?.trim() || '15m';
     return {
-      accessToken: this.jwt.sign(accessPayload, { expiresIn: '15m' }),
+      accessToken: this.jwt.sign(accessPayload, { expiresIn: accessExpires }),
       refreshToken: this.jwt.sign(refreshPayload, {
         secret: this.refreshSecret,
         expiresIn: '7d',

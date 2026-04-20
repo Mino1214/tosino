@@ -6,9 +6,10 @@ import { VinusInfoController } from './vinus-info.controller';
 import { RollingModule } from '../rolling/rolling.module';
 import { PointsModule } from '../points/points.module';
 import { ReserveBalanceModule } from '../reserve-balance/reserve-balance.module';
+import { WalletBucketsModule } from '../wallet-buckets/wallet-buckets.module';
 
 @Module({
-  imports: [RollingModule, PointsModule, ReserveBalanceModule],
+  imports: [RollingModule, PointsModule, ReserveBalanceModule, WalletBucketsModule],
   providers: [VinusService, VinusInfoService],
   controllers: [VinusWebhookController, VinusInfoController],
   exports: [VinusService, VinusInfoService],

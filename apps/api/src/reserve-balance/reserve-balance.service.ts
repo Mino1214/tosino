@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { derivePlatformBillingPctFromPolicy } from '../platforms/solution-rate-derive.util';
 
 /**
  * 알(크레딧) 가상 잔액 서비스.
@@ -103,7 +104,8 @@ export class ReserveBalanceService {
    * - WIN(유저 승리 payout) → RESTORE (배당 × rate 만큼 가상 복구)
    *
    * 조합해서 실제 순변동 = (stake − win) × rate 가 자동 성립.
-   * rate 는 platform.reserveRatePct 우선, 없으면 vertical 별 solutionRatePolicy 의 판매율 사용.
+   * rate 는 flagsJson.solutionRatePolicy 에서 파생한 플랫폼 청구율을 우선 사용하고,
+   * 그 값이 0 이하일 때만 platform.reserveRatePct(본사 수동값)를 사용한다.
    *
    * reference 는 벤더 콜백 트랜잭션 ID · bet ID 등 유일 키이며,
    * 같은 이벤트 재수신 시 eventKey(ledger:{reference}:{deduct|restore}) 기반으로 멱등 처리됨.
@@ -226,6 +228,7 @@ export class ReserveBalanceService {
         reserveEnabled: true,
         reserveRestoreEnabled: true,
         reserveRatePct: true,
+        flagsJson: true,
       },
     });
     if (!platform) throw new NotFoundException('Platform not found');
@@ -271,13 +274,42 @@ export class ReserveBalanceService {
     // 오늘 잔액 변동 = 오늘 복구 합 - 오늘 차감 합 (잔액 기준, 음수면 감소)
     const todayNet = todayRestore.minus(todayDeduct);
 
+    const flags = (platform.flagsJson ?? {}) as Record<string, unknown>;
+    const rawPolicy = flags.solutionRatePolicy;
+    const policyRec =
+      rawPolicy && typeof rawPolicy === 'object' && !Array.isArray(rawPolicy)
+        ? (rawPolicy as Record<string, unknown>)
+        : {};
+    const policyCasinoPctStr = derivePlatformBillingPctFromPolicy(
+      policyRec,
+      'casino',
+    );
+    const policyCasinoPctNum = Number(policyCasinoPctStr);
+    const effectiveFromPolicy =
+      Number.isFinite(policyCasinoPctNum) && policyCasinoPctNum > 0
+        ? policyCasinoPctNum / 100
+        : null;
+    const rateStr =
+      effectiveFromPolicy != null
+        ? String(effectiveFromPolicy)
+        : platform.reserveRatePct
+          ? platform.reserveRatePct.toString()
+          : null;
+
     return {
       platformId: platform.id,
       platformName: platform.name,
       platformSlug: platform.slug,
       enabled: platform.reserveEnabled,
       restoreEnabled: platform.reserveRestoreEnabled,
-      rate: platform.reserveRatePct ? platform.reserveRatePct.toString() : null,
+      /** 실시간 카지노 버킷에 쓰이는 비율(0~1 소수). 정책 청구율 우선, 없으면 reserveRatePct */
+      rate: rateStr,
+      /** 본사 허브에서 넣은 수동 비율(있을 때만). 정책이 있으면 실시간 반영에는 미사용 */
+      manualOverrideRate: platform.reserveRatePct
+        ? platform.reserveRatePct.toString()
+        : null,
+      /** solutionRatePolicy 기준 카지노 청구율 % (표시용) */
+      policyCasinoBillingPct: policyCasinoPctStr,
       currentAmount: current.toFixed(2),
       initialAmount: initial.toFixed(2),
       remainingHeadroom: initial.minus(current).toFixed(2),
@@ -402,6 +434,75 @@ export class ReserveBalanceService {
       select: { reserveInitialAmount: true },
     });
     return updated.reserveInitialAmount;
+  }
+
+  /**
+   * 본사(HQ)가 플랫폼에 배정된 알(가상 크레딧)을 회수합니다.
+   * creditBalance·reserveInitialAmount 를 같은 규모로 내려 상한과 잔액을 함께 맞춥니다.
+   */
+  async hqRecoverCredit(
+    platformId: string,
+    amountKrw: number,
+    note: string | null,
+    createdByUserId: string,
+  ): Promise<ReserveMutationResult> {
+    if (!Number.isFinite(amountKrw) || amountKrw <= 0) {
+      throw new BadRequestException('amountKrw must be a positive number');
+    }
+    const requested = this.toDecimal(amountKrw);
+    return this.prisma.$transaction(async (tx) => {
+      const platform = await tx.platform.findUnique({
+        where: { id: platformId },
+        select: {
+          creditBalance: true,
+          reserveInitialAmount: true,
+          reserveRestoreEnabled: true,
+        },
+      });
+      if (!platform) throw new NotFoundException('Platform not found');
+
+      const beforeBal = platform.creditBalance;
+      const beforeInitial = platform.reserveInitialAmount;
+      const take = requested.gt(beforeBal) ? beforeBal : requested;
+      if (take.lte(0)) {
+        throw new BadRequestException('회수할 알 잔액이 없습니다');
+      }
+
+      const newBal = beforeBal.minus(take);
+      let newInitial = beforeInitial.minus(take);
+      if (newInitial.lt(newBal)) newInitial = newBal;
+
+      await tx.platform.update({
+        where: { id: platformId },
+        data: {
+          creditBalance: newBal,
+          reserveInitialAmount: newInitial,
+        },
+      });
+
+      const negTake = take.negated();
+      const created = await tx.platformReserveLog.create({
+        data: {
+          platformId,
+          type: 'ADJUST',
+          baseAmount: negTake,
+          rate: new Prisma.Decimal(1),
+          computedAmount: negTake,
+          changedAmount: newBal.minus(beforeBal),
+          balanceBefore: beforeBal,
+          balanceAfter: newBal,
+          initialAmount: beforeInitial,
+          note: note?.trim() || 'HQ 알 회수',
+          createdByUserId,
+          eventKey: `hq_recover:${platformId}:${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        },
+      });
+
+      return this.toResult(created, {
+        idempotent: false,
+        restoreEnabled: platform.reserveRestoreEnabled,
+      });
+    });
   }
 
   // ───────────────────── Internals ─────────────────────
@@ -552,10 +653,11 @@ export class ReserveBalanceService {
   }
 
   /**
-   * rate 우선순위:
-   *   1) platform.reserveRatePct (0~1 사이 소수, 예: 0.07)
-   *   2) platform.flagsJson.solutionRatePolicy 의 vertical 별 platform 판매율 (% 단위 문자열)
-   *   3) 둘 다 없으면 0 → 로그는 남지만 잔액 변동 없음 (admin 이 설정해야 동작)
+   * rate 우선순위 (실시간 베팅 연동):
+   *   1) platform.flagsJson.solutionRatePolicy 에서 파생한 플랫폼 청구율
+   *      (카지노 버킷: 상위 카지노 알 + 자동 마진, 스포츠: 상위 스포츠 알만)
+   *   2) 위가 0 이하일 때만 platform.reserveRatePct (본사 허브 수동, 0~1 소수)
+   *   3) 둘 다 없으면 0
    */
   private async resolveRateForVertical(
     platformId: string,
@@ -568,16 +670,21 @@ export class ReserveBalanceService {
       select: { reserveRatePct: true, flagsJson: true },
     });
     if (!row) return DECIMAL_ZERO;
-    if (row.reserveRatePct != null) return row.reserveRatePct;
 
     const flags = (row.flagsJson ?? {}) as Record<string, unknown>;
     const policy = (flags.solutionRatePolicy ?? {}) as Record<string, unknown>;
     // sports / casino / slot / minigame / arcade 중 sports 는 별도, 나머지는 casino 율.
     const isSports = vertical === 'sports';
-    const raw = isSports ? policy.platformSportsPct : policy.platformCasinoPct;
-    const pctNum = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
-    if (!Number.isFinite(pctNum) || pctNum <= 0) return DECIMAL_ZERO;
-    return new Prisma.Decimal(pctNum).div(100);
+    const pctStr = derivePlatformBillingPctFromPolicy(
+      policy,
+      isSports ? 'sports' : 'casino',
+    );
+    const pctNum = Number(pctStr);
+    if (Number.isFinite(pctNum) && pctNum > 0) {
+      return new Prisma.Decimal(pctNum).div(100);
+    }
+    if (row.reserveRatePct != null) return row.reserveRatePct;
+    return DECIMAL_ZERO;
   }
 
   private resolveTx(tx?: TxClient): Prisma.TransactionClient | PrismaService {

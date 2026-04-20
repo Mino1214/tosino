@@ -1,10 +1,21 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class CreditsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** 수동 본사 입금 장부만 (테스트 시나리오가 넣는 `testscenario:` 메모 행 제외) */
+  private vendorDepositManualBookkeepingWhere(): Prisma.HqVendorDepositWhereInput {
+    return {
+      OR: [
+        { note: null },
+        { note: { not: { startsWith: 'testscenario:' } } },
+      ],
+    };
+  }
 
   /* ── HQ Vendor Deposits ── */
 
@@ -18,14 +29,20 @@ export class CreditsService {
     });
   }
 
-  async listVendorDeposits(limit = 50, offset = 0) {
+  async listVendorDeposits(
+    limit = 50,
+    offset = 0,
+    includeSimulation = false,
+  ) {
+    const where = includeSimulation ? {} : this.vendorDepositManualBookkeepingWhere();
     const [items, total] = await Promise.all([
       this.prisma.hqVendorDeposit.findMany({
+        where,
         orderBy: { createdAt: 'desc' },
         take: limit,
         skip: offset,
       }),
-      this.prisma.hqVendorDeposit.count(),
+      this.prisma.hqVendorDeposit.count({ where }),
     ]);
     return { items, total };
   }
@@ -122,24 +139,32 @@ export class CreditsService {
   /* ── Summary ── */
 
   async getSummary() {
-    const [deposits, approvedRequests, pendingRequests] = await Promise.all([
-      this.prisma.hqVendorDeposit.aggregate({ _sum: { amountKrw: true } }),
-      this.prisma.platformCreditRequest.aggregate({
-        where: { status: 'APPROVED' },
-        _sum: { approvedAmountKrw: true },
-      }),
-      this.prisma.platformCreditRequest.count({ where: { status: 'PENDING' } }),
-    ]);
+    const [deposits, approvedRequests, pendingRequests, creditBalAgg] =
+      await Promise.all([
+        this.prisma.hqVendorDeposit.aggregate({
+          where: this.vendorDepositManualBookkeepingWhere(),
+          _sum: { amountKrw: true },
+        }),
+        this.prisma.platformCreditRequest.aggregate({
+          where: { status: 'APPROVED' },
+          _sum: { approvedAmountKrw: true },
+        }),
+        this.prisma.platformCreditRequest.count({ where: { status: 'PENDING' } }),
+        this.prisma.platform.aggregate({ _sum: { creditBalance: true } }),
+      ]);
 
     const totalDeposited = Number(deposits._sum.amountKrw ?? 0);
     const totalAllocated = Number(approvedRequests._sum.approvedAmountKrw ?? 0);
     const remaining = totalDeposited - totalAllocated;
+    const totalCreditBalance = Number(creditBalAgg._sum.creditBalance ?? 0);
 
     return {
       totalDeposited,
       totalAllocated,
       remaining,
       pendingRequestCount: pendingRequests,
+      /** 전 플랫폼 알(크레딧) 잔액 합계 — platform.creditBalance */
+      totalCreditBalance,
     };
   }
 
@@ -147,7 +172,7 @@ export class CreditsService {
 
   async getPlatformCreditSummary() {
     const platforms = await this.prisma.platform.findMany({
-      select: { id: true, name: true, slug: true },
+      select: { id: true, name: true, slug: true, creditBalance: true },
       orderBy: { name: 'asc' },
     });
 
@@ -163,8 +188,11 @@ export class CreditsService {
     );
 
     return platforms.map((p) => ({
-      ...p,
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
       totalAllocated: allocationMap.get(p.id) ?? 0,
+      creditBalance: Number(p.creditBalance ?? 0),
     }));
   }
 }

@@ -75,8 +75,22 @@ class PrismaMock {
     enabled?: boolean;
     restoreEnabled?: boolean;
     rate?: number | null;
+    /** applyLedgerEvent 요율은 solutionRatePolicy 파생값이 우선이므로, rate 와 동일 청구율을 주려면 플래그를 맞춘다. */
+    flagsJson?: unknown | null;
   }): MockPlatform {
     const id = p.id ?? `plt_${Object.keys(this.platforms).length + 1}`;
+    const inferredFlags =
+      p.flagsJson !== undefined
+        ? p.flagsJson
+        : p.rate != null
+          ? {
+              solutionRatePolicy: {
+                upstreamCasinoPct: (Number(p.rate) * 100).toFixed(2),
+                upstreamSportsPct: '0.00',
+                autoMarginPct: '0.00',
+              },
+            }
+          : null;
     const row: MockPlatform = {
       id,
       name: `Platform ${id}`,
@@ -86,7 +100,7 @@ class PrismaMock {
       reserveEnabled: p.enabled ?? true,
       reserveRestoreEnabled: p.restoreEnabled ?? false,
       reserveRatePct: p.rate == null ? null : toDec(p.rate),
-      flagsJson: null,
+      flagsJson: inferredFlags,
     };
     this.platforms[id] = row;
     return row;

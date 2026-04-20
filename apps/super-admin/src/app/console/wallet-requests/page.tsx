@@ -59,6 +59,7 @@ export default function ConsoleWalletRequestsPage() {
   const [rows, setRows] = useState<ReqRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [qrAddress, setQrAddress] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!selectedPlatformId) return Promise.resolve();
@@ -184,12 +185,23 @@ export default function ConsoleWalletRequestsPage() {
                       </div>
                     ) : null}
                   </td>
-                  <td className="max-w-[220px] truncate px-4 py-2 text-xs text-zinc-400">
-                    {r.currency === "USDT"
-                      ? r.user.usdtWalletAddress ?? "지갑 미등록"
-                      : r.user.bankAccountNumber
-                        ? `${r.user.bankAccountHolder ?? ""} · ${r.user.bankAccountNumber}`
-                        : "계좌 미등록"}
+                  <td className="max-w-[220px] px-4 py-2 text-xs text-zinc-400">
+                    <div className="truncate">
+                      {r.currency === "USDT"
+                        ? r.user.usdtWalletAddress ?? "지갑 미등록"
+                        : r.user.bankAccountNumber
+                          ? `${r.user.bankAccountHolder ?? ""} · ${r.user.bankAccountNumber}`
+                          : "계좌 미등록"}
+                    </div>
+                    {r.currency === "USDT" && r.user.usdtWalletAddress ? (
+                      <button
+                        type="button"
+                        onClick={() => setQrAddress(r.user.usdtWalletAddress ?? null)}
+                        className="mt-1 text-[11px] font-medium text-sky-400 hover:underline"
+                      >
+                        QR 보기
+                      </button>
+                    ) : null}
                   </td>
                   <td className="max-w-[100px] truncate px-4 py-2 text-zinc-300">
                     {r.depositorName ?? "—"}
@@ -226,6 +238,34 @@ export default function ConsoleWalletRequestsPage() {
           </table>
         </div>
       )}
+
+      {qrAddress ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="테더 지갑 QR"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
+            <p className="text-xs text-zinc-500">출금 지갑 주소 (TRC20)</p>
+            <p className="mt-1 break-all font-mono text-xs text-zinc-200">{qrAddress}</p>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrAddress)}`}
+              alt=""
+              width={240}
+              height={240}
+              className="mx-auto mt-4 rounded-lg border border-zinc-700"
+            />
+            <button
+              type="button"
+              onClick={() => setQrAddress(null)}
+              className="mt-4 w-full rounded-lg border border-zinc-600 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

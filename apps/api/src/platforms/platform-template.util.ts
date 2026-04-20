@@ -46,8 +46,9 @@ function buildRatePolicy(
     upstreamSportsPct: dec(upstreamSportsPct),
     platformCasinoPct:
       upstreamCasinoPct != null ? dec(upstreamCasinoPct + margin) : dec(margin),
+    /** 스포츠 청구율은 상위 스포츠 알값과 동일(자동 마진은 카지노 버킷에만 가산). */
     platformSportsPct:
-      upstreamSportsPct != null ? dec(upstreamSportsPct + margin) : dec(margin),
+      upstreamSportsPct != null ? dec(upstreamSportsPct) : dec(0),
     autoMarginPct: dec(autoMarginPct),
   };
 }

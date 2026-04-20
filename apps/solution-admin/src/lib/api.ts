@@ -104,53 +104,99 @@ export function clearSession() {
   sessionStorage.removeItem("adminSelectedPlatformId");
 }
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+function skipRefreshOn401(path: string): boolean {
+  return (
+    path.startsWith("/auth/login") ||
+    path.startsWith("/auth/refresh") ||
+    path.startsWith("/auth/bootstrap")
+  );
+}
+
+async function tryRefreshAccessToken(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const rt = localStorage.getItem("refreshToken");
+  if (!rt) return false;
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: rt }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as {
+        accessToken: string;
+        refreshToken: string;
+      };
+      localStorage.setItem("accessToken", data.accessToken);
+      localStorage.setItem("refreshToken", data.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   opts: RequestInit = {},
 ): Promise<T> {
-  const token = getAccessToken();
-  const headers = new Headers(opts.headers);
-  if (!headers.has("Content-Type") && opts.body) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  const base = getApiBase();
-  const url = `${base}${path}`;
-  let res: Response;
-  try {
-    res = await fetch(url, { ...opts, headers });
-  } catch (e) {
-    const isLocal =
-      !base || /localhost|127\.0\.0\.1/i.test(base);
-    const hint = isLocal
-      ? " Nest API(기본 :4001)가 실행 중인지 확인하세요. 휴대폰/other PC에서 접속 중이면 localhost가 아니라 그 컴퓨터의 LAN IP로 NEXT_PUBLIC_API_URL을 설정하거나 운영에선 NEXT_PUBLIC_USE_SAME_ORIGIN_API=true 를 쓰세요."
-      : " 네트워크·방화벽·HTTPS 혼합 콘텐츠를 확인하세요.";
-    const msg = e instanceof Error ? e.message : "연결 실패";
-    throw new Error(`${msg}.${hint}`);
-  }
-  if (res.status === 401) {
-    clearSession();
-    if (typeof window !== "undefined" && !path.startsWith("/auth/")) {
-      window.dispatchEvent(new Event("tosino:session-expired"));
+  const run = async (isRetry: boolean): Promise<T> => {
+    const token = getAccessToken();
+    const headers = new Headers(opts.headers);
+    if (!headers.has("Content-Type") && opts.body) {
+      headers.set("Content-Type", "application/json");
     }
-  }
-  if (!res.ok) {
-    let msg = res.statusText;
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const base = getApiBase();
+    const url = `${base}${path}`;
+    let res: Response;
     try {
-      const j = (await res.json()) as { message?: string | string[] };
-      if (typeof j.message === "string") msg = j.message;
-      else if (Array.isArray(j.message)) msg = j.message.join(", ");
-    } catch {
-      /* ignore */
+      res = await fetch(url, { ...opts, headers });
+    } catch (e) {
+      const isLocal =
+        !base || /localhost|127\.0\.0\.1/i.test(base);
+      const hint = isLocal
+        ? " Nest API(기본 :4001)가 실행 중인지 확인하세요. 휴대폰/other PC에서 접속 중이면 localhost가 아니라 그 컴퓨터의 LAN IP로 NEXT_PUBLIC_API_URL을 설정하거나 운영에선 NEXT_PUBLIC_USE_SAME_ORIGIN_API=true 를 쓰세요."
+        : " 네트워크·방화벽·HTTPS 혼합 콘텐츠를 확인하세요.";
+      const msg = e instanceof Error ? e.message : "연결 실패";
+      throw new Error(`${msg}.${hint}`);
     }
-    throw new Error(msg);
-  }
-  if (res.status === 204) return undefined as T;
-  const ct = res.headers.get("content-type");
-  if (ct?.includes("application/json")) {
-    return res.json() as Promise<T>;
-  }
-  return undefined as T;
+    if (res.status === 401) {
+      if (!skipRefreshOn401(path) && !isRetry) {
+        const refreshed = await tryRefreshAccessToken();
+        if (refreshed) return run(true);
+      }
+      clearSession();
+      if (typeof window !== "undefined" && !path.startsWith("/auth/")) {
+        window.dispatchEvent(new Event("tosino:session-expired"));
+      }
+    }
+    if (!res.ok) {
+      let msg = res.statusText;
+      try {
+        const j = (await res.json()) as { message?: string | string[] };
+        if (typeof j.message === "string") msg = j.message;
+        else if (Array.isArray(j.message)) msg = j.message.join(", ");
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    if (res.status === 204) return undefined as T;
+    const ct = res.headers.get("content-type");
+    if (ct?.includes("application/json")) {
+      return res.json() as Promise<T>;
+    }
+    return undefined as T;
+  };
+  return run(false);
 }
 
 export type UploadedAnnouncementAsset = {

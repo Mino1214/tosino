@@ -10,6 +10,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { DepositEventsService } from '../deposit-events/deposit-events.service';
 import { PointsService } from '../points/points.service';
+import {
+  pickBucketState,
+  WalletBucketsService,
+} from '../wallet-buckets/wallet-buckets.service';
 
 export interface PaymentWebhookPayload {
   eventId: string;
@@ -28,6 +32,7 @@ export class PaymentService {
     private rolling: RollingObligationService,
     private depositEvents: DepositEventsService,
     private points: PointsService,
+    private buckets: WalletBucketsService,
   ) {}
 
   verifySignature(rawBody: Buffer, signatureHeader: string | undefined) {
@@ -81,16 +86,18 @@ export class PaymentService {
       if (!wallet || wallet.platformId !== payload.platformId) {
         throw new BadRequestException('Wallet mismatch');
       }
-      let delta = amount;
-      if (payload.kind === 'withdrawal') {
-        delta = amount.negated();
+      const wb = pickBucketState(wallet);
+      let nextBuckets;
+      if (payload.kind === 'deposit') {
+        nextBuckets = this.buckets.creditLockedDeposit(wb, amount);
+      } else {
+        this.buckets.assertSufficientTotal(wb, amount);
+        nextBuckets = this.buckets.applyWithdraw(wb, amount);
       }
-      const newBal = wallet.balance.plus(delta);
+      const { balance: newBal } = await this.buckets.persist(tx, wallet.id, nextBuckets);
+      const delta =
+        payload.kind === 'deposit' ? amount : amount.negated();
       if (newBal.lt(0)) throw new BadRequestException('Insufficient balance');
-      await tx.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: newBal },
-      });
       await tx.ledgerEntry.create({
         data: {
           userId: payload.userId,

@@ -9,6 +9,7 @@ import { UsdtDepositController } from './usdt-deposit.controller';
 import { RollingModule } from '../rolling/rolling.module';
 import { DepositEventsModule } from '../deposit-events/deposit-events.module';
 import { PointsModule } from '../points/points.module';
+import { WalletBucketsModule } from '../wallet-buckets/wallet-buckets.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PointsModule } from '../points/points.module';
     RollingModule,
     DepositEventsModule,
     PointsModule,
+    WalletBucketsModule,
   ],
   controllers: [UsdtDepositController],
   providers: [

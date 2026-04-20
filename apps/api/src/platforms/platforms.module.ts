@@ -8,6 +8,7 @@ import { CompSettlementSchedulerService } from './comp-settlement-scheduler.serv
 import { CompSettlementProcessor } from './comp-settlement.processor';
 import { CreditsModule } from '../credits/credits.module';
 import { ReserveBalanceModule } from '../reserve-balance/reserve-balance.module';
+import { WalletBucketsModule } from '../wallet-buckets/wallet-buckets.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ReserveBalanceModule } from '../reserve-balance/reserve-balance.module'
     PointsModule,
     CreditsModule,
     ReserveBalanceModule,
+    WalletBucketsModule,
   ],
   controllers: [PlatformsController, PlatformIntegrationsController],
   providers: [PlatformsService, CompSettlementSchedulerService, CompSettlementProcessor],

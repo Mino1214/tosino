@@ -67,8 +67,7 @@ const NAV_GROUPS: NavGroup[] = [
     hint: "입출금 · 반가상 · 매출",
     children: [
       { href: "/console/wallet-requests", label: "입출금 내역", hint: "충전·출금 요청 처리" },
-      { href: "/console/semi-virtual-accounts", label: "반가상 계좌", hint: "입금 계좌 번들 관리" },
-      { href: "/console/semi/usdt-deposits", label: "반가상 내역", hint: "USDT·가상계좌 입금" },
+      { href: "/console/semi/usdt-deposits", label: "반가상 내역", hint: "설정·이력·USDT·SMS" },
       { href: "/console/sales", label: "매출 내역", hint: "입출금·포인트·콤프·에이전트 정산" },
       { href: "/console/credits", label: "알 관리", hint: "구매·사용 내역" },
     ],

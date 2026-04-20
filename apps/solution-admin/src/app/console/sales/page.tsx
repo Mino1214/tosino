@@ -190,6 +190,21 @@ function dt(s: string) {
 function vertLabel(v: string) {
   return { casino: "🎰 카지노", sports: "⚽ 스포츠", minigame: "🕹️ 미니게임", slot: "🎰 슬롯" }[v] ?? v;
 }
+/** 원장: Vinus 등에서 type=BET 이어도 amount가 순손익(벳·윈 합산)일 수 있음 — 부호로 표시 */
+function ledgerRowVisuals(type: string, amountStr: string) {
+  const amt = Number(amountStr);
+  const isWin = type === "WIN";
+  const positive = amt > 0;
+  const negative = amt < 0;
+  const label = isWin ? "WIN" : positive ? "정산" : "BET";
+  const badgeClass = positive
+    ? "bg-emerald-400/10 text-emerald-700"
+    : negative
+      ? "bg-red-400/10 text-red-600"
+      : "bg-gray-200/80 text-gray-600";
+  const amtClass = positive ? "text-emerald-700" : negative ? "text-red-600" : "text-gray-500";
+  return { label, badgeClass, amtClass, amtPrefix: positive ? "+" : "", amt };
+}
 function ggrColor(v: string | number) {
   const n = Number(v);
   return n > 0 ? "text-emerald-700" : n < 0 ? "text-red-600" : "text-gray-500";
@@ -237,6 +252,7 @@ export default function SalesPage() {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [agentsBusy, setAgentsBusy] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
+  const [ledgerOrder, setLedgerOrder] = useState<"asc" | "desc">("asc");
 
   const loadCore = useCallback(async () => {
     if (!selectedPlatformId) return;
@@ -246,7 +262,9 @@ export default function SalesPage() {
     try {
       const [s, l, billing] = await Promise.all([
         apiFetch<Summary>(`/platforms/${selectedPlatformId}/sales/summary?${q}`),
-        apiFetch<LedgerRow[]>(`/platforms/${selectedPlatformId}/sales/ledger?${q}&limit=200`),
+        apiFetch<LedgerRow[]>(
+          `/platforms/${selectedPlatformId}/sales/ledger?${q}&limit=200&order=${ledgerOrder}`,
+        ),
         isSuperAdmin
           ? apiFetch<SolutionBillingListResponse>(
               `/platforms/${selectedPlatformId}/solution-billing-settlements?take=20`,
@@ -264,7 +282,7 @@ export default function SalesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedPlatformId, from, to, isSuperAdmin]);
+  }, [selectedPlatformId, from, to, isSuperAdmin, ledgerOrder]);
 
   const loadAgents = useCallback(async () => {
     if (!selectedPlatformId) {
@@ -1305,6 +1323,31 @@ export default function SalesPage() {
       {/* ── 배팅 원장 탭 ── */}
       {tab === "ledger" && (
         <div>
+          <div className="flex flex-wrap items-center justify-end gap-2 mb-3 text-[11px] text-gray-600">
+            <span className="text-gray-500">원장 정렬</span>
+            <button
+              type="button"
+              onClick={() => setLedgerOrder("asc")}
+              className={`rounded-lg border px-2.5 py-1 transition ${
+                ledgerOrder === "asc"
+                  ? "border-emerald-600 bg-emerald-50 font-semibold text-emerald-800"
+                  : "border-gray-200 bg-white hover:bg-gray-50"
+              }`}
+            >
+              오래된순
+            </button>
+            <button
+              type="button"
+              onClick={() => setLedgerOrder("desc")}
+              className={`rounded-lg border px-2.5 py-1 transition ${
+                ledgerOrder === "desc"
+                  ? "border-emerald-600 bg-emerald-50 font-semibold text-emerald-800"
+                  : "border-gray-200 bg-white hover:bg-gray-50"
+              }`}
+            >
+              최신순
+            </button>
+          </div>
           {loading ? (
             <p className="py-6 text-sm text-gray-500">불러오는 중...</p>
           ) : !ledger ? (
@@ -1323,23 +1366,24 @@ export default function SalesPage() {
                 </thead>
                 <tbody>
                   {ledger?.map((r) => {
-                    const isBet = r.type === "BET";
-                    const amt = Number(r.amount);
+                    const { label, badgeClass, amtClass, amtPrefix, amt } = ledgerRowVisuals(
+                      r.type,
+                      r.amount,
+                    );
                     return (
                       <tr key={r.id} className="border-b border-gray-200 hover:bg-white transition">
                         <td className="px-3 py-2 whitespace-nowrap text-gray-500">{dt(r.createdAt)}</td>
                         <td className="px-3 py-2 font-mono text-gray-800">{r.userLoginId}</td>
                         <td className="px-3 py-2">
-                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                            isBet ? "bg-red-400/10 text-red-600" : "bg-emerald-400/10 text-emerald-700"
-                          }`}>
-                            {isBet ? "BET" : "WIN"}
+                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${badgeClass}`}>
+                            {label}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate">{r.gameName || "—"}</td>
                         <td className="px-3 py-2 text-gray-500">{vertLabel(r.vertical)}</td>
-                        <td className={`px-3 py-2 font-mono font-bold ${isBet ? "text-red-600" : "text-emerald-700"}`}>
-                          {isBet ? "" : "+"}{krw(amt)}원
+                        <td className={`px-3 py-2 font-mono font-bold ${amtClass}`}>
+                          {amtPrefix}
+                          {krw(amt)}원
                         </td>
                         <td className="px-3 py-2 font-mono text-gray-500">{krw(r.balanceAfter)}원</td>
                         <td className="px-3 py-2 font-mono text-zinc-700 max-w-[100px] truncate" title={r.reference ?? ""}>

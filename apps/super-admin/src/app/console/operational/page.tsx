@@ -869,8 +869,8 @@ export default function ConsoleOperationalPage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900">알값 / 청구율</h2>
             <p className="mt-1 text-sm text-gray-500">
-              상위업체 매입 요율과 자동 마진을 기준으로 플랫폼 청구율을 계산합니다.
-              카지노·슬롯·미니게임 GGR은 동일(카지노) 버킷으로 합산되고, 스포츠는 별도 요율입니다.
+              상위 카지노·스포츠 알값은 각각 매입(벤더) 기준이며, 자동 마진은 카지노
+              청구율에만 더해집니다. 스포츠 청구율은 상위 스포츠 알값과 같습니다.
             </p>
           </div>
           {canEditSolutionRates ? (
@@ -895,7 +895,9 @@ export default function ConsoleOperationalPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">자동 마진 %</label>
+                  <label className="text-xs text-gray-500">
+                    자동 마진 % (카지노 청구에만 가산)
+                  </label>
                   <input
                     type="text"
                     value={solutionRatePolicy.autoMarginPct}
@@ -917,10 +919,10 @@ export default function ConsoleOperationalPage() {
                 <div className="rounded-lg border border-[#3182f6]/20 bg-[#3182f6]/5 px-4 py-3">
                   <p className="text-xs text-gray-500">플랫폼 스포츠 청구율</p>
                   <p className="mt-1 font-mono text-2xl text-[#3182f6]">
-                    {((Number(solutionRatePolicy.upstreamSportsPct || 0) || 0) + (Number(solutionRatePolicy.autoMarginPct || 0) || 0)).toFixed(2)}%
+                    {(Number(solutionRatePolicy.upstreamSportsPct || 0) || 0).toFixed(2)}%
                   </p>
                   <p className="mt-0.5 text-[11px] text-gray-400">
-                    알값 {solutionRatePolicy.upstreamSportsPct}% + 마진 {solutionRatePolicy.autoMarginPct}%
+                    상위 스포츠 알값과 동일 (카지노 마진 미적용)
                   </p>
                 </div>
               </div>

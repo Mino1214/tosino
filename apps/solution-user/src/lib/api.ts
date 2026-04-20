@@ -125,33 +125,80 @@ export function clearSession() {
   emitAuthChanged();
 }
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+function skipRefreshOn401(path: string): boolean {
+  return (
+    path.startsWith("/auth/login") ||
+    path.startsWith("/auth/refresh") ||
+    path.startsWith("/auth/bootstrap")
+  );
+}
+
+async function tryRefreshAccessToken(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const rt = localStorage.getItem("refreshToken");
+  if (!rt) return false;
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: rt }),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as {
+        accessToken: string;
+        refreshToken: string;
+      };
+      localStorage.setItem("accessToken", data.accessToken);
+      localStorage.setItem("refreshToken", data.refreshToken);
+      emitAuthChanged();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   opts: RequestInit = {},
 ): Promise<T> {
-  const token = getAccessToken();
-  const headers = new Headers(opts.headers);
-  if (!headers.has("Content-Type") && opts.body) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${getApiBase()}${path}`, { ...opts, headers });
-  if (res.status === 401) {
-    clearSession();
-  }
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const j = (await res.json()) as { message?: string | string[] };
-      if (typeof j.message === "string") msg = j.message;
-      else if (Array.isArray(j.message)) msg = j.message.join(", ");
-    } catch {
-      /* ignore */
+  const run = async (isRetry: boolean): Promise<T> => {
+    const token = getAccessToken();
+    const headers = new Headers(opts.headers);
+    if (!headers.has("Content-Type") && opts.body) {
+      headers.set("Content-Type", "application/json");
     }
-    throw new Error(msg);
-  }
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(`${getApiBase()}${path}`, { ...opts, headers });
+    if (res.status === 401) {
+      if (!skipRefreshOn401(path) && !isRetry) {
+        const refreshed = await tryRefreshAccessToken();
+        if (refreshed) return run(true);
+      }
+      clearSession();
+    }
+    if (!res.ok) {
+      let msg = res.statusText;
+      try {
+        const j = (await res.json()) as { message?: string | string[] };
+        if (typeof j.message === "string") msg = j.message;
+        else if (Array.isArray(j.message)) msg = j.message.join(", ");
+      } catch {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    if (res.status === 204) return undefined as T;
+    return res.json() as Promise<T>;
+  };
+  return run(false);
 }
 
 export async function fetchCasinoLobbyCatalog() {

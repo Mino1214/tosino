@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
+import { SwitchToggle } from "@/components/SwitchToggle";
 
 type Detail = {
   rollingLockWithdrawals: boolean;
@@ -80,11 +81,11 @@ type PolicyHistoryRow = {
 };
 
 const PER_GAME_ROLLING_FIELDS = [
-  { key: "rollingTurnoverSports", label: "스포츠" },
-  { key: "rollingTurnoverCasino", label: "카지노" },
-  { key: "rollingTurnoverSlot", label: "슬롯" },
-  { key: "rollingTurnoverMinigame", label: "미니게임" },
-  { key: "rollingTurnoverArcade", label: "아케이드" },
+  { key: "rollingTurnoverSports", label: "스포츠", defaultValue: "1" },
+  { key: "rollingTurnoverCasino", label: "카지노", defaultValue: "1" },
+  { key: "rollingTurnoverSlot", label: "슬롯", defaultValue: "1" },
+  { key: "rollingTurnoverMinigame", label: "미니게임", defaultValue: "1" },
+  { key: "rollingTurnoverArcade", label: "아케이드", defaultValue: "1" },
 ] as const;
 
 type CompPolicyForm = {
@@ -384,6 +385,30 @@ function buildPointRulesJson(
   return next;
 }
 
+/**
+ * 내부 저장은 비율(0.03 = 3%). UI에서는 "3" 처럼 퍼센트 숫자로 보여준다.
+ * 비어 있으면 UI도 비움.
+ */
+function pointRatioToPercent(ratio: string): string {
+  const trimmed = ratio.trim();
+  if (!trimmed) return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return trimmed;
+  const pct = n * 100;
+  const rounded = Math.round(pct * 1000) / 1000;
+  return String(rounded);
+}
+
+function pointPercentToRatio(pct: string): string {
+  const trimmed = pct.trim();
+  if (!trimmed) return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return pct;
+  const ratio = n / 100;
+  const rounded = Math.round(ratio * 100000) / 100000;
+  return String(rounded);
+}
+
 function createTier(): PointTierForm {
   return {
     id: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -441,11 +466,14 @@ export default function ConsoleOperationalPage() {
         setRolling({
           rollingLockWithdrawals: detail.rollingLockWithdrawals,
           rollingTurnoverMultiplier: detail.rollingTurnoverMultiplier,
-          rollingTurnoverSports: detail.rollingTurnoverSports ?? "",
-          rollingTurnoverCasino: detail.rollingTurnoverCasino ?? "",
-          rollingTurnoverSlot: detail.rollingTurnoverSlot ?? "",
-          rollingTurnoverMinigame: detail.rollingTurnoverMinigame ?? "",
-          rollingTurnoverArcade: detail.rollingTurnoverArcade ?? "",
+          // 기본값: 게임별 롤링이 비어 있으면 1배로 채워 "게임별 롤링"이 기본 모드가 되도록 한다
+          rollingTurnoverSports: (detail.rollingTurnoverSports ?? "").trim() || "1",
+          rollingTurnoverCasino: (detail.rollingTurnoverCasino ?? "").trim() || "1",
+          rollingTurnoverSlot: (detail.rollingTurnoverSlot ?? "").trim() || "1",
+          rollingTurnoverMinigame:
+            (detail.rollingTurnoverMinigame ?? "").trim() || "1",
+          rollingTurnoverArcade:
+            (detail.rollingTurnoverArcade ?? "").trim() || "1",
           agentCanEditMemberRolling: detail.agentCanEditMemberRolling,
           minDepositKrw: detail.minDepositKrw,
           minDepositUsdt: detail.minDepositUsdt,
@@ -877,74 +905,69 @@ export default function ConsoleOperationalPage() {
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <h3 className="text-sm font-medium text-gray-800">턴오버 / 권한</h3>
-              <div className="mt-3 space-y-4">
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={rolling.rollingLockWithdrawals}
-                    onChange={(e) =>
-                      patchRolling("rollingLockWithdrawals", e.target.checked)
-                    }
-                  />
-                  미충족 롤링이 있으면 출금 차단
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
+              <h3 className="text-sm font-medium text-gray-800">출금 조건 / 총판 권한</h3>
+              <div className="mt-3 space-y-2 divide-y divide-gray-100">
+                <SwitchToggle
+                  checked={rolling.rollingLockWithdrawals}
+                  onChange={(v) => patchRolling("rollingLockWithdrawals", v)}
+                  label="미충족 롤링 있으면 출금 차단"
+                  description="입금 후 필요 턴오버를 채우기 전엔 출금 신청을 막습니다."
+                />
+                <div className="pt-2">
+                  <SwitchToggle
                     checked={rolling.agentCanEditMemberRolling}
-                    onChange={(e) =>
-                      patchRolling("agentCanEditMemberRolling", e.target.checked)
+                    onChange={(v) =>
+                      patchRolling("agentCanEditMemberRolling", v)
                     }
+                    label="총판이 하위 유저 배율 설정 가능"
+                    description="총판이 자기 산하 회원에게 다른 배율을 적용할 수 있도록 허용합니다."
                   />
-                  총판이 하위 유저 배율 설정 가능
-                </label>
-                <div>
-                  <label className="text-xs text-gray-500">
-                    기본 롤링 턴오버 배수
-                  </label>
-                  <input
-                    type="text"
-                    value={rolling.rollingTurnoverMultiplier}
-                    onChange={(e) =>
-                      patchRolling("rollingTurnoverMultiplier", e.target.value)
-                    }
-                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
-                  />
-                  <p className="mt-1 text-[11px] text-gray-400">
-                    아래 게임별 값이 비어 있으면 이 기본 배수가 적용됩니다.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-600">
-                    게임별 롤링 턴오버 배수
-                  </label>
-                  <p className="mt-0.5 text-[11px] text-gray-400">
-                    게임 카테고리별로 필요한 턴오버 배수를 지정할 수 있습니다.
-                    비워두면 기본 배수를 그대로 사용합니다.
-                  </p>
-                  <div className="mt-2 grid gap-2 md:grid-cols-2">
-                    {PER_GAME_ROLLING_FIELDS.map((f) => (
-                      <label
-                        key={f.key}
-                        className="flex items-center gap-2 text-xs text-gray-600"
-                      >
-                        <span className="w-14 font-medium">{f.label}</span>
-                        <input
-                          type="text"
-                          value={rolling[f.key]}
-                          onChange={(e) =>
-                            patchRolling(f.key, e.target.value)
-                          }
-                          placeholder={`기본 ${rolling.rollingTurnoverMultiplier}배`}
-                          className="flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
-                        />
-                      </label>
-                    ))}
-                  </div>
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-800">
+                    게임별 롤링 턴오버 배수
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-gray-500">
+                    각 게임별로 입금액 대비 몇 배 만큼 배팅해야 출금이 허용되는지
+                    설정합니다. 예) 카지노 1배 = 10만원 입금 시 10만원 배팅 필요.
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#3182f6]/10 px-2 py-0.5 text-[11px] font-medium text-[#3182f6]">
+                  기본 모드
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                {PER_GAME_ROLLING_FIELDS.map((f) => (
+                  <div
+                    key={f.key}
+                    className="rounded-lg border border-gray-200 bg-gray-50/60 p-3"
+                  >
+                    <label className="text-xs font-semibold text-gray-700">
+                      {f.label}
+                    </label>
+                    <div className="mt-1.5 flex items-center gap-1">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={rolling[f.key]}
+                        onChange={(e) => patchRolling(f.key, e.target.value)}
+                        placeholder={`예: ${f.defaultValue}`}
+                        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-center text-sm font-mono text-black"
+                      />
+                      <span className="text-xs text-gray-500">배</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-[11px] text-gray-500">
+                비우면 해당 게임은 기본 배수 ({rolling.rollingTurnoverMultiplier || "1"}배)로
+                적용됩니다. 롤링 정책은 저장 즉시 반영됩니다.
+              </p>
             </div>
           </div>
 
@@ -956,9 +979,9 @@ export default function ConsoleOperationalPage() {
                 상위업체 요율
               </h3>
               <p className="mt-1 text-xs text-gray-500">
-                상위업체 매입 요율과 자동 마진을 기준으로 플랫폼 청구율을 계산합니다.
-                카지노·슬롯·미니게임 GGR은 동일(카지노) 알 버킷으로 합산되고, 스포츠는
-                별도 요율입니다.
+                상위 카지노·스포츠 알값은 각각 매입(벤더) 기준이며, 자동 마진은 카지노
+                청구율에만 더해집니다. 스포츠 청구율은 상위 스포츠 알값과 같습니다.
+                카지노·슬롯·미니 GGR은 동일(카지노) 버킷으로 합산됩니다.
               </p>
               <div className="mt-3 grid gap-4 md:grid-cols-3">
                 <div>
@@ -984,7 +1007,9 @@ export default function ConsoleOperationalPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">자동 마진 %</label>
+                  <label className="text-xs text-gray-500">
+                    자동 마진 % (카지노 청구에만 가산)
+                  </label>
                   <input
                     type="text"
                     value={solutionRatePolicy.autoMarginPct}
@@ -1009,11 +1034,10 @@ export default function ConsoleOperationalPage() {
                 <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
                   <p className="text-xs text-gray-500">플랫폼 스포츠 청구율</p>
                   <p className="mt-1 font-mono text-lg text-emerald-700">
-                    {(
-                      (Number(solutionRatePolicy.upstreamSportsPct || 0) || 0) +
-                      (Number(solutionRatePolicy.autoMarginPct || 0) || 0)
-                    ).toFixed(2)}
-                    %
+                    {(Number(solutionRatePolicy.upstreamSportsPct || 0) || 0).toFixed(2)}%
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    상위 스포츠 알값과 동일 (카지노 마진 미적용)
                   </p>
                 </div>
               </div>
@@ -1084,193 +1108,187 @@ export default function ConsoleOperationalPage() {
           <div>
             <h2 className="text-lg font-semibold text-black">콤프 정책</h2>
             <p className="mt-1 text-sm text-gray-500">
-              회원에게 지급할 콤프(낙첨금 환급) 정책을 설정합니다. 정산주기는
-              <span className="mx-1 font-medium text-black">즉시 지급</span>·
-              <span className="mx-1 font-medium text-black">매일 자정 자동</span>·
-              <span className="mx-1 font-medium text-black">배팅일 +N일 후</span>
-              중 선택할 수 있고, 자동/수동 실행을 함께 관리합니다.
+              낙첨금의 일부를 회원에게 돌려주는 정책입니다. 자동/수동 중 선택하고
+              콤프률만 정하면 됩니다.
             </p>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={compPolicy.enabled}
-              onChange={(e) => patchComp("enabled", e.target.checked)}
-            />
-            콤프 정책 사용
-          </label>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <label className="text-xs text-gray-500">정산주기</label>
-              <select
-                value={compPolicy.settlementCycle}
-                onChange={(e) =>
-                  patchComp(
-                    "settlementCycle",
-                    e.target.value as CompPolicyForm["settlementCycle"],
-                  )
-                }
-                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
-              >
-                {COMP_CYCLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500">콤프률 (%)</label>
-              <input
-                type="text"
-                value={compPolicy.ratePct}
-                onChange={(e) => patchComp("ratePct", e.target.value)}
-                placeholder="예: 0.8"
-                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500">배팅일 +N일 후 지급</label>
-              <input
-                type="number"
-                min={0}
-                value={compPolicy.settlementOffsetDays ?? 0}
-                onChange={(e) =>
-                  patchComp(
-                    "settlementOffsetDays",
-                    e.target.value ? Number(e.target.value) : 0,
-                  )
-                }
-                disabled={compPolicy.settlementCycle !== "BET_DAY_PLUS"}
-                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black disabled:opacity-50"
-              />
-              <p className="mt-1 text-[11px] text-gray-500">
-                예: 1을 입력하면 배팅한 다음 날에 정산됩니다. 정산주기를
-                <span className="mx-1 font-medium text-black">배팅일 +N일 후</span>
-                로 선택해야 활성화됩니다.
-              </p>
-            </div>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-800">자동 콤프 정산</h3>
-            <p className="mt-1 text-xs text-gray-500">
-              아래 시간에 자동으로 콤프를 계산해 지갑에 지급합니다.
-              자동 사용을 끄면 수동 실행만 남습니다.
-            </p>
-            <div className="mt-3 grid gap-4 md:grid-cols-3">
-              <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-3">
-                <input
-                  type="checkbox"
-                  checked={compAutomation.autoEnabled}
-                  onChange={(e) =>
-                    patchCompAutomation("autoEnabled", e.target.checked)
-                  }
-                />
-                이 플랫폼에서 자동 콤프 정산 사용
-              </label>
+            <SwitchToggle
+              checked={compPolicy.enabled}
+              onChange={(v) => patchComp("enabled", v)}
+              label="콤프 정책 사용"
+              description="끄면 아래 설정과 자동/수동 정산 모두 동작하지 않습니다."
+            />
+          </div>
 
-              <div>
-                <label className="text-xs text-gray-500">자동 실행 시간</label>
-                <select
-                  value={
-                    COMP_AUTO_TIME_OPTIONS.some(
-                      (option) => option.value === compAutomation.cron.trim(),
-                    )
-                      ? compAutomation.cron.trim()
-                      : "__custom__"
-                  }
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === "__custom__") return;
-                    patchCompAutomation("cron", value);
-                  }}
-                  className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
-                >
-                  {COMP_AUTO_TIME_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                  {!COMP_AUTO_TIME_OPTIONS.some(
-                    (option) => option.value === compAutomation.cron.trim(),
-                  ) && compAutomation.cron.trim() ? (
-                    <option value="__custom__">사용자 지정 (현재 값 유지)</option>
-                  ) : null}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-gray-500">소급 적용 일수</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={compAutomation.backfillDays ?? ""}
-                  onChange={(e) =>
-                    patchCompAutomation(
-                      "backfillDays",
-                      e.target.value ? Number(e.target.value) : null,
-                    )
-                  }
-                  className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
-                />
-                <p className="mt-1 text-[11px] text-gray-500">
-                  자동 정산이 누락된 경우 최대 며칠 전까지 소급해서 처리할지 입력합니다.
+          {compPolicy.enabled ? (
+            <>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                  실행 방식
+                </div>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  자동이면 정해진 시간에 시스템이 지급하고, 수동이면 아래 &ldquo;수동 정산&rdquo;
+                  버튼을 눌러야 지급됩니다.
                 </p>
+                <div className="mt-3 inline-flex rounded-full border border-gray-200 bg-gray-100 p-1 text-xs font-semibold">
+                  {(
+                    [
+                      { value: true, label: "자동" },
+                      { value: false, label: "수동" },
+                    ] as const
+                  ).map((opt) => {
+                    const active = compAutomation.autoEnabled === opt.value;
+                    return (
+                      <button
+                        key={String(opt.value)}
+                        type="button"
+                        onClick={() => patchCompAutomation("autoEnabled", opt.value)}
+                        className={`rounded-full px-4 py-1.5 transition ${
+                          active
+                            ? "bg-white text-[#3182f6] shadow"
+                            : "text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-500">
-                플랫폼마다 다른 시간을 설정해 둘 수 있어요. 자동 사용을 끄면
-                <span className="mx-1 font-medium text-black">수동 정산</span>만 남습니다.
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <label className="text-xs font-medium text-gray-600">
+                    콤프률
+                  </label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={compPolicy.ratePct}
+                      onChange={(e) => patchComp("ratePct", e.target.value)}
+                      placeholder="예: 0.8"
+                      className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm font-mono text-black"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    낙첨금의 이 비율만큼 회원에게 되돌려줍니다. (예: 0.8 → 100만원 낙첨 → 8,000원 지급)
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <label className="text-xs font-medium text-gray-600">
+                    지급 시점
+                  </label>
+                  <select
+                    value={compPolicy.settlementCycle}
+                    onChange={(e) =>
+                      patchComp(
+                        "settlementCycle",
+                        e.target.value as CompPolicyForm["settlementCycle"],
+                      )
+                    }
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
+                  >
+                    {COMP_CYCLE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {compPolicy.settlementCycle === "BET_DAY_PLUS" ? (
+                    <div className="mt-3">
+                      <label className="text-[11px] text-gray-500">
+                        배팅 후 며칠 뒤에 지급?
+                      </label>
+                      <div className="mt-1 flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={compPolicy.settlementOffsetDays ?? 0}
+                          onChange={(e) =>
+                            patchComp(
+                              "settlementOffsetDays",
+                              e.target.value ? Number(e.target.value) : 0,
+                            )
+                          }
+                          className="w-24 rounded border border-gray-300 bg-white px-3 py-1.5 text-center text-sm font-mono text-black"
+                        />
+                        <span className="text-xs text-gray-500">일 후</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
-            <p>
-              현재 설정:{" "}
-              <span className="font-medium text-black">
-                {compPolicy.enabled ? "사용" : "미사용"}
-              </span>
-            </p>
-            <p className="mt-2">
-              주기:{" "}
-              {
-                COMP_CYCLE_OPTIONS.find(
-                  (option) => option.value === compPolicy.settlementCycle,
-                )?.label
-              }
-              {compPolicy.settlementCycle === "BET_DAY_PLUS"
-                ? ` (${compPolicy.settlementOffsetDays ?? 0}일)`
-                : ""}
-            </p>
-            <p className="mt-1">
-              콤프률:{" "}
-              <span className="font-medium text-black">
-                {compPolicy.ratePct.trim() || "미설정"}%
-              </span>
-            </p>
-            <p className="mt-2">
-              자동정산:{" "}
-              <span className="font-medium text-black">
-                {compAutomation.autoEnabled ? "사용" : "미사용"}
-              </span>
-            </p>
-            <p className="mt-1 text-xs text-gray-500">
-              실행 시간{" "}
-              {COMP_AUTO_TIME_OPTIONS.find(
-                (option) => option.value === compAutomation.cron.trim(),
-              )?.label ?? compAutomation.cron.trim() ?? "서버 기본값"}{" "}
-              · 소급 적용 {compAutomation.backfillDays ?? 7}일
-            </p>
-          </div>
+              {compAutomation.autoEnabled ? (
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <h3 className="text-sm font-medium text-gray-800">자동 정산 설정</h3>
+                  <div className="mt-3 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-xs text-gray-500">자동 실행 시간</label>
+                      <select
+                        value={
+                          COMP_AUTO_TIME_OPTIONS.some(
+                            (option) => option.value === compAutomation.cron.trim(),
+                          )
+                            ? compAutomation.cron.trim()
+                            : "__custom__"
+                        }
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === "__custom__") return;
+                          patchCompAutomation("cron", value);
+                        }}
+                        className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
+                      >
+                        {COMP_AUTO_TIME_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                        {!COMP_AUTO_TIME_OPTIONS.some(
+                          (option) => option.value === compAutomation.cron.trim(),
+                        ) && compAutomation.cron.trim() ? (
+                          <option value="__custom__">사용자 지정 (현재 값 유지)</option>
+                        ) : null}
+                      </select>
+                    </div>
 
-          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                    <div>
+                      <label className="text-xs text-gray-500">
+                        놓친 날짜 얼마까지 소급?
+                      </label>
+                      <div className="mt-1 flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={compAutomation.backfillDays ?? ""}
+                          onChange={(e) =>
+                            patchCompAutomation(
+                              "backfillDays",
+                              e.target.value ? Number(e.target.value) : null,
+                            )
+                          }
+                          className="w-24 rounded border border-gray-300 bg-white px-3 py-1.5 text-center text-sm font-mono text-black"
+                        />
+                        <span className="text-xs text-gray-500">일</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        자동 정산이 누락된 경우 최대 며칠 전까지 소급할지 정합니다.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          <div className={`grid gap-4 xl:grid-cols-[1.2fr_0.8fr] ${!compPolicy.enabled || compAutomation.autoEnabled ? "opacity-60" : ""}`}>
             <div className="rounded-xl border border-gray-200 bg-white p-4">
               <h3 className="text-sm font-medium text-gray-800">수동 콤프 정산</h3>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
@@ -1565,25 +1583,25 @@ export default function ConsoleOperationalPage() {
               <div className="mt-3 grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="text-xs text-gray-500">낙첨 포인트 적립률</label>
-                  <input
-                    type="text"
-                    value={pointRules.loseBetPointsPerStake}
-                    onChange={(e) =>
-                      patchPoint("loseBetPointsPerStake", e.target.value)
-                    }
-                    placeholder="예: 0.01 (1만원 → 100P)"
-                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
-                  />
-                  <div className="mt-1.5 rounded-lg bg-[#3182f6]/5 border border-[#3182f6]/20 px-2.5 py-2 text-xs space-y-0.5">
-                    <p className="text-[#3182f6] font-semibold">📌 공식: 적립P = 패배 배팅금 × 이 값</p>
-                    <p className="text-[#3182f6]/70">
-                      현재 <span className="font-mono text-[#3182f6]">{pointRules.loseBetPointsPerStake || "미설정"}</span>
-                      {pointRules.loseBetPointsPerStake ? (
-                        <> → 1만원 패배 시 <span className="font-mono text-[#3182f6]">{(Number(pointRules.loseBetPointsPerStake) * 10000).toLocaleString("ko-KR")}P</span> 적립</>
-                      ) : null}
-                    </p>
-                    <p className="text-gray-500">권장: <span className="font-mono">0.01</span> ~ <span className="font-mono">0.1</span> (1만원 → 100~1000P)</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={pointRatioToPercent(pointRules.loseBetPointsPerStake)}
+                      onChange={(e) =>
+                        patchPoint(
+                          "loseBetPointsPerStake",
+                          pointPercentToRatio(e.target.value),
+                        )
+                      }
+                      placeholder="예: 3"
+                      className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-center text-sm font-mono text-black"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
                   </div>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    패배 배팅금의 이 퍼센트만큼 포인트로 적립합니다.
+                  </p>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500">추천 첫베팅 고정 P</label>
@@ -1596,18 +1614,24 @@ export default function ConsoleOperationalPage() {
                     placeholder="예: 1000"
                     className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
+                  <p className="mt-1 text-[11px] text-gray-500">추천한 회원이 첫 배팅 시 추천인에게 고정 지급.</p>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500">추천 첫베팅 비율 %</label>
-                  <input
-                    type="text"
-                    value={pointRules.referrerFirstBetPct}
-                    onChange={(e) =>
-                      patchPoint("referrerFirstBetPct", e.target.value)
-                    }
-                    placeholder="예: 1.5"
-                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
-                  />
+                  <label className="text-xs text-gray-500">추천 첫베팅 비율</label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={pointRules.referrerFirstBetPct}
+                      onChange={(e) =>
+                        patchPoint("referrerFirstBetPct", e.target.value)
+                      }
+                      placeholder="예: 1.5"
+                      className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-center text-sm font-mono text-black"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-500">첫 배팅금의 이 비율만큼 추천인에게 지급.</p>
                 </div>
               </div>
             </div>
