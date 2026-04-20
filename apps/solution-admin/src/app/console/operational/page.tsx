@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { apiFetch, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type Detail = {
   rollingLockWithdrawals: boolean;
   rollingTurnoverMultiplier: string;
+  rollingTurnoverSports: string | null;
+  rollingTurnoverCasino: string | null;
+  rollingTurnoverSlot: string | null;
+  rollingTurnoverMinigame: string | null;
+  rollingTurnoverArcade: string | null;
   agentCanEditMemberRolling: boolean;
   minDepositKrw: string | null;
   minDepositUsdt: string | null;
@@ -50,6 +54,11 @@ type MasterRow = {
 type RollingForm = {
   rollingLockWithdrawals: boolean;
   rollingTurnoverMultiplier: string;
+  rollingTurnoverSports: string;
+  rollingTurnoverCasino: string;
+  rollingTurnoverSlot: string;
+  rollingTurnoverMinigame: string;
+  rollingTurnoverArcade: string;
   agentCanEditMemberRolling: boolean;
   minDepositKrw: string | null;
   minDepositUsdt: string | null;
@@ -58,6 +67,25 @@ type RollingForm = {
   publicSignupCode: string | null;
   defaultSignupReferrerUserId: string | null;
 };
+
+type PolicyHistoryRow = {
+  id: string;
+  policyType: string;
+  beforeJson: Record<string, unknown>;
+  afterJson: Record<string, unknown>;
+  changedByUserId: string | null;
+  changedByLoginId: string | null;
+  note: string | null;
+  createdAt: string;
+};
+
+const PER_GAME_ROLLING_FIELDS = [
+  { key: "rollingTurnoverSports", label: "스포츠" },
+  { key: "rollingTurnoverCasino", label: "카지노" },
+  { key: "rollingTurnoverSlot", label: "슬롯" },
+  { key: "rollingTurnoverMinigame", label: "미니게임" },
+  { key: "rollingTurnoverArcade", label: "아케이드" },
+] as const;
 
 type CompPolicyForm = {
   enabled: boolean;
@@ -156,19 +184,30 @@ type CompRunResult = {
   rows: CompRunRow[];
 };
 
-type TabKey = "rolling" | "comp" | "point";
+type TabKey = "rolling" | "signup" | "comp" | "point";
 
 const TABS: Array<{ key: TabKey; label: string; hint: string }> = [
   { key: "rolling", label: "롤링", hint: "배율 · 턴오버 · 총판 권한" },
+  { key: "signup", label: "회원가입 연결", hint: "공통 가입코드 · 기본 마스터" },
   { key: "comp", label: "콤프", hint: "정산주기 · 지급률 정책" },
   { key: "point", label: "포인트", hint: "적립 · 전환 · 일괄 지급" },
 ];
 
 const COMP_CYCLE_OPTIONS = [
-  { value: "INSTANT", label: "즉시" },
-  { value: "DAILY_MIDNIGHT", label: "매일 00시" },
-  { value: "BET_DAY_PLUS", label: "배팅일 +x일" },
+  { value: "INSTANT", label: "즉시 지급" },
+  { value: "DAILY_MIDNIGHT", label: "매일 자정 자동" },
+  { value: "BET_DAY_PLUS", label: "배팅일 +N일 후" },
 ] as const;
+
+/** 사용자 친화적 자동정산 시간 옵션 (cron 노출 대신 선택지 제공) */
+const COMP_AUTO_TIME_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "", label: "서버 기본값" },
+  { value: "5 0 * * *", label: "매일 자정 직후 (00:05)" },
+  { value: "0 1 * * *", label: "매일 새벽 1시" },
+  { value: "0 3 * * *", label: "매일 새벽 3시" },
+  { value: "0 6 * * *", label: "매일 아침 6시" },
+  { value: "0 9 * * *", label: "매일 오전 9시" },
+];
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -354,7 +393,6 @@ function createTier(): PointTierForm {
 }
 
 export default function ConsoleOperationalPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const userRole = getStoredUser()?.role;
   const canEditSolutionRates = userRole === "SUPER_ADMIN";
@@ -403,6 +441,11 @@ export default function ConsoleOperationalPage() {
         setRolling({
           rollingLockWithdrawals: detail.rollingLockWithdrawals,
           rollingTurnoverMultiplier: detail.rollingTurnoverMultiplier,
+          rollingTurnoverSports: detail.rollingTurnoverSports ?? "",
+          rollingTurnoverCasino: detail.rollingTurnoverCasino ?? "",
+          rollingTurnoverSlot: detail.rollingTurnoverSlot ?? "",
+          rollingTurnoverMinigame: detail.rollingTurnoverMinigame ?? "",
+          rollingTurnoverArcade: detail.rollingTurnoverArcade ?? "",
           agentCanEditMemberRolling: detail.agentCanEditMemberRolling,
           minDepositKrw: detail.minDepositKrw,
           minDepositUsdt: detail.minDepositUsdt,
@@ -428,18 +471,9 @@ export default function ConsoleOperationalPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) return;
     void load();
-  }, [load, router, selectedPlatformId, platformLoading]);
-
-  const pointRulesPreview = useMemo(() => {
-    if (!pointRules) return "{}";
-    return JSON.stringify(buildPointRulesJson(pointRulesBase, pointRules), null, 2);
-  }, [pointRules, pointRulesBase]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   function patchRolling<K extends keyof RollingForm>(key: K, value: RollingForm[K]) {
     setRolling((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -527,6 +561,26 @@ export default function ConsoleOperationalPage() {
         body: JSON.stringify({
           rollingLockWithdrawals: rolling.rollingLockWithdrawals,
           rollingTurnoverMultiplier: Number(rolling.rollingTurnoverMultiplier),
+          rollingTurnoverSports:
+            rolling.rollingTurnoverSports.trim() === ""
+              ? null
+              : Number(rolling.rollingTurnoverSports),
+          rollingTurnoverCasino:
+            rolling.rollingTurnoverCasino.trim() === ""
+              ? null
+              : Number(rolling.rollingTurnoverCasino),
+          rollingTurnoverSlot:
+            rolling.rollingTurnoverSlot.trim() === ""
+              ? null
+              : Number(rolling.rollingTurnoverSlot),
+          rollingTurnoverMinigame:
+            rolling.rollingTurnoverMinigame.trim() === ""
+              ? null
+              : Number(rolling.rollingTurnoverMinigame),
+          rollingTurnoverArcade:
+            rolling.rollingTurnoverArcade.trim() === ""
+              ? null
+              : Number(rolling.rollingTurnoverArcade),
           agentCanEditMemberRolling: rolling.agentCanEditMemberRolling,
           minDepositKrw: rolling.minDepositKrw ?? "",
           minDepositUsdt: rolling.minDepositUsdt ?? "",
@@ -656,12 +710,12 @@ export default function ConsoleOperationalPage() {
 
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (
-      <p className="text-zinc-500">불러오는 중…</p>
+      <p className="text-gray-500">불러오는 중…</p>
     ) : (
-      <p className="rounded-lg border border-amber-900/40 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+      <p className="rounded-lg border border-[#3182f6]/20 bg-[#3182f6]/5 px-4 py-3 text-sm text-gray-700">
         플랫폼 컨텍스트가 없습니다. 로그아웃 후 다시 로그인하거나 API 연결을
         확인하세요. 시드 데모 계정은{" "}
-        <span className="font-mono text-amber-300">platform@tosino.local</span>{" "}
+        <span className="font-mono text-[#3182f6]">platform@tosino.local</span>{" "}
         입니다.
       </p>
     );
@@ -677,32 +731,33 @@ export default function ConsoleOperationalPage() {
     return err ? (
       <p className="text-red-400">{err}</p>
     ) : (
-      <p className="text-zinc-500">불러오는 중…</p>
+      <p className="text-gray-500">불러오는 중…</p>
     );
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">운영 설정</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          롤링, 콤프, 포인트 정책을 탭으로 나눠서 관리합니다. 기존 값은 유지한 채
-          폼으로 저장되고, 포인트 적립 규칙은 아래 미리보기 JSON에도 같이 반영됩니다.
+        <h1 className="text-2xl font-semibold text-black">운영 설정</h1>
+        <p className="mt-2 text-sm text-gray-500">
+          롤링, 회원가입 연결, 콤프, 포인트 정책을 카테고리별로 관리합니다.
+          탭을 선택해 변경한 뒤 하단의 <span className="font-medium text-black">저장</span>
+          버튼을 누르세요.
         </p>
       </div>
 
       {err ? (
-        <p className="rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {err}
         </p>
       ) : null}
       {msg ? (
-        <p className="rounded border border-emerald-900/50 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200">
+        <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           {msg}
         </p>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {TABS.map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -712,22 +767,37 @@ export default function ConsoleOperationalPage() {
               onClick={() => setActiveTab(tab.key)}
               className={`rounded-2xl border p-4 text-left transition ${
                 active
-                  ? "border-amber-500/50 bg-amber-950/20 shadow-[0_0_0_1px_rgba(245,158,11,0.18)]"
-                  : "border-zinc-800 bg-zinc-900/40 hover:border-zinc-700"
+                  ? "border-amber-500/50 bg-[#3182f6]/5 shadow-[0_0_0_1px_rgba(245,158,11,0.18)]"
+                  : "border-gray-200 bg-white hover:border-gray-300"
               }`}
             >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-300/80">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#3182f6]/80">
                 {tab.label}
               </p>
-              <p className="mt-3 text-sm font-medium text-zinc-100">{tab.hint}</p>
+              <p className="mt-3 text-sm font-medium text-black">{tab.hint}</p>
               {tab.key === "rolling" ? (
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-2 text-xs text-gray-500">
                   턴오버 {rolling.rollingTurnoverMultiplier}배 · 총판 편집{" "}
                   {rolling.agentCanEditMemberRolling ? "허용" : "차단"}
                 </p>
               ) : null}
+              {tab.key === "signup" ? (
+                <p className="mt-2 text-xs text-gray-500">
+                  코드{" "}
+                  <span className="font-mono">
+                    {(rolling.publicSignupCode ?? "").trim() || "미설정"}
+                  </span>
+                  {" · "}
+                  마스터{" "}
+                  {rolling.defaultSignupReferrerUserId
+                    ? masters.find(
+                        (m) => m.id === rolling.defaultSignupReferrerUserId,
+                      )?.loginId ?? "선택됨"
+                    : "미선택"}
+                </p>
+              ) : null}
               {tab.key === "comp" ? (
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-2 text-xs text-gray-500">
                   {compPolicy.enabled ? "사용" : "미사용"} ·{" "}
                   {
                     COMP_CYCLE_OPTIONS.find(
@@ -738,7 +808,7 @@ export default function ConsoleOperationalPage() {
                 </p>
               ) : null}
               {tab.key === "point" ? (
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-2 text-xs text-gray-500">
                   출석 {pointRules.attendanceMode === "batch" ? "일괄수령" : "즉시수령"} ·
                   전체지급 가능
                 </p>
@@ -749,35 +819,35 @@ export default function ConsoleOperationalPage() {
       </section>
 
       {activeTab === "rolling" ? (
-        <section className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-100">롤링 정책</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              스포츠, 카지노, 슬롯, 미니게임 배율은 회원별로 관리되고, 이 화면에서는
-              플랫폼 단위 정책과 총판 권한을 설정합니다.
+            <h2 className="text-lg font-semibold text-black">롤링 정책</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              스포츠, 카지노, 슬롯, 미니게임, 아케이드 배율은 회원별로 관리되고,
+              이 화면에서는 플랫폼 단위 정책과 총판 권한을 설정합니다.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {["스포츠", "카지노", "슬롯", "미니게임"].map((label) => (
+            {["스포츠", "카지노", "슬롯", "미니게임", "아케이드"].map((label) => (
               <span
                 key={label}
-                className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-400"
+                className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs text-gray-500"
               >
                 {label}
               </span>
             ))}
             <Link
               href="/console/users"
-              className="rounded-full border border-amber-700/40 bg-amber-950/20 px-3 py-1 text-xs text-amber-200 hover:border-amber-600/60"
+              className="rounded-full border border-amber-700/40 bg-[#3182f6]/5 px-3 py-1 text-xs text-[#3182f6] hover:border-amber-600/60"
             >
               회원별 배율 설정 보기
             </Link>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">입출금 한도</h3>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">입출금 한도</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 {(
                   [
@@ -788,7 +858,7 @@ export default function ConsoleOperationalPage() {
                   ] as const
                 ).map(([key, label, placeholder]) => (
                   <div key={key}>
-                    <label className="text-xs text-zinc-500">{label}</label>
+                    <label className="text-xs text-gray-500">{label}</label>
                     <input
                       type="text"
                       value={rolling[key] ?? ""}
@@ -799,17 +869,17 @@ export default function ConsoleOperationalPage() {
                         )
                       }
                       placeholder={placeholder}
-                      className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                      className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                     />
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">턴오버 / 권한</h3>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">턴오버 / 권한</h3>
               <div className="mt-3 space-y-4">
-                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
                     checked={rolling.rollingLockWithdrawals}
@@ -819,7 +889,7 @@ export default function ConsoleOperationalPage() {
                   />
                   미충족 롤링이 있으면 출금 차단
                 </label>
-                <label className="flex items-center gap-2 text-sm text-zinc-300">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
                     checked={rolling.agentCanEditMemberRolling}
@@ -830,8 +900,8 @@ export default function ConsoleOperationalPage() {
                   총판이 하위 유저 배율 설정 가능
                 </label>
                 <div>
-                  <label className="text-xs text-zinc-500">
-                    롤링 턴오버 배수 (입금 대비)
+                  <label className="text-xs text-gray-500">
+                    기본 롤링 턴오버 배수
                   </label>
                   <input
                     type="text"
@@ -839,103 +909,96 @@ export default function ConsoleOperationalPage() {
                     onChange={(e) =>
                       patchRolling("rollingTurnoverMultiplier", e.target.value)
                     }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    아래 게임별 값이 비어 있으면 이 기본 배수가 적용됩니다.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-600">
+                    게임별 롤링 턴오버 배수
+                  </label>
+                  <p className="mt-0.5 text-[11px] text-gray-400">
+                    게임 카테고리별로 필요한 턴오버 배수를 지정할 수 있습니다.
+                    비워두면 기본 배수를 그대로 사용합니다.
+                  </p>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    {PER_GAME_ROLLING_FIELDS.map((f) => (
+                      <label
+                        key={f.key}
+                        className="flex items-center gap-2 text-xs text-gray-600"
+                      >
+                        <span className="w-14 font-medium">{f.label}</span>
+                        <input
+                          type="text"
+                          value={rolling[f.key]}
+                          onChange={(e) =>
+                            patchRolling(f.key, e.target.value)
+                          }
+                          placeholder={`기본 ${rolling.rollingTurnoverMultiplier}배`}
+                          className="flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+                        />
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-            <h3 className="text-sm font-medium text-zinc-200">회원가입 연결</h3>
-            <div className="mt-3 grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="text-xs text-zinc-500">공통 가입코드</label>
-                <input
-                  type="text"
-                  value={rolling.publicSignupCode ?? ""}
-                  onChange={(e) =>
-                    patchRolling(
-                      "publicSignupCode",
-                      (e.target.value.trim().toUpperCase() || null) as RollingForm["publicSignupCode"],
-                    )
-                  }
-                  placeholder="예: ION"
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-zinc-500">공통 코드 연결 마스터</label>
-                <select
-                  value={rolling.defaultSignupReferrerUserId ?? ""}
-                  onChange={(e) =>
-                    patchRolling(
-                      "defaultSignupReferrerUserId",
-                      (e.target.value || null) as RollingForm["defaultSignupReferrerUserId"],
-                    )
-                  }
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                >
-                  <option value="">선택 안 함</option>
-                  {masters.map((master) => (
-                    <option key={master.id} value={master.id}>
-                      {master.displayName?.trim() || master.loginId || master.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
+          <RollingHistoryPanel platformId={selectedPlatformId} />
 
           {canEditSolutionRates ? (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">
                 상위업체 요율
               </h3>
-              <p className="mt-1 text-xs text-zinc-500">
+              <p className="mt-1 text-xs text-gray-500">
                 상위업체 매입 요율과 자동 마진을 기준으로 플랫폼 청구율을 계산합니다.
                 카지노·슬롯·미니게임 GGR은 동일(카지노) 알 버킷으로 합산되고, 스포츠는
                 별도 요율입니다.
               </p>
               <div className="mt-3 grid gap-4 md:grid-cols-3">
                 <div>
-                  <label className="text-xs text-zinc-500">상위 카지노 %</label>
+                  <label className="text-xs text-gray-500">상위 카지노 %</label>
                   <input
                     type="text"
                     value={solutionRatePolicy.upstreamCasinoPct}
                     onChange={(e) =>
                       patchSolutionRate("upstreamCasinoPct", e.target.value)
                     }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">상위 스포츠 %</label>
+                  <label className="text-xs text-gray-500">상위 스포츠 %</label>
                   <input
                     type="text"
                     value={solutionRatePolicy.upstreamSportsPct}
                     onChange={(e) =>
                       patchSolutionRate("upstreamSportsPct", e.target.value)
                     }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">자동 마진 %</label>
+                  <label className="text-xs text-gray-500">자동 마진 %</label>
                   <input
                     type="text"
                     value={solutionRatePolicy.autoMarginPct}
                     onChange={(e) =>
                       patchSolutionRate("autoMarginPct", e.target.value)
                     }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <div className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3">
-                  <p className="text-xs text-zinc-500">플랫폼 카지노 청구율</p>
-                  <p className="mt-1 font-mono text-lg text-emerald-300">
+                <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                  <p className="text-xs text-gray-500">플랫폼 카지노 청구율</p>
+                  <p className="mt-1 font-mono text-lg text-emerald-700">
                     {(
                       (Number(solutionRatePolicy.upstreamCasinoPct || 0) || 0) +
                       (Number(solutionRatePolicy.autoMarginPct || 0) || 0)
@@ -943,9 +1006,9 @@ export default function ConsoleOperationalPage() {
                     %
                   </p>
                 </div>
-                <div className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3">
-                  <p className="text-xs text-zinc-500">플랫폼 스포츠 청구율</p>
-                  <p className="mt-1 font-mono text-lg text-emerald-300">
+                <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                  <p className="text-xs text-gray-500">플랫폼 스포츠 청구율</p>
+                  <p className="mt-1 font-mono text-lg text-emerald-700">
                     {(
                       (Number(solutionRatePolicy.upstreamSportsPct || 0) || 0) +
                       (Number(solutionRatePolicy.autoMarginPct || 0) || 0)
@@ -959,17 +1022,77 @@ export default function ConsoleOperationalPage() {
         </section>
       ) : null}
 
-      {activeTab === "comp" ? (
-        <section className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+      {activeTab === "signup" ? (
+        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-100">콤프 정책</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              콤프 정산주기, 지급률, 자동정산 스케줄을 플랫폼별로 저장합니다.
-              `매일 00시`, `배팅일 +x일`은 자동 대상이고 `즉시`는 수동 실행 기준입니다.
+            <h2 className="text-lg font-semibold text-black">회원가입 연결</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              회원이 가입할 때 사용하는 공통 코드와, 그 코드를 통해 들어온 회원이
+              자동으로 묶일 기본 마스터(총판)를 지정합니다.
+            </p>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-xs text-gray-500">공통 가입코드</label>
+                <input
+                  type="text"
+                  value={rolling.publicSignupCode ?? ""}
+                  onChange={(e) =>
+                    patchRolling(
+                      "publicSignupCode",
+                      (e.target.value.trim().toUpperCase() || null) as RollingForm["publicSignupCode"],
+                    )
+                  }
+                  placeholder="예: ION"
+                  className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
+                />
+                <p className="mt-1.5 text-[11px] text-gray-500">
+                  비워두면 추천코드 없이도 누구나 가입할 수 있습니다.
+                </p>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">공통 코드 연결 마스터</label>
+                <select
+                  value={rolling.defaultSignupReferrerUserId ?? ""}
+                  onChange={(e) =>
+                    patchRolling(
+                      "defaultSignupReferrerUserId",
+                      (e.target.value || null) as RollingForm["defaultSignupReferrerUserId"],
+                    )
+                  }
+                  className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
+                >
+                  <option value="">선택 안 함</option>
+                  {masters.map((master) => (
+                    <option key={master.id} value={master.id}>
+                      {master.displayName?.trim() || master.loginId || master.id}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-[11px] text-gray-500">
+                  공통 가입코드로 들어온 회원은 자동으로 이 마스터 산하에 배정됩니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {activeTab === "comp" ? (
+        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5">
+          <div>
+            <h2 className="text-lg font-semibold text-black">콤프 정책</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              회원에게 지급할 콤프(낙첨금 환급) 정책을 설정합니다. 정산주기는
+              <span className="mx-1 font-medium text-black">즉시 지급</span>·
+              <span className="mx-1 font-medium text-black">매일 자정 자동</span>·
+              <span className="mx-1 font-medium text-black">배팅일 +N일 후</span>
+              중 선택할 수 있고, 자동/수동 실행을 함께 관리합니다.
             </p>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
               checked={compPolicy.enabled}
@@ -980,7 +1103,7 @@ export default function ConsoleOperationalPage() {
 
           <div className="grid gap-4 md:grid-cols-3">
             <div>
-              <label className="text-xs text-zinc-500">정산주기</label>
+              <label className="text-xs text-gray-500">정산주기</label>
               <select
                 value={compPolicy.settlementCycle}
                 onChange={(e) =>
@@ -989,7 +1112,7 @@ export default function ConsoleOperationalPage() {
                     e.target.value as CompPolicyForm["settlementCycle"],
                   )
                 }
-                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
               >
                 {COMP_CYCLE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -1000,18 +1123,18 @@ export default function ConsoleOperationalPage() {
             </div>
 
             <div>
-              <label className="text-xs text-zinc-500">콤프률 (%)</label>
+              <label className="text-xs text-gray-500">콤프률 (%)</label>
               <input
                 type="text"
                 value={compPolicy.ratePct}
                 onChange={(e) => patchComp("ratePct", e.target.value)}
                 placeholder="예: 0.8"
-                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
               />
             </div>
 
             <div>
-              <label className="text-xs text-zinc-500">배팅일 +x일</label>
+              <label className="text-xs text-gray-500">배팅일 +N일 후 지급</label>
               <input
                 type="number"
                 min={0}
@@ -1023,17 +1146,24 @@ export default function ConsoleOperationalPage() {
                   )
                 }
                 disabled={compPolicy.settlementCycle !== "BET_DAY_PLUS"}
-                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
+                className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black disabled:opacity-50"
               />
+              <p className="mt-1 text-[11px] text-gray-500">
+                예: 1을 입력하면 배팅한 다음 날에 정산됩니다. 정산주기를
+                <span className="mx-1 font-medium text-black">배팅일 +N일 후</span>
+                로 선택해야 활성화됩니다.
+              </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-            <h3 className="text-sm font-medium text-zinc-200">
-              플랫폼별 자동정산
-            </h3>
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h3 className="text-sm font-medium text-gray-800">자동 콤프 정산</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              아래 시간에 자동으로 콤프를 계산해 지갑에 지급합니다.
+              자동 사용을 끄면 수동 실행만 남습니다.
+            </p>
             <div className="mt-3 grid gap-4 md:grid-cols-3">
-              <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-3">
+              <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-3">
                 <input
                   type="checkbox"
                   checked={compAutomation.autoEnabled}
@@ -1045,18 +1175,37 @@ export default function ConsoleOperationalPage() {
               </label>
 
               <div>
-                <label className="text-xs text-zinc-500">Cron (KST)</label>
-                <input
-                  type="text"
-                  value={compAutomation.cron}
-                  onChange={(e) => patchCompAutomation("cron", e.target.value)}
-                  placeholder="예: 5 0 * * *"
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
-                />
+                <label className="text-xs text-gray-500">자동 실행 시간</label>
+                <select
+                  value={
+                    COMP_AUTO_TIME_OPTIONS.some(
+                      (option) => option.value === compAutomation.cron.trim(),
+                    )
+                      ? compAutomation.cron.trim()
+                      : "__custom__"
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === "__custom__") return;
+                    patchCompAutomation("cron", value);
+                  }}
+                  className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
+                >
+                  {COMP_AUTO_TIME_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                  {!COMP_AUTO_TIME_OPTIONS.some(
+                    (option) => option.value === compAutomation.cron.trim(),
+                  ) && compAutomation.cron.trim() ? (
+                    <option value="__custom__">사용자 지정 (현재 값 유지)</option>
+                  ) : null}
+                </select>
               </div>
 
               <div>
-                <label className="text-xs text-zinc-500">백필 일수</label>
+                <label className="text-xs text-gray-500">소급 적용 일수</label>
                 <input
                   type="number"
                   min={1}
@@ -1068,21 +1217,24 @@ export default function ConsoleOperationalPage() {
                       e.target.value ? Number(e.target.value) : null,
                     )
                   }
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                 />
+                <p className="mt-1 text-[11px] text-gray-500">
+                  자동 정산이 누락된 경우 최대 며칠 전까지 소급해서 처리할지 입력합니다.
+                </p>
               </div>
 
-              <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2 text-xs leading-relaxed text-zinc-500">
-                솔루션 A/B/C처럼 플랫폼별로 다른 시각과 백필 폭을 둘 수 있습니다.
-                cron이 비면 서버 기본값을 따르고, 자동 사용을 끄면 수동 정산만 남습니다.
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-500">
+                플랫폼마다 다른 시간을 설정해 둘 수 있어요. 자동 사용을 끄면
+                <span className="mx-1 font-medium text-black">수동 정산</span>만 남습니다.
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-500">
             <p>
               현재 설정:{" "}
-              <span className="font-medium text-zinc-100">
+              <span className="font-medium text-black">
                 {compPolicy.enabled ? "사용" : "미사용"}
               </span>
             </p>
@@ -1099,56 +1251,59 @@ export default function ConsoleOperationalPage() {
             </p>
             <p className="mt-1">
               콤프률:{" "}
-              <span className="font-medium text-zinc-100">
+              <span className="font-medium text-black">
                 {compPolicy.ratePct.trim() || "미설정"}%
               </span>
             </p>
             <p className="mt-2">
               자동정산:{" "}
-              <span className="font-medium text-zinc-100">
+              <span className="font-medium text-black">
                 {compAutomation.autoEnabled ? "사용" : "미사용"}
               </span>
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              스케줄 {compAutomation.cron.trim() || "기본값 사용"} · 백필{" "}
-              {compAutomation.backfillDays ?? 7}일
+            <p className="mt-1 text-xs text-gray-500">
+              실행 시간{" "}
+              {COMP_AUTO_TIME_OPTIONS.find(
+                (option) => option.value === compAutomation.cron.trim(),
+              )?.label ?? compAutomation.cron.trim() ?? "서버 기본값"}{" "}
+              · 소급 적용 {compAutomation.backfillDays ?? 7}일
             </p>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">수동 콤프 정산</h3>
-              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">수동 콤프 정산</h3>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
                 승인 입출금 기준 회원별 낙첨금(충전 − 환전)에 현재 콤프률을 적용해
                 실제 지갑으로 지급합니다. 같은 회원/같은 기간은 중복 정산되지 않습니다.
               </p>
               <div className="mt-4 grid gap-4 md:grid-cols-3">
                 <div>
-                  <label className="text-xs text-zinc-500">시작일</label>
+                  <label className="text-xs text-gray-500">시작일</label>
                   <input
                     type="date"
                     value={compPeriodFrom}
                     onChange={(e) => setCompPeriodFrom(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">종료일</label>
+                  <label className="text-xs text-gray-500">종료일</label>
                   <input
                     type="date"
                     value={compPeriodTo}
                     onChange={(e) => setCompPeriodTo(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">메모</label>
+                  <label className="text-xs text-gray-500">메모</label>
                   <input
                     type="text"
                     value={compSettlementNote}
                     onChange={(e) => setCompSettlementNote(e.target.value)}
                     placeholder="예: 4월 1차 콤프"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
               </div>
@@ -1157,7 +1312,7 @@ export default function ConsoleOperationalPage() {
                   type="button"
                   onClick={() => void runCompSettlement(true)}
                   disabled={compPreviewing || compRunning}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600 disabled:opacity-50"
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:border-gray-300 disabled:opacity-50"
                 >
                   {compPreviewing ? "미리보기 중..." : "미리보기"}
                 </button>
@@ -1165,7 +1320,7 @@ export default function ConsoleOperationalPage() {
                   type="button"
                   onClick={() => void runCompSettlement(false)}
                   disabled={compPreviewing || compRunning || !compPolicy.enabled}
-                  className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-50"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-400 disabled:opacity-50"
                 >
                   {compRunning ? "정산 실행 중..." : "정산 실행"}
                 </button>
@@ -1174,43 +1329,43 @@ export default function ConsoleOperationalPage() {
               {compResult ? (
                 <div className="mt-4 space-y-4">
                   <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">대상 회원</p>
-                      <p className="mt-1 text-lg font-semibold text-zinc-100">
+                    <div className="rounded-lg border border-gray-200 bg-white p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">대상 회원</p>
+                      <p className="mt-1 text-lg font-semibold text-black">
                         {compResult.totals.eligibleUsers}명
                       </p>
-                      <p className="text-xs text-zinc-600">
+                      <p className="text-xs text-gray-400">
                         신규 {compResult.totals.readyUsers} / 기존 {compResult.totals.skippedExistingUsers}
                       </p>
                     </div>
-                    <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">총 기준금액</p>
-                      <p className="mt-1 text-lg font-semibold text-zinc-100">
+                    <div className="rounded-lg border border-gray-200 bg-white p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">총 기준금액</p>
+                      <p className="mt-1 text-lg font-semibold text-black">
                         {compResult.totals.totalBaseAmount}원
                       </p>
-                      <p className="text-xs text-zinc-600">
+                      <p className="text-xs text-gray-400">
                         콤프률 {compResult.policy.ratePct ?? "0"}%
                       </p>
                     </div>
-                    <div className="rounded-lg border border-zinc-800 bg-black/20 p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                    <div className="rounded-lg border border-gray-200 bg-white p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">
                         {compResult.dryRun ? "지급 예정" : "실제 지급"}
                       </p>
-                      <p className="mt-1 text-lg font-semibold text-amber-300">
+                      <p className="mt-1 text-lg font-semibold text-[#3182f6]">
                         {compResult.dryRun
                           ? `${compResult.totals.totalAmount}원`
                           : `${compResult.totals.createdAmount}원`}
                       </p>
-                      <p className="text-xs text-zinc-600">
+                      <p className="text-xs text-gray-400">
                         {formatDateOnly(compResult.period.from)} ~ {formatDateOnly(compResult.period.to)}
                       </p>
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-black/20">
+                  <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
                     <table className="w-full min-w-[640px] text-xs">
                       <thead>
-                        <tr className="border-b border-zinc-800 bg-zinc-900/60 text-zinc-500">
+                        <tr className="border-b border-gray-200 bg-white text-gray-500">
                           {["회원", "기준금액", "콤프", "상태"].map((label) => (
                             <th key={label} className="px-3 py-2 text-left font-medium">
                               {label}
@@ -1221,31 +1376,31 @@ export default function ConsoleOperationalPage() {
                       <tbody>
                         {compResult.rows.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="px-3 py-4 text-center text-zinc-500">
+                            <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
                               해당 기간에 지급 대상 회원이 없습니다.
                             </td>
                           </tr>
                         ) : (
                           compResult.rows.map((row) => (
-                            <tr key={row.userId} className="border-b border-zinc-900/70">
+                            <tr key={row.userId} className="border-b border-gray-200">
                               <td className="px-3 py-2">
-                                <p className="font-mono text-zinc-100">{row.loginId}</p>
-                                <p className="text-zinc-500">{row.displayName || "—"}</p>
+                                <p className="font-mono text-black">{row.loginId}</p>
+                                <p className="text-gray-500">{row.displayName || "—"}</p>
                               </td>
-                              <td className="px-3 py-2 font-mono text-zinc-200">
+                              <td className="px-3 py-2 font-mono text-gray-800">
                                 {row.baseAmount}원
                               </td>
-                              <td className="px-3 py-2 font-mono text-amber-300">
+                              <td className="px-3 py-2 font-mono text-[#3182f6]">
                                 {row.amount}원
                               </td>
                               <td className="px-3 py-2">
                                 <span
                                   className={`rounded-full px-2 py-1 text-[11px] ${
                                     row.status === "already_settled"
-                                      ? "bg-zinc-800 text-zinc-300"
+                                      ? "bg-gray-100 text-gray-700"
                                       : row.status === "wallet_missing"
-                                        ? "bg-red-950/60 text-red-200"
-                                        : "bg-emerald-950/50 text-emerald-200"
+                                        ? "bg-red-50 text-red-700"
+                                        : "bg-emerald-50 text-emerald-700"
                                   }`}
                                 >
                                   {row.status === "already_settled"
@@ -1267,39 +1422,39 @@ export default function ConsoleOperationalPage() {
               ) : null}
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-medium text-zinc-200">최근 집행 내역</h3>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <h3 className="text-sm font-medium text-gray-800">최근 집행 내역</h3>
+                  <p className="mt-1 text-xs text-gray-500">
                     최근 20건 기준 · 누적 {compHistorySummary.count}건 / {compHistorySummary.totalAmount}원
                   </p>
                 </div>
               </div>
 
               {compHistory.length === 0 ? (
-                <p className="mt-4 text-sm text-zinc-500">아직 집행된 콤프 원장이 없습니다.</p>
+                <p className="mt-4 text-sm text-gray-500">아직 집행된 콤프 원장이 없습니다.</p>
               ) : (
                 <div className="mt-4 space-y-2">
                   {compHistory.map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2.5"
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2.5"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate font-mono text-sm text-zinc-100">
+                          <p className="truncate font-mono text-sm text-black">
                             {item.loginId}
                           </p>
-                          <p className="truncate text-xs text-zinc-500">
+                          <p className="truncate text-xs text-gray-500">
                             {item.displayName || "닉네임 없음"}
                           </p>
                         </div>
-                        <p className="shrink-0 font-mono text-sm font-semibold text-amber-300">
+                        <p className="shrink-0 font-mono text-sm font-semibold text-[#3182f6]">
                           {item.amount}원
                         </p>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
                         <span>
                           기준 {item.baseAmount}원 × {item.ratePct}%
                         </span>
@@ -1310,7 +1465,7 @@ export default function ConsoleOperationalPage() {
                         <span>처리자 {item.settledByLoginId || "시스템"}</span>
                       </div>
                       {item.note ? (
-                        <p className="mt-1 text-[11px] text-zinc-400">메모: {item.note}</p>
+                        <p className="mt-1 text-[11px] text-gray-500">메모: {item.note}</p>
                       ) : null}
                     </div>
                   ))}
@@ -1322,21 +1477,21 @@ export default function ConsoleOperationalPage() {
       ) : null}
 
       {activeTab === "point" ? (
-        <section className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <section className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-100">포인트 정책</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <h2 className="text-lg font-semibold text-black">포인트 정책</h2>
+            <p className="mt-1 text-sm text-gray-500">
               첫충 포인트, 충전 구간별 적립, 낙첨 포인트, 출석체크, 포인트 전환,
               전체 포인트 지급을 한 화면에서 관리합니다.
             </p>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">포인트 전환</h3>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">포인트 전환</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className="text-xs text-zinc-500">최소 교환 포인트</label>
+                  <label className="text-xs text-gray-500">최소 교환 포인트</label>
                   <input
                     type="number"
                     value={pointRules.minPointRedeemPoints ?? ""}
@@ -1347,11 +1502,11 @@ export default function ConsoleOperationalPage() {
                       )
                     }
                     placeholder="제한 없음"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">KRW 최소 지급</label>
+                  <label className="text-xs text-gray-500">KRW 최소 지급</label>
                   <input
                     type="text"
                     value={pointRules.minPointRedeemKrw ?? ""}
@@ -1362,11 +1517,11 @@ export default function ConsoleOperationalPage() {
                       )
                     }
                     placeholder="제한 없음"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">USDT 최소 지급</label>
+                  <label className="text-xs text-gray-500">USDT 최소 지급</label>
                   <input
                     type="text"
                     value={pointRules.minPointRedeemUsdt ?? ""}
@@ -1377,39 +1532,39 @@ export default function ConsoleOperationalPage() {
                       )
                     }
                     placeholder="제한 없음"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
               </div>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-xs text-zinc-500">1P당 KRW</label>
+                  <label className="text-xs text-gray-500">1P당 KRW</label>
                   <input
                     type="text"
                     value={pointRules.redeemKrwPerPoint}
                     onChange={(e) => patchPoint("redeemKrwPerPoint", e.target.value)}
                     placeholder="예: 1"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">1P당 USDT</label>
+                  <label className="text-xs text-gray-500">1P당 USDT</label>
                   <input
                     type="text"
                     value={pointRules.redeemUsdtPerPoint}
                     onChange={(e) => patchPoint("redeemUsdtPerPoint", e.target.value)}
                     placeholder="예: 0.00067"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">낙첨 / 추천 적립</h3>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">낙첨 / 추천 적립</h3>
               <div className="mt-3 grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className="text-xs text-zinc-500">낙첨 포인트 적립률</label>
+                  <label className="text-xs text-gray-500">낙첨 포인트 적립률</label>
                   <input
                     type="text"
                     value={pointRules.loseBetPointsPerStake}
@@ -1417,21 +1572,21 @@ export default function ConsoleOperationalPage() {
                       patchPoint("loseBetPointsPerStake", e.target.value)
                     }
                     placeholder="예: 0.01 (1만원 → 100P)"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
-                  <div className="mt-1.5 rounded-lg bg-amber-950/40 border border-amber-800/40 px-2.5 py-2 text-xs space-y-0.5">
-                    <p className="text-amber-300 font-semibold">📌 공식: 적립P = 패배 배팅금 × 이 값</p>
-                    <p className="text-amber-200/70">
-                      현재 <span className="font-mono text-amber-300">{pointRules.loseBetPointsPerStake || "미설정"}</span>
+                  <div className="mt-1.5 rounded-lg bg-[#3182f6]/5 border border-[#3182f6]/20 px-2.5 py-2 text-xs space-y-0.5">
+                    <p className="text-[#3182f6] font-semibold">📌 공식: 적립P = 패배 배팅금 × 이 값</p>
+                    <p className="text-[#3182f6]/70">
+                      현재 <span className="font-mono text-[#3182f6]">{pointRules.loseBetPointsPerStake || "미설정"}</span>
                       {pointRules.loseBetPointsPerStake ? (
-                        <> → 1만원 패배 시 <span className="font-mono text-amber-300">{(Number(pointRules.loseBetPointsPerStake) * 10000).toLocaleString("ko-KR")}P</span> 적립</>
+                        <> → 1만원 패배 시 <span className="font-mono text-[#3182f6]">{(Number(pointRules.loseBetPointsPerStake) * 10000).toLocaleString("ko-KR")}P</span> 적립</>
                       ) : null}
                     </p>
-                    <p className="text-zinc-500">권장: <span className="font-mono">0.01</span> ~ <span className="font-mono">0.1</span> (1만원 → 100~1000P)</p>
+                    <p className="text-gray-500">권장: <span className="font-mono">0.01</span> ~ <span className="font-mono">0.1</span> (1만원 → 100~1000P)</p>
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">추천 첫베팅 고정 P</label>
+                  <label className="text-xs text-gray-500">추천 첫베팅 고정 P</label>
                   <input
                     type="text"
                     value={pointRules.referrerFirstBetFlat}
@@ -1439,11 +1594,11 @@ export default function ConsoleOperationalPage() {
                       patchPoint("referrerFirstBetFlat", e.target.value)
                     }
                     placeholder="예: 1000"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">추천 첫베팅 비율 %</label>
+                  <label className="text-xs text-gray-500">추천 첫베팅 비율 %</label>
                   <input
                     type="text"
                     value={pointRules.referrerFirstBetPct}
@@ -1451,25 +1606,25 @@ export default function ConsoleOperationalPage() {
                       patchPoint("referrerFirstBetPct", e.target.value)
                     }
                     placeholder="예: 1.5"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-medium text-zinc-200">충전 포인트</h3>
-                <p className="mt-1 text-xs text-zinc-500">
+                <h3 className="text-sm font-medium text-gray-800">충전 포인트</h3>
+                <p className="mt-1 text-xs text-gray-500">
                   첫충 포인트와 충전 구간별 포인트 지급을 설정합니다.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={addTier}
-                className="rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-200 hover:bg-zinc-800"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-800 hover:bg-gray-100"
               >
                 구간 추가
               </button>
@@ -1477,29 +1632,29 @@ export default function ConsoleOperationalPage() {
 
             <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_2fr]">
               <div>
-                <label className="text-xs text-zinc-500">첫충전 포인트 지급</label>
+                <label className="text-xs text-gray-500">첫충전 포인트 지급</label>
                 <input
                   type="text"
                   value={pointRules.firstChargePoints}
                   onChange={(e) => patchPoint("firstChargePoints", e.target.value)}
                   placeholder="예: 3000"
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                  className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                 />
               </div>
 
               <div className="space-y-3">
                 {pointRules.depositPointTiers.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-zinc-700 px-4 py-3 text-sm text-zinc-500">
+                  <div className="rounded-lg border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
                     아직 충전 포인트 구간이 없습니다. 예: 50,000원 이상 충전 시 500P
                   </div>
                 ) : (
                   pointRules.depositPointTiers.map((tier) => (
                     <div
                       key={tier.id}
-                      className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 md:grid-cols-[1fr_1fr_auto]"
+                      className="grid gap-3 rounded-lg border border-gray-200 bg-white p-3 md:grid-cols-[1fr_1fr_auto]"
                     >
                       <div>
-                        <label className="text-xs text-zinc-500">최소 충전금액</label>
+                        <label className="text-xs text-gray-500">최소 충전금액</label>
                         <input
                           type="text"
                           value={tier.minAmount}
@@ -1507,23 +1662,23 @@ export default function ConsoleOperationalPage() {
                             patchTier(tier.id, "minAmount", e.target.value)
                           }
                           placeholder="예: 50000"
-                          className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                          className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-zinc-500">지급 포인트</label>
+                        <label className="text-xs text-gray-500">지급 포인트</label>
                         <input
                           type="text"
                           value={tier.points}
                           onChange={(e) => patchTier(tier.id, "points", e.target.value)}
                           placeholder="예: 500"
-                          className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                          className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={() => removeTier(tier.id)}
-                        className="mt-5 rounded-lg border border-red-900/40 px-3 py-2 text-xs text-red-300 hover:bg-red-950/30"
+                        className="mt-5 rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
                       >
                         삭제
                       </button>
@@ -1535,8 +1690,8 @@ export default function ConsoleOperationalPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">출석체크 포인트</h3>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">출석체크 포인트</h3>
               <div className="mt-3 flex flex-wrap gap-2">
                 {(
                   [
@@ -1550,8 +1705,8 @@ export default function ConsoleOperationalPage() {
                     onClick={() => patchPoint("attendanceMode", value)}
                     className={`rounded-full border px-3 py-1.5 text-xs transition ${
                       pointRules.attendanceMode === value
-                        ? "border-amber-500/50 bg-amber-950/20 text-amber-200"
-                        : "border-zinc-700 bg-zinc-900 text-zinc-400"
+                        ? "border-amber-500/50 bg-[#3182f6]/5 text-[#3182f6]"
+                        : "border-gray-300 bg-white text-gray-500"
                     }`}
                   >
                     {label}
@@ -1561,73 +1716,73 @@ export default function ConsoleOperationalPage() {
 
               {pointRules.attendanceMode === "instant" ? (
                 <div className="mt-4">
-                  <label className="text-xs text-zinc-500">하루 적립 포인트</label>
+                  <label className="text-xs text-gray-500">하루 적립 포인트</label>
                   <input
                     type="text"
                     value={pointRules.attendDailyPoints}
                     onChange={(e) => patchPoint("attendDailyPoints", e.target.value)}
                     placeholder="예: 100"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
               ) : (
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="text-xs text-zinc-500">완수 횟수</label>
+                    <label className="text-xs text-gray-500">완수 횟수</label>
                     <input
                       type="text"
                       value={pointRules.attendBatchCount}
                       onChange={(e) => patchPoint("attendBatchCount", e.target.value)}
                       placeholder="예: 7"
-                      className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                      className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-zinc-500">일괄 수령 포인트</label>
+                    <label className="text-xs text-gray-500">일괄 수령 포인트</label>
                     <input
                       type="text"
                       value={pointRules.attendBatchPoints}
                       onChange={(e) => patchPoint("attendBatchPoints", e.target.value)}
                       placeholder="예: 1000"
-                      className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                      className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="text-sm font-medium text-zinc-200">전체 포인트 지급</h3>
-              <p className="mt-1 text-xs text-zinc-500">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-medium text-gray-800">전체 포인트 지급</h3>
+              <p className="mt-1 text-xs text-gray-500">
                 현재 플랫폼의 일반 회원 전체에게 동일 포인트를 적립합니다.
               </p>
               <div className="mt-4 space-y-3">
                 <div>
-                  <label className="text-xs text-zinc-500">지급 포인트 액수</label>
+                  <label className="text-xs text-gray-500">지급 포인트 액수</label>
                   <input
                     type="number"
                     min={1}
                     value={grantAmount}
                     onChange={(e) => setGrantAmount(e.target.value)}
                     placeholder="예: 500"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-500">메모 (선택)</label>
+                  <label className="text-xs text-gray-500">메모 (선택)</label>
                   <input
                     type="text"
                     value={grantNote}
                     onChange={(e) => setGrantNote(e.target.value)}
                     placeholder="예: 4월 이벤트 일괄 지급"
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-black"
                   />
                 </div>
                 <button
                   type="button"
                   disabled={granting}
                   onClick={() => void grantAllPoints()}
-                  className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-zinc-950 hover:bg-emerald-500 disabled:opacity-50"
+                  className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-black hover:bg-emerald-500 disabled:opacity-50"
                 >
                   {granting ? "지급 중…" : "전체 포인트 지급"}
                 </button>
@@ -1635,22 +1790,6 @@ export default function ConsoleOperationalPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-medium text-zinc-200">포인트 규칙 미리보기</h3>
-                <p className="mt-1 text-xs text-zinc-500">
-                  현재 폼 값으로 저장될 JSON입니다. 기존 미노출 키는 그대로 보존됩니다.
-                </p>
-              </div>
-            </div>
-            <textarea
-              value={pointRulesPreview}
-              readOnly
-              rows={12}
-              className="mt-3 w-full rounded border border-zinc-700 bg-zinc-950 p-3 font-mono text-xs text-zinc-200"
-            />
-          </div>
         </section>
       ) : null}
 
@@ -1658,10 +1797,143 @@ export default function ConsoleOperationalPage() {
         type="button"
         disabled={saving}
         onClick={() => void save()}
-        className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+        className="rounded-lg bg-[#3182f6] px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
       >
         {saving ? "저장 중…" : "저장"}
       </button>
+    </div>
+  );
+}
+
+function formatHistoryValue(v: unknown): string {
+  if (v === null || v === undefined) return "기본값";
+  if (typeof v === "boolean") return v ? "ON" : "OFF";
+  if (typeof v === "number") return String(v);
+  if (typeof v === "string") return v;
+  return JSON.stringify(v);
+}
+
+const ROLLING_HISTORY_LABEL: Record<string, string> = {
+  rollingLockWithdrawals: "출금 잠금",
+  rollingTurnoverMultiplier: "기본 배수",
+  rollingTurnoverSports: "스포츠",
+  rollingTurnoverCasino: "카지노",
+  rollingTurnoverSlot: "슬롯",
+  rollingTurnoverMinigame: "미니게임",
+  rollingTurnoverArcade: "아케이드",
+  agentCanEditMemberRolling: "총판 편집 권한",
+};
+
+function RollingHistoryPanel({ platformId }: { platformId: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<PolicyHistoryRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    if (!platformId) return;
+    try {
+      setErr(null);
+      const list = await apiFetch<PolicyHistoryRow[]>(
+        `/platforms/${platformId}/policy-history?policyType=rolling&take=30`,
+      );
+      setRows(list);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "불러오기 실패");
+    }
+  }, [platformId]);
+
+  useEffect(() => {
+    if (!open) return;
+    void load();
+  }, [open, load]);
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-gray-800">롤링 변경 이력</h3>
+          <p className="mt-0.5 text-[11px] text-gray-500">
+            기본 / 게임별 롤링 배수 등 운영 설정의 변경 이력을 시간순으로
+            보관합니다.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+        >
+          {open ? "접기" : "펼치기"}
+        </button>
+      </div>
+
+      {open ? (
+        err ? (
+          <p className="mt-3 text-xs text-rose-600">{err}</p>
+        ) : rows === null ? (
+          <p className="mt-3 text-xs text-gray-400">불러오는 중...</p>
+        ) : rows.length === 0 ? (
+          <p className="mt-3 rounded-lg bg-gray-50 px-3 py-4 text-center text-xs text-gray-500">
+            이력이 없습니다.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {rows.map((r) => {
+              const before = asRecord(r.beforeJson);
+              const after = asRecord(r.afterJson);
+              const keys = Array.from(
+                new Set([...Object.keys(before), ...Object.keys(after)]),
+              );
+              const diffs = keys.filter(
+                (k) => formatHistoryValue(before[k]) !== formatHistoryValue(after[k]),
+              );
+              return (
+                <li
+                  key={r.id}
+                  className="rounded-lg border border-gray-200 bg-gray-50/60 p-3"
+                >
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-gray-500">
+                    <span>
+                      {new Date(r.createdAt).toLocaleString("ko-KR", {
+                        year: "2-digit",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <span>
+                      {r.changedByLoginId
+                        ? `by ${r.changedByLoginId}`
+                        : r.changedByUserId
+                          ? `by ${r.changedByUserId.slice(0, 8)}`
+                          : "시스템"}
+                    </span>
+                  </div>
+                  {diffs.length === 0 ? (
+                    <p className="text-xs text-gray-400">변경된 항목 없음</p>
+                  ) : (
+                    <ul className="space-y-0.5 text-xs">
+                      {diffs.map((k) => (
+                        <li key={k} className="flex items-center gap-2">
+                          <span className="w-24 font-medium text-gray-600">
+                            {ROLLING_HISTORY_LABEL[k] ?? k}
+                          </span>
+                          <span className="font-mono text-gray-500 line-through">
+                            {formatHistoryValue(before[k])}
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="font-mono font-semibold text-emerald-700">
+                            {formatHistoryValue(after[k])}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )
+      ) : null}
     </div>
   );
 }

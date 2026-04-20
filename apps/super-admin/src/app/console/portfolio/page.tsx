@@ -58,10 +58,10 @@ function krw(v: string | number | null | undefined) {
 
 function moneyClass(value: number) {
   return value > 0
-    ? "text-emerald-300"
+    ? "text-[#3182f6]"
     : value < 0
       ? "text-rose-300"
-      : "text-zinc-100";
+      : "text-gray-900";
 }
 
 function hostSummary(hosts: string[]) {
@@ -150,13 +150,13 @@ export default function HqPortfolioPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300/80">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#3182f6]/80">
             Head Office
           </p>
-          <h1 className="mt-2 text-3xl font-semibold text-zinc-100">
+          <h1 className="mt-2 text-3xl font-semibold text-gray-900">
             포트폴리오 · 헷징 장부
           </h1>
-          <p className="mt-2 max-w-3xl text-sm text-zinc-500">
+          <p className="mt-2 max-w-3xl text-sm text-gray-500">
             상위 벤더 알 대비 본사가 가져가는 마진, 솔루션 A/B/C 묶음별 현금
             잔여, 테더·원화 반가상 배정 상태를 같은 기간으로 묶어 봅니다. 행을
             펼치면 헷징·리스크 메모를 저장할 수 있습니다.
@@ -176,8 +176,8 @@ export default function HqPortfolioPage() {
               }}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                 from === preset.from && to === preset.to
-                  ? "bg-amber-600/20 text-amber-300"
-                  : "bg-zinc-800 text-zinc-400 hover:text-zinc-100"
+                  ? "bg-amber-600/20 text-[#3182f6]"
+                  : "bg-gray-100 text-gray-500 hover:text-gray-900"
               }`}
             >
               {preset.label}
@@ -187,20 +187,20 @@ export default function HqPortfolioPage() {
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700"
           />
-          <span className="text-xs text-zinc-600">~</span>
+          <span className="text-xs text-gray-400">~</span>
           <input
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700"
           />
           <button
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+            className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-zinc-950 hover:bg-[#3182f6] disabled:opacity-50"
           >
             {loading ? "집계 중…" : "새로고침"}
           </button>
@@ -208,15 +208,15 @@ export default function HqPortfolioPage() {
       </div>
 
       {err ? (
-        <p className="rounded-xl border border-amber-900/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
+        <p className="rounded-xl border border-amber-900/40 bg-[#3182f6]/5 px-4 py-3 text-sm text-[#3182f6]">
           {err}
         </p>
       ) : null}
 
       {data ? (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
               본사 현금 잔여 합
             </p>
             <p
@@ -225,12 +225,12 @@ export default function HqPortfolioPage() {
               {Number(data.totals.solutionCashNet) >= 0 ? "+" : ""}
               {krw(data.totals.solutionCashNet)}원
             </p>
-            <p className="mt-1 text-xs text-zinc-600">
+            <p className="mt-1 text-xs text-gray-400">
               각 솔루션 (낙첨 − 총판 − 머니비용 − 상위알) 합산
             </p>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
               정책 추정 잔여 합
             </p>
             <p
@@ -239,34 +239,34 @@ export default function HqPortfolioPage() {
               {Number(data.totals.solutionPolicyNet) >= 0 ? "+" : ""}
               {krw(data.totals.solutionPolicyNet)}원
             </p>
-            <p className="mt-1 text-xs text-zinc-600">포인트·콤프 추정 반영</p>
+            <p className="mt-1 text-xs text-gray-400">포인트·콤프 추정 반영</p>
           </div>
           <div className="rounded-2xl border border-rose-900/30 bg-rose-950/10 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
               상위 알 원가 합
             </p>
             <p className="mt-2 text-2xl font-bold font-mono text-rose-300">
               {krw(data.totals.upstreamCost)}원
             </p>
-            <p className="mt-1 text-xs text-zinc-600">기간 내 GGR×상위요율</p>
+            <p className="mt-1 text-xs text-gray-400">기간 내 GGR×상위요율</p>
           </div>
           <div className="rounded-2xl border border-cyan-900/30 bg-cyan-950/10 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500">
               솔루션 요율 마진 합
             </p>
             <p className="mt-2 text-2xl font-bold font-mono text-cyan-300">
               {krw(data.totals.solutionMargin)}원
             </p>
-            <p className="mt-1 text-xs text-zinc-600">
+            <p className="mt-1 text-xs text-gray-400">
               청구액 {krw(data.totals.platformCharge)}원 − 상위원가
             </p>
           </div>
         </section>
       ) : null}
 
-      <section className="overflow-x-auto rounded-2xl border border-zinc-800">
+      <section className="overflow-x-auto rounded-2xl border border-gray-200">
         <table className="min-w-[1100px] w-full text-sm">
-          <thead className="border-b border-zinc-800 bg-zinc-900/60 text-left text-xs uppercase tracking-wide text-zinc-500">
+          <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
             <tr>
               <th className="px-3 py-2.5">솔루션</th>
               <th className="px-3 py-2.5">도메인</th>
@@ -276,7 +276,7 @@ export default function HqPortfolioPage() {
               <th className="px-3 py-2.5 w-10" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800">
+          <tbody className="divide-y divide-gray-100">
             {(data?.rows ?? []).map((row) => {
               const p = platformById.get(row.platformId);
               const root = p ? inferRootHost(p) : hostSummary(row.domainHosts);
@@ -289,31 +289,31 @@ export default function HqPortfolioPage() {
                 row.hasKrwAccount && row.hasUsdtWallet && smsConfigured;
               return (
                 <Fragment key={row.platformId}>
-                  <tr className="bg-zinc-950/40 hover:bg-zinc-900/50">
+                  <tr className="bg-white/40 hover:bg-gray-50">
                     <td className="px-3 py-3">
-                      <p className="font-medium text-zinc-100">{row.name}</p>
-                      <p className="text-xs text-zinc-600">{row.slug}</p>
+                      <p className="font-medium text-gray-900">{row.name}</p>
+                      <p className="text-xs text-gray-400">{row.slug}</p>
                     </td>
-                    <td className="px-3 py-3 font-mono text-xs text-zinc-300">
+                    <td className="px-3 py-3 font-mono text-xs text-gray-700">
                       <p>{root ?? "—"}</p>
-                      <p className="mt-1 text-[11px] text-zinc-600">
+                      <p className="mt-1 text-[11px] text-gray-400">
                         mod {admin ?? "—"} · agent {agent ?? "—"}
                       </p>
                     </td>
                     <td className="px-3 py-3 text-xs">
                       <div className="flex flex-wrap gap-1">
                         <span
-                          className={`rounded px-1.5 py-0.5 ${row.hasKrwAccount ? "bg-emerald-950/50 text-emerald-300" : "bg-zinc-800 text-zinc-500"}`}
+                          className={`rounded px-1.5 py-0.5 ${row.hasKrwAccount ? "bg-[#3182f6]/5 text-[#3182f6]" : "bg-gray-100 text-gray-500"}`}
                         >
                           원화
                         </span>
                         <span
-                          className={`rounded px-1.5 py-0.5 ${row.hasUsdtWallet ? "bg-emerald-950/50 text-emerald-300" : "bg-zinc-800 text-zinc-500"}`}
+                          className={`rounded px-1.5 py-0.5 ${row.hasUsdtWallet ? "bg-[#3182f6]/5 text-[#3182f6]" : "bg-gray-100 text-gray-500"}`}
                         >
                           USDT
                         </span>
                         <span
-                          className={`rounded px-1.5 py-0.5 ${row.semiVirtualEnabled ? "bg-violet-950/50 text-violet-300" : "bg-zinc-800 text-zinc-500"}`}
+                          className={`rounded px-1.5 py-0.5 ${row.semiVirtualEnabled ? "bg-violet-950/50 text-violet-300" : "bg-gray-100 text-gray-500"}`}
                         >
                           SMS
                         </span>
@@ -324,7 +324,7 @@ export default function HqPortfolioPage() {
                         {assetOk ? "배정 완료에 가깝습니다" : "배정 점검 권장"}
                       </p>
                     </td>
-                    <td className="px-3 py-3 text-right font-mono text-xs text-zinc-400">
+                    <td className="px-3 py-3 text-right font-mono text-xs text-gray-500">
                       {row.loadError ? (
                         <span className="text-rose-400">{row.loadError}</span>
                       ) : (
@@ -337,7 +337,7 @@ export default function HqPortfolioPage() {
                             스 {row.upstreamSportsPct ?? "—"}% → 청구{" "}
                             {row.platformSportsPct ?? "—"}%
                           </p>
-                          <p className="mt-1 text-amber-200/80">
+                          <p className="mt-1 text-[#3182f6]/80">
                             +마진 {row.autoMarginPct ?? "—"}%
                           </p>
                         </>
@@ -356,7 +356,7 @@ export default function HqPortfolioPage() {
                         onClick={() =>
                           setExpandedId(open ? null : row.platformId)
                         }
-                        className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                        className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                       >
                         {open ? "닫기" : "메모"}
                       </button>
@@ -367,10 +367,10 @@ export default function HqPortfolioPage() {
                       <td colSpan={6} className="px-4 py-4">
                         <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
                           <div>
-                            <p className="text-xs font-semibold text-zinc-300">
+                            <p className="text-xs font-semibold text-gray-700">
                               헷징 · 리스크 메모
                             </p>
-                            <p className="mt-1 text-[11px] text-zinc-600">
+                            <p className="mt-1 text-[11px] text-gray-400">
                               본사 내부용입니다. 솔루션 운영자에게는 노출되지
                               않습니다.
                               {row.hedgeUpdatedAt
@@ -386,7 +386,7 @@ export default function HqPortfolioPage() {
                                 }))
                               }
                               rows={5}
-                              className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-200"
+                              className="mt-2 w-full rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-800"
                               placeholder="예: A·B 묶음 익스포저 상쇄, C는 테더 풀 분리, 익월 청구율 재협상 등"
                             />
                             <div className="mt-2 flex flex-wrap gap-2">
@@ -394,7 +394,7 @@ export default function HqPortfolioPage() {
                                 type="button"
                                 disabled={savingId === row.platformId}
                                 onClick={() => void saveNote(row.platformId)}
-                                className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+                                className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-[#3182f6] disabled:opacity-50"
                               >
                                 {savingId === row.platformId
                                   ? "저장 중…"
@@ -402,43 +402,43 @@ export default function HqPortfolioPage() {
                               </button>
                             </div>
                           </div>
-                          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-xs text-zinc-400 space-y-2">
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-500 space-y-2">
                             {!row.loadError ? (
                               <>
                                 <p>
                                   낙첨금{" "}
-                                  <span className="font-mono text-zinc-200">
+                                  <span className="font-mono text-gray-800">
                                     {krw(row.houseEdge)}원
                                   </span>
                                 </p>
                                 <p>
                                   플랫폼 현금 순익{" "}
-                                  <span className="font-mono text-zinc-200">
+                                  <span className="font-mono text-gray-800">
                                     {krw(row.cashNet)}원
                                   </span>
                                 </p>
                                 <p>
                                   정책 추정 순익{" "}
-                                  <span className="font-mono text-zinc-200">
+                                  <span className="font-mono text-gray-800">
                                     {krw(row.solutionPolicyNet)}원
                                   </span>
                                 </p>
                                 <p>
                                   베팅 GGR(참고){" "}
-                                  <span className="font-mono text-zinc-200">
+                                  <span className="font-mono text-gray-800">
                                     {krw(row.ggr)}원
                                   </span>
                                 </p>
                               </>
                             ) : null}
-                            <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-800 pt-3">
+                            <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
                               <button
                                 type="button"
                                 onClick={() => {
                                   setSelectedPlatformId(row.platformId);
                                   router.push("/console/operational");
                                 }}
-                                className="rounded border border-zinc-600 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800"
+                                className="rounded border border-gray-300 px-3 py-1.5 text-gray-800 hover:bg-gray-100"
                               >
                                 알값 / 정책
                               </button>
@@ -448,7 +448,7 @@ export default function HqPortfolioPage() {
                                   setSelectedPlatformId(row.platformId);
                                   router.push("/console/sales");
                                 }}
-                                className="rounded border border-zinc-600 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800"
+                                className="rounded border border-gray-300 px-3 py-1.5 text-gray-800 hover:bg-gray-100"
                               >
                                 청구 / 정산
                               </button>
@@ -458,14 +458,14 @@ export default function HqPortfolioPage() {
                                   setSelectedPlatformId(row.platformId);
                                   router.push("/console/assets");
                                 }}
-                                className="rounded border border-zinc-600 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800"
+                                className="rounded border border-gray-300 px-3 py-1.5 text-gray-800 hover:bg-gray-100"
                               >
                                 자산 배정
                               </button>
                             </div>
                             <Link
                               href="/console/platforms"
-                              className="inline-block mt-2 text-amber-400 hover:text-amber-300"
+                              className="inline-block mt-2 text-[#3182f6] hover:text-[#3182f6]"
                             >
                               솔루션 도메인 관리 →
                             </Link>
@@ -481,7 +481,7 @@ export default function HqPortfolioPage() {
               <tr>
                 <td
                   colSpan={6}
-                  className="px-3 py-8 text-center text-zinc-500"
+                  className="px-3 py-8 text-center text-gray-500"
                 >
                   등록된 솔루션이 없습니다.
                 </td>
@@ -491,7 +491,7 @@ export default function HqPortfolioPage() {
               <tr>
                 <td
                   colSpan={6}
-                  className="px-3 py-8 text-center text-zinc-500"
+                  className="px-3 py-8 text-center text-gray-500"
                 >
                   {loading ? "집계 중…" : "—"}
                 </td>

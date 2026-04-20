@@ -17,6 +17,7 @@ import { PlatformScopeGuard } from '../common/guards/platform-scope.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/auth.service';
 import { PlatformsService } from './platforms.service';
+import { CreditsService } from '../credits/credits.service';
 import { CreatePlatformDto } from './dto/create-platform.dto';
 import { UpdatePlatformThemeDto } from './dto/update-platform-theme.dto';
 import { UpdateSemiVirtualDto } from './dto/update-semi-virtual.dto';
@@ -38,6 +39,7 @@ export class PlatformsController {
     private platforms: PlatformsService,
     private points: PointsService,
     private readonly compSettlementScheduler: CompSettlementSchedulerService,
+    private readonly credits: CreditsService,
   ) {}
 
   @Get()
@@ -153,6 +155,24 @@ export class PlatformsController {
     return this.platforms.updateTheme(platformId, user, dto);
   }
 
+  @Get(':platformId/policy-history')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
+  listPolicyHistory(
+    @Param('platformId') platformId: string,
+    @Query('policyType') policyType: string | undefined,
+    @Query('take') take: string | undefined,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const takeNum = take ? Math.max(1, Math.trunc(Number(take))) : 50;
+    return this.platforms.listPolicyHistory(
+      platformId,
+      user,
+      policyType?.trim() || undefined,
+      Number.isFinite(takeNum) ? takeNum : 50,
+    );
+  }
+
   @Patch(':platformId/operational')
   @UseGuards(PlatformScopeGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
@@ -226,6 +246,16 @@ export class PlatformsController {
     return this.platforms.runSolutionBillingSettlement(platformId, user, dto);
   }
 
+  @Get(':platformId/balance-stats')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.MASTER_AGENT)
+  getBalanceStats(
+    @Param('platformId') platformId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.platforms.getBalanceStats(platformId, user);
+  }
+
   // ─── 매출 현황 API ───────────────────────────────────────
 
   @Get(':platformId/sales/summary')
@@ -263,5 +293,37 @@ export class PlatformsController {
     @Query('limit') limit?: string,
   ) {
     return this.platforms.getSalesLedger(platformId, user, from, to, limit);
+  }
+
+  /* ── Credit Requests (per-platform) ── */
+  @Get(':platformId/credit-requests')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  listPlatformCreditRequests(
+    @Param('platformId') platformId: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.credits.listCreditRequests(
+      status,
+      platformId,
+      limit ? parseInt(limit, 10) : 50,
+      offset ? parseInt(offset, 10) : 0,
+    );
+  }
+
+  @Post(':platformId/credit-requests')
+  @UseGuards(PlatformScopeGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  createPlatformCreditRequest(
+    @Param('platformId') platformId: string,
+    @Body() body: { requestedAmountKrw: number; requesterNote?: string },
+  ) {
+    return this.credits.createCreditRequest(
+      platformId,
+      body.requestedAmountKrw,
+      body.requesterNote ?? null,
+    );
   }
 }

@@ -19,6 +19,7 @@ import { RollingObligationService } from '../rolling/rolling-obligation.service'
 import { DepositEventsService } from '../deposit-events/deposit-events.service';
 import { PointsService } from '../points/points.service';
 import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
+import { computeEffectiveAgentShares } from '../common/agent-commission.util';
 
 @Injectable()
 export class WalletRequestsService {
@@ -291,14 +292,14 @@ export class WalletRequestsService {
     });
   }
 
-  listForPlatform(
+  async listForPlatform(
     platformId: string,
     actor: JwtPayload,
     status?: WalletRequestStatus,
     currency?: string,
   ) {
     this.assertPlatformAdmin(actor, platformId);
-    return this.prisma.walletRequest.findMany({
+    const rows = await this.prisma.walletRequest.findMany({
       where: {
         platformId,
         ...(status ? { status } : {}),
@@ -321,6 +322,20 @@ export class WalletRequestsService {
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
+    });
+
+    const hasUsdtRow = rows.some((r) => r.currency === 'USDT');
+    const usdtKrwRate = hasUsdtRow ? await this.getUsdtKrwRate() : null;
+
+    return rows.map((r) => {
+      if (r.currency === 'USDT' && usdtKrwRate) {
+        return {
+          ...r,
+          krwRate: usdtKrwRate.toFixed(2),
+          krwAmount: new Prisma.Decimal(r.amount).times(usdtKrwRate).toFixed(2),
+        };
+      }
+      return r;
     });
   }
 
@@ -397,6 +412,12 @@ export class WalletRequestsService {
           ledgerRefPrefix: `wr:${req.id}`,
         });
       }
+
+      // 에이전트 커미션 즉시 적립/차감
+      // 충전 승인 → 상위 에이전트에 충전금 × 실효요율% 적립
+      // 환전 승인 → 상위 에이전트에서 환전금 × 실효요율% 차감
+      await this.creditAgentOnWalletApproval(tx, platformId, req.userId, walletDeltaBase, req.type, req.id);
+
       await tx.walletRequest.update({
         where: { id: req.id },
         data: {
@@ -433,5 +454,136 @@ export class WalletRequestsService {
       },
     });
     return { ok: true };
+  }
+
+  /**
+   * 에이전트 커미션 즉시 적립/차감 — 전체 체인 지급 모델
+   *
+   * 유저 → 하위총판(effA) → 상위총판(effB) → ...
+   * 각 에이전트는 자신의 순 요율(net = 자신_eff - 바로아래_eff)만큼 수령.
+   * 체인 합산 = 최상위 요율(플랫폼이 실제 지출하는 금액) 이 된다.
+   *
+   * 예) 유저 입금 100,000, 하위총판 eff=2.5%, 상위총판 eff=5%
+   *   하위총판: 100,000 × 2.5% = 2,500 (net = 2.5-0)
+   *   상위총판: 100,000 × 2.5% = 2,500 (net = 5-2.5)
+   *   합계:     5,000 = 100,000 × 5%  ← 플랫폼 부담은 최상위 요율만큼만
+   */
+  private async creditAgentOnWalletApproval(
+    tx: Prisma.TransactionClient,
+    platformId: string,
+    memberId: string,
+    amount: Prisma.Decimal,
+    requestType: WalletRequestType,
+    walletRequestId: string,
+  ): Promise<void> {
+    try {
+      // 1. 유저부터 위로 올라가며 MASTER_AGENT 체인 수집
+      const chain = await this.buildAgentChain(tx, platformId, memberId);
+      if (chain.length === 0) return;
+
+      // 2. 플랫폼 전체 MASTER_AGENT 실효 요율 맵
+      const effMap = await this.buildEffectiveRateMap(tx, platformId);
+
+      const refType = requestType === WalletRequestType.DEPOSIT ? 'deposit' : 'withdrawal';
+
+      // 3. 체인 순서대로 각 에이전트에 순 요율만큼 지급
+      //    chain[0] = 직속 부모(하위), chain[n-1] = 최상위
+      for (let i = 0; i < chain.length; i++) {
+        const agentId = chain[i];
+        const myEff = effMap.get(agentId) ?? 0;
+        const childEff = i > 0 ? (effMap.get(chain[i - 1]) ?? 0) : 0;
+        const netPct = myEff - childEff;
+        if (netPct <= 0) continue;
+
+        const commission = amount.times(new Prisma.Decimal(netPct).div(100));
+        if (commission.lte(0)) continue;
+
+        const agentWallet = await tx.wallet.findUnique({ where: { userId: agentId } });
+        if (!agentWallet) continue;
+
+        let agentDelta: Prisma.Decimal;
+        if (requestType === WalletRequestType.DEPOSIT) {
+          agentDelta = commission;
+        } else {
+          const debit = commission.negated();
+          agentDelta = agentWallet.balance.plus(debit).gte(0)
+            ? debit
+            : agentWallet.balance.negated();
+        }
+
+        const newAgentBal = agentWallet.balance.plus(agentDelta);
+        await tx.wallet.update({ where: { id: agentWallet.id }, data: { balance: newAgentBal } });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: agentId,
+            platformId,
+            type: LedgerEntryType.ADJUSTMENT,
+            amount: agentDelta,
+            balanceAfter: newAgentBal,
+            reference: `agent_commission:${refType}:wr:${walletRequestId}:lv${i}`,
+            metaJson: {
+              agentCommission: true,
+              source: refType,
+              memberId,
+              memberAmount: amount.toFixed(2),
+              effectiveRate: myEff,
+              netRate: netPct,
+              chainLevel: i,
+              commission: agentDelta.toFixed(2),
+            },
+          },
+        });
+      }
+    } catch {
+      // 커미션 실패는 본 거래를 롤백하지 않음 (silent)
+    }
+  }
+
+  /**
+   * 유저부터 위로 올라가며 MASTER_AGENT id 목록 반환
+   * [직속부모, 그 위, 최상위] 순서
+   */
+  private async buildAgentChain(
+    tx: Prisma.TransactionClient,
+    platformId: string,
+    memberId: string,
+  ): Promise<string[]> {
+    const chain: string[] = [];
+    const member = await tx.user.findUnique({ where: { id: memberId }, select: { parentUserId: true } });
+    if (!member?.parentUserId) return chain;
+    let cur: string | null = member.parentUserId;
+    const seen = new Set<string>();
+    while (cur) {
+      if (seen.has(cur)) break;
+      seen.add(cur);
+      const row: { role: UserRole; parentUserId: string | null } | null =
+        await tx.user.findFirst({ where: { id: cur, platformId }, select: { role: true, parentUserId: true } });
+      if (!row) break;
+      if (row.role === UserRole.MASTER_AGENT) chain.push(cur);
+      cur = row.parentUserId;
+    }
+    return chain;
+  }
+
+  /**
+   * 플랫폼 내 모든 MASTER_AGENT 실효 요율 맵 반환
+   */
+  private async buildEffectiveRateMap(
+    tx: Prisma.TransactionClient,
+    platformId: string,
+  ): Promise<Map<string, number>> {
+    const agents = await tx.user.findMany({
+      where: { platformId, role: UserRole.MASTER_AGENT },
+      select: { id: true, parentUserId: true, role: true, agentPlatformSharePct: true, agentSplitFromParentPct: true },
+    });
+    const roleById = new Map<string, UserRole>(agents.map((a) => [a.id, a.role]));
+    const parentById = new Map<string, string | null>(agents.map((a) => [a.id, a.parentUserId]));
+    const nodes = agents.map((a) => ({
+      id: a.id,
+      parentUserId: a.parentUserId,
+      agentPlatformSharePct: a.agentPlatformSharePct != null ? Number(a.agentPlatformSharePct) : null,
+      agentSplitFromParentPct: a.agentSplitFromParentPct != null ? Number(a.agentSplitFromParentPct) : null,
+    }));
+    return computeEffectiveAgentShares(nodes, roleById, (uid) => parentById.get(uid) ?? null);
   }
 }

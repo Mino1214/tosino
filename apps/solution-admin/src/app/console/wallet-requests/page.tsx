@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type ReqRow = {
@@ -14,6 +13,10 @@ type ReqRow = {
   note: string | null;
   depositorName: string | null;
   createdAt: string;
+  /** USDT 행에 한해 서버에서 내려주는 현재 환율 (KRW per 1 USDT) */
+  krwRate?: string | null;
+  /** USDT 행에 한해 서버에서 내려주는 환산 KRW */
+  krwAmount?: string | null;
   user: {
     id: string;
     loginId?: string | null;
@@ -40,8 +43,18 @@ function amountLabel(row: ReqRow) {
   return `${Number(row.amount).toLocaleString("ko-KR")}원`;
 }
 
+/** USDT 행에 한해 환산 원화/환율을 부가 표기 */
+function krwSubLabel(row: ReqRow) {
+  if (row.currency !== "USDT" || !row.krwAmount) return null;
+  const krw = Math.round(Number(row.krwAmount));
+  if (!Number.isFinite(krw) || krw <= 0) return null;
+  const rate = row.krwRate ? Math.round(Number(row.krwRate)) : null;
+  return rate
+    ? `≈ ${krw.toLocaleString("ko-KR")}원 (1 USDT = ${rate.toLocaleString("ko-KR")}원)`
+    : `≈ ${krw.toLocaleString("ko-KR")}원`;
+}
+
 export default function ConsoleWalletRequestsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<ReqRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -57,17 +70,13 @@ export default function ConsoleWalletRequestsPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       return;
     }
     setErr(null);
     load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   async function approve(id: string) {
     if (!selectedPlatformId) return;
@@ -105,12 +114,12 @@ export default function ConsoleWalletRequestsPage() {
 
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (
-      <p className="text-zinc-500">불러오는 중…</p>
+      <p className="text-gray-500">불러오는 중…</p>
     ) : (
-      <p className="rounded-lg border border-amber-900/40 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+      <p className="rounded-lg border border-[#3182f6]/20 bg-[#3182f6]/5 px-4 py-3 text-sm text-gray-700">
         플랫폼 컨텍스트가 없습니다. 로그아웃 후 다시 로그인하거나 API 연결을
         확인하세요. 시드 데모 계정은{" "}
-        <span className="font-mono text-amber-300">platform@tosino.local</span>{" "}
+        <span className="font-mono text-[#3182f6]">platform@tosino.local</span>{" "}
         입니다.
       </p>
     );
@@ -119,33 +128,33 @@ export default function ConsoleWalletRequestsPage() {
     return <p className="text-red-400">{err}</p>;
   }
   if (!rows) {
-    return <p className="text-zinc-500">불러오는 중…</p>;
+    return <p className="text-gray-500">불러오는 중…</p>;
   }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-zinc-100">
+        <h1 className="text-2xl font-semibold text-black">
           충전·출금 요청 (대기)
         </h1>
         <button
           type="button"
           onClick={() => load()}
-          className="text-sm text-zinc-400 hover:text-zinc-200"
+          className="text-sm text-gray-500 hover:text-gray-800"
         >
           새로고침
         </button>
       </div>
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-gray-500">
         데모: 회원 신청 → 승인 시 잔액 반영
       </p>
       {err && <p className="text-sm text-red-400">{err}</p>}
       {rows.length === 0 ? (
-        <p className="text-zinc-500">대기 중인 요청이 없습니다.</p>
+        <p className="text-gray-500">대기 중인 요청이 없습니다.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400">
+            <thead className="border-b border-gray-200 bg-white text-gray-500">
                 <tr>
                   <th className="px-4 py-2">회원</th>
                   <th className="px-4 py-2">가입유형</th>
@@ -160,37 +169,42 @@ export default function ConsoleWalletRequestsPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-zinc-800/80">
-                  <td className="px-4 py-2 text-zinc-200">
+                <tr key={r.id} className="border-b border-gray-200">
+                  <td className="px-4 py-2 text-gray-800">
                     {loginLabel(r.user)}
                     <br />
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-gray-500">
                       {r.user.displayName ?? ""}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-zinc-400">
+                  <td className="px-4 py-2 text-gray-500">
                     {signupModeLabel(r.user.signupMode)}
                   </td>
-                  <td className="px-4 py-2 text-zinc-400">
+                  <td className="px-4 py-2 text-gray-500">
                     {r.type} / {r.currency}
                   </td>
-                  <td className="px-4 py-2 font-mono text-zinc-200">
-                    {amountLabel(r)}
+                  <td className="px-4 py-2 font-mono text-gray-800">
+                    <div>{amountLabel(r)}</div>
+                    {krwSubLabel(r) ? (
+                      <div className="mt-0.5 text-[11px] font-normal text-gray-500">
+                        {krwSubLabel(r)}
+                      </div>
+                    ) : null}
                   </td>
-                  <td className="max-w-[220px] truncate px-4 py-2 text-xs text-zinc-400">
+                  <td className="max-w-[220px] truncate px-4 py-2 text-xs text-gray-500">
                     {r.currency === "USDT"
                       ? r.user.usdtWalletAddress ?? "지갑 미등록"
                       : r.user.bankAccountNumber
                         ? `${r.user.bankAccountHolder ?? ""} · ${r.user.bankAccountNumber}`
                         : "계좌 미등록"}
                   </td>
-                  <td className="max-w-[100px] truncate px-4 py-2 text-zinc-300">
+                  <td className="max-w-[100px] truncate px-4 py-2 text-gray-700">
                     {r.depositorName ?? "—"}
                   </td>
-                  <td className="max-w-[140px] truncate px-4 py-2 text-zinc-500">
+                  <td className="max-w-[140px] truncate px-4 py-2 text-gray-500">
                     {r.note ?? "—"}
                   </td>
-                  <td className="px-4 py-2 text-xs text-zinc-500">
+                  <td className="px-4 py-2 text-xs text-gray-500">
                     {new Date(r.createdAt).toLocaleString()}
                   </td>
                   <td className="px-4 py-2">
@@ -199,7 +213,7 @@ export default function ConsoleWalletRequestsPage() {
                         type="button"
                         disabled={busy === r.id}
                         onClick={() => approve(r.id)}
-                        className="rounded bg-emerald-800 px-2 py-1 text-xs text-white hover:bg-emerald-700 disabled:opacity-50"
+                        className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700 disabled:opacity-50"
                       >
                         승인
                       </button>
@@ -207,7 +221,7 @@ export default function ConsoleWalletRequestsPage() {
                         type="button"
                         disabled={busy === r.id}
                         onClick={() => reject(r.id)}
-                        className="rounded border border-red-900/50 px-2 py-1 text-xs text-red-300 hover:bg-red-950/30 disabled:opacity-50"
+                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                       >
                         거절
                       </button>

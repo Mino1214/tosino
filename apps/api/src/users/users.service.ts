@@ -100,6 +100,12 @@ export class UsersService {
         uplinePrivateMemo: true,
         agentPlatformSharePct: true,
         agentSplitFromParentPct: true,
+        isBlocked: true,
+        blockedReason: true,
+        blockedAt: true,
+        phone: true,
+        bankAccountNumber: true,
+        bankAccountHolder: true,
         referredBy: {
           select: {
             id: true,

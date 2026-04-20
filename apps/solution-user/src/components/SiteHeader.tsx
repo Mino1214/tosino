@@ -19,6 +19,7 @@ import { formatKrwWithSymbol } from "@/lib/format-currency";
 import { ProtectedNavLink } from "@/components/ProtectedNavLink";
 
 const NAV_ITEMS = [
+  { label: "스포츠", href: "/lobby/sports" },
   { label: "카지노", href: "/lobby/live-casino" },
   { label: "슬롯", href: "/lobby/slots" },
   { label: "아케이드", href: "/lobby/arcade" },

@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
+import { apiFetch, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 import {
   registrationStatusLabelKo,
@@ -84,7 +83,6 @@ function isNestedMaster(r: Row, byId: Map<string, Row>): boolean {
 }
 
 export default function ConsoleUsersPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -153,17 +151,13 @@ export default function ConsoleUsersPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       return;
     }
     setErr(null);
     load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   useEffect(() => {
     if (!rateHist || !selectedPlatformId) {
@@ -458,7 +452,7 @@ export default function ConsoleUsersPage() {
   }
 
   if (platformLoading) {
-    return <p className="text-zinc-500">불러오는 중…</p>;
+    return <p className="text-gray-500">불러오는 중…</p>;
   }
   if (!selectedPlatformId) {
     return null;
@@ -467,19 +461,19 @@ export default function ConsoleUsersPage() {
     return <p className="text-red-400">{err}</p>;
   }
   if (!rows) {
-    return <p className="text-zinc-500">불러오는 중…</p>;
+    return <p className="text-gray-500">불러오는 중…</p>;
   }
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold text-zinc-100">유저</h1>
+      <h1 className="text-2xl font-semibold text-black">유저</h1>
 
       {/* 비율 막대 (총판 vs 일반 유저) */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
           계정 구성
         </p>
-        <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-800">
+        <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100">
           {masters.length > 0 && (
             <button
               type="button"
@@ -503,35 +497,35 @@ export default function ConsoleUsersPage() {
             />
           )}
           {totalSplit === 0 && (
-            <div className="w-full bg-zinc-700" title="데이터 없음" />
+            <div className="w-full bg-gray-200" title="데이터 없음" />
           )}
         </div>
         <div className="mt-3 flex flex-wrap gap-4 text-sm">
           <button
             type="button"
             onClick={() => setTab("masters")}
-            className="flex items-center gap-2 text-zinc-300 hover:text-violet-300"
+            className="flex items-center gap-2 text-gray-700 hover:text-violet-700"
           >
             <span className="inline-block h-2 w-2 rounded-full bg-violet-500" />
-            총판 <span className="font-mono text-zinc-100">{masters.length}</span>
+            총판 <span className="font-mono text-black">{masters.length}</span>
             {totalSplit > 0 && (
-              <span className="text-zinc-500">({masterPct}%)</span>
+              <span className="text-gray-500">({masterPct}%)</span>
             )}
           </button>
           <button
             type="button"
             onClick={() => setTab("users")}
-            className="flex items-center gap-2 text-zinc-300 hover:text-teal-300"
+            className="flex items-center gap-2 text-gray-700 hover:text-teal-300"
           >
             <span className="inline-block h-2 w-2 rounded-full bg-teal-600" />
             일반 유저{" "}
-            <span className="font-mono text-zinc-100">{endUsers.length}</span>
+            <span className="font-mono text-black">{endUsers.length}</span>
             {totalSplit > 0 && (
-              <span className="text-zinc-500">({userPct}%)</span>
+              <span className="text-gray-500">({userPct}%)</span>
             )}
           </button>
           {otherRoles.length > 0 && (
-            <span className="text-zinc-500">
+            <span className="text-gray-500">
               기타 역할 {otherRoles.length}명 (플랫폼 관리자 등)
             </span>
           )}
@@ -539,7 +533,7 @@ export default function ConsoleUsersPage() {
       </div>
 
       {/* 탭 */}
-      <div className="flex gap-2 border-b border-zinc-800 pb-2">
+      <div className="flex gap-2 border-b border-gray-200 pb-2">
         <button
           type="button"
           onClick={() => {
@@ -548,8 +542,8 @@ export default function ConsoleUsersPage() {
           }}
           className={`rounded-t px-4 py-2 text-sm font-medium transition ${
             tab === "masters"
-              ? "bg-zinc-800 text-violet-200"
-              : "text-zinc-500 hover:text-zinc-300"
+              ? "bg-gray-100 text-violet-700"
+              : "text-gray-500 hover:text-gray-700"
           }`}
         >
           총판 ({masters.length})
@@ -562,8 +556,8 @@ export default function ConsoleUsersPage() {
           }}
           className={`rounded-t px-4 py-2 text-sm font-medium transition ${
             tab === "users"
-              ? "bg-zinc-800 text-teal-200"
-              : "text-zinc-500 hover:text-zinc-300"
+              ? "bg-gray-100 text-teal-200"
+              : "text-gray-500 hover:text-gray-700"
           }`}
         >
           일반 유저 ({endUsers.length})
@@ -573,41 +567,41 @@ export default function ConsoleUsersPage() {
       {canCreate && (
         <form
           onSubmit={createUser}
-          className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+          className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-4"
         >
           {err && <p className="w-full text-sm text-red-400">{err}</p>}
-          <label className="text-xs text-zinc-400">
+          <label className="text-xs text-gray-500">
             아이디
             <input
               type="text"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
-              className="mt-1 block w-48 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-sm text-zinc-100"
+              className="mt-1 block w-48 rounded border border-gray-300 bg-white px-2 py-1.5 font-mono text-sm text-black"
               required
               minLength={3}
               autoComplete="off"
             />
           </label>
-          <label className="text-xs text-zinc-400">
+          <label className="text-xs text-gray-500">
             연락 이메일 (선택)
             <input
               type="email"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
-              className="mt-1 block w-48 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+              className="mt-1 block w-48 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
             />
           </label>
-          <label className="text-xs text-zinc-400">
+          <label className="text-xs text-gray-500">
             비밀번호
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-36 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+              className="mt-1 block w-36 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
               required
             />
           </label>
-          <label className="text-xs text-zinc-400">
+          <label className="text-xs text-gray-500">
             역할
             <select
               value={role}
@@ -620,7 +614,7 @@ export default function ConsoleUsersPage() {
                   setAgentSplitPctDraft("30");
                 }
               }}
-              className="mt-1 block rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+              className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
             >
               {getStoredUser()?.role === "SUPER_ADMIN" && (
                 <option value="PLATFORM_ADMIN">플랫폼 관리자</option>
@@ -631,7 +625,7 @@ export default function ConsoleUsersPage() {
           </label>
           {role === "MASTER_AGENT" && (
             <>
-              <label className="text-xs text-zinc-400">
+              <label className="text-xs text-gray-500">
                 마스터 코드(선택)
                 <input
                   value={referralCode}
@@ -639,15 +633,15 @@ export default function ConsoleUsersPage() {
                     setReferralCode(e.target.value.toUpperCase())
                   }
                   placeholder="비우면 자동"
-                  className="mt-1 block w-28 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-sm text-zinc-100"
+                  className="mt-1 block w-28 rounded border border-gray-300 bg-white px-2 py-1.5 font-mono text-sm text-black"
                 />
               </label>
-              <label className="text-xs text-zinc-400">
+              <label className="text-xs text-gray-500">
                 상위 총판(선택)
                 <select
                   value={parentMasterForCreate}
                   onChange={(e) => setParentMasterForCreate(e.target.value)}
-                  className="mt-1 block max-w-[200px] rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+                  className="mt-1 block max-w-[200px] rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
                 >
                   <option value="">없음 · 플랫폼 직속(최상위)</option>
                   {masters.map((m) => (
@@ -658,7 +652,7 @@ export default function ConsoleUsersPage() {
                 </select>
               </label>
               {parentMasterForCreate ? (
-                <label className="text-xs text-zinc-400">
+                <label className="text-xs text-gray-500">
                   상위 대비 분배 % (0~100)
                   <input
                     type="number"
@@ -667,11 +661,11 @@ export default function ConsoleUsersPage() {
                     step={0.01}
                     value={agentSplitPctDraft}
                     onChange={(e) => setAgentSplitPctDraft(e.target.value)}
-                    className="mt-1 block w-24 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-sm text-zinc-100"
+                    className="mt-1 block w-24 rounded border border-gray-300 bg-white px-2 py-1.5 font-mono text-sm text-black"
                   />
                 </label>
               ) : (
-                <label className="text-xs text-zinc-400">
+                <label className="text-xs text-gray-500">
                   플랫폼 부여 요율 % (선택)
                   <input
                     type="number"
@@ -681,7 +675,7 @@ export default function ConsoleUsersPage() {
                     value={agentPlatformPctDraft}
                     onChange={(e) => setAgentPlatformPctDraft(e.target.value)}
                     placeholder="예: 40"
-                    className="mt-1 block w-24 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-sm text-zinc-100"
+                    className="mt-1 block w-24 rounded border border-gray-300 bg-white px-2 py-1.5 font-mono text-sm text-black"
                   />
                 </label>
               )}
@@ -690,11 +684,11 @@ export default function ConsoleUsersPage() {
           <button
             type="submit"
             disabled={creating}
-            className="rounded bg-amber-600 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+            className="rounded bg-[#3182f6] px-3 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
           >
             추가
           </button>
-          <p className="w-full text-xs text-zinc-500">
+          <p className="w-full text-xs text-gray-500">
             공통 가입코드는 운영설정에서, 마스터 코드는 여기서, 추천인 아이디는
             해당 회원의 로그인 아이디 그대로 회원가입 화면에서 사용됩니다.
           </p>
@@ -703,9 +697,9 @@ export default function ConsoleUsersPage() {
 
       {tab === "masters" && (
         <div className="space-y-4">
-          <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400">
+              <thead className="border-b border-gray-200 bg-white text-gray-500">
                 <tr>
                   <th className="px-4 py-2">아이디</th>
                   <th className="px-4 py-2">표시명</th>
@@ -727,7 +721,7 @@ export default function ConsoleUsersPage() {
                   <tr>
                     <td
                       colSpan={canCreate ? 11 : 10}
-                      className="px-4 py-6 text-center text-zinc-500"
+                      className="px-4 py-6 text-center text-gray-500"
                     >
                       등록된 총판이 없습니다.
                     </td>
@@ -744,8 +738,8 @@ export default function ConsoleUsersPage() {
                     return (
                       <tr
                         key={r.id}
-                        className={`cursor-pointer border-b border-zinc-800/80 transition ${
-                          sel ? "bg-violet-950/40" : "hover:bg-zinc-900/60"
+                        className={`cursor-pointer border-b border-gray-200 transition ${
+                          sel ? "bg-violet-50" : "hover:bg-white"
                         }`}
                         onClick={() =>
                           setSelectedMasterId((id) =>
@@ -753,23 +747,23 @@ export default function ConsoleUsersPage() {
                           )
                         }
                       >
-                        <td className="px-4 py-2 text-zinc-200">
+                        <td className="px-4 py-2 text-gray-800">
                           {rowLoginLabel(r)}
                         </td>
-                        <td className="px-4 py-2 text-zinc-400">
+                        <td className="px-4 py-2 text-gray-500">
                           {r.displayName ?? "—"}
                         </td>
-                        <td className="max-w-[140px] truncate px-4 py-2 text-xs text-zinc-500">
+                        <td className="max-w-[140px] truncate px-4 py-2 text-xs text-gray-500">
                           {nested && parent
                             ? rowLoginLabel(parent)
                             : "—"}
                         </td>
-                        <td className="px-4 py-2 font-mono text-xs text-zinc-300">
+                        <td className="px-4 py-2 font-mono text-xs text-gray-700">
                           {!nested && r.agentPlatformSharePct != null
                             ? r.agentPlatformSharePct
                             : "—"}
                         </td>
-                        <td className="px-4 py-2 font-mono text-xs text-zinc-300">
+                        <td className="px-4 py-2 font-mono text-xs text-gray-700">
                           {nested && r.agentSplitFromParentPct != null
                             ? r.agentSplitFromParentPct
                             : "—"}
@@ -783,23 +777,23 @@ export default function ConsoleUsersPage() {
                           className="px-4 py-2"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <p className="font-mono text-xs text-amber-200/80">
+                          <p className="font-mono text-xs text-[#3182f6]/80">
                             {r.referralCode ?? "—"}
                           </p>
                           {canCreate && (
                             <button
                               type="button"
                               onClick={() => openReferralCodeEditor(r)}
-                              className="mt-1 text-[11px] text-amber-400/90 hover:text-amber-300 hover:underline"
+                              className="mt-1 text-[11px] text-[#3182f6]/90 hover:text-[#3182f6] hover:underline"
                             >
                               코드 수정
                             </button>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-zinc-300">
+                        <td className="px-4 py-2 text-gray-700">
                           <span className="font-mono">{n}</span>명
                           {sm > 0 && (
-                            <span className="ml-1 text-zinc-500">
+                            <span className="ml-1 text-gray-500">
                               /총판{sm}
                             </span>
                           )}
@@ -809,7 +803,7 @@ export default function ConsoleUsersPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-xs text-zinc-500">
+                        <td className="px-4 py-2 text-xs text-gray-500">
                           {new Date(r.createdAt).toLocaleDateString()}
                         </td>
                         <td
@@ -819,7 +813,7 @@ export default function ConsoleUsersPage() {
                           <button
                             type="button"
                             onClick={() => openMemo(r)}
-                            className="text-xs text-violet-400 hover:text-violet-300 hover:underline"
+                            className="text-xs text-violet-500 hover:text-violet-700 hover:underline"
                           >
                             {(r.userMemo || r.agentMemo) && "● "}
                             메모
@@ -834,7 +828,7 @@ export default function ConsoleUsersPage() {
                               <button
                                 type="button"
                                 onClick={() => openCommission(r)}
-                                className="text-xs text-amber-400/90 hover:text-amber-300 hover:underline"
+                                className="text-xs text-[#3182f6]/90 hover:text-[#3182f6] hover:underline"
                               >
                                 수정
                               </button>
@@ -857,42 +851,42 @@ export default function ConsoleUsersPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-gray-500">
             행을 누르면 해당 총판 소속 일반 유저만 아래에 표시합니다. 다시 누르면
             닫힙니다. 메모는 본인·총판·플랫폼 권한에 따라 다릅니다.
           </p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-gray-500">
             공통 가입코드는 운영 설정에서 연결하고, 각 총판의 개별 마스터 코드는
             이 표의 코드 수정 버튼으로 관리합니다.
           </p>
-          <p className="text-xs text-zinc-600">
+          <p className="text-xs text-gray-400">
             다단계 요율: 최상위는 플랫폼 부여 %, 하위 총판은 상위 대비 분배 %만
             저장합니다. 실효 % = (상위 실효) × (분배) ÷ 100. 예) A-1 실효 40%,
             A-1이 하위에 분배 30% → 하위 실효 12%.
           </p>
 
           {selectedMasterId && (
-            <div className="rounded-xl border border-violet-900/50 bg-violet-950/20 p-4">
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-medium text-violet-200">
+                <h2 className="text-lg font-medium text-violet-700">
                   하위 유저 ({childrenOfSelected.length}명)
                 </h2>
                 <button
                   type="button"
                   onClick={() => setSelectedMasterId(null)}
-                  className="text-xs text-violet-400 hover:text-violet-300"
+                  className="text-xs text-violet-500 hover:text-violet-700"
                 >
                   닫기
                 </button>
               </div>
               {childrenOfSelected.length === 0 ? (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-gray-500">
                   이 총판 코드로 가입한 유저가 아직 없습니다.
                 </p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="w-full text-left text-sm">
-                    <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400">
+                    <thead className="border-b border-gray-200 bg-white text-gray-500">
                       <tr>
                         <th className="px-3 py-2">아이디</th>
                         <th className="px-3 py-2">표시명</th>
@@ -910,25 +904,25 @@ export default function ConsoleUsersPage() {
                       {childrenOfSelected.map((u) => (
                         <tr
                           key={u.id}
-                          className="cursor-pointer border-b border-zinc-800/80 hover:bg-zinc-900/40"
+                          className="cursor-pointer border-b border-gray-200 hover:bg-white"
                           onClick={() => openOverview(u)}
                         >
-                          <td className="px-3 py-2 text-zinc-200">
+                          <td className="px-3 py-2 text-gray-800">
                             {rowLoginLabel(u)}
                           </td>
-                          <td className="px-3 py-2 text-zinc-400">
+                          <td className="px-3 py-2 text-gray-500">
                             {u.displayName ?? "—"}
                           </td>
-                          <td className="px-3 py-2 text-zinc-500">
+                          <td className="px-3 py-2 text-gray-500">
                             {registrationStatusLabelKo(u.registrationStatus)}
                           </td>
-                          <td className="px-3 py-2 text-zinc-400">
+                          <td className="px-3 py-2 text-gray-500">
                             {signupModeLabel(u.signupMode)}
                           </td>
-                          <td className="px-3 py-2 font-mono text-xs text-zinc-400">
+                          <td className="px-3 py-2 font-mono text-xs text-gray-500">
                             {u.signupReferralInput ?? "—"}
                           </td>
-                          <td className="px-3 py-2 text-xs text-zinc-500">
+                          <td className="px-3 py-2 text-xs text-gray-500">
                             {new Date(u.createdAt).toLocaleDateString()}
                           </td>
                           <td
@@ -938,7 +932,7 @@ export default function ConsoleUsersPage() {
                             <button
                               type="button"
                               onClick={() => openMemo(u)}
-                              className="text-xs text-violet-400 hover:text-violet-300 hover:underline"
+                              className="text-xs text-violet-500 hover:text-violet-700 hover:underline"
                             >
                               {(u.userMemo || u.agentMemo) && "● "}
                               메모
@@ -973,9 +967,9 @@ export default function ConsoleUsersPage() {
 
       {tab === "users" && (
         <div className="space-y-4">
-          <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400">
+              <thead className="border-b border-gray-200 bg-white text-gray-500">
                 <tr>
                   <th className="px-4 py-2">아이디</th>
                   <th className="px-4 py-2">표시명</th>
@@ -997,7 +991,7 @@ export default function ConsoleUsersPage() {
                   <tr>
                     <td
                       colSpan={canCreate ? 11 : 10}
-                      className="px-4 py-6 text-center text-zinc-500"
+                      className="px-4 py-6 text-center text-gray-500"
                     >
                       일반 유저가 없습니다.
                     </td>
@@ -1010,25 +1004,25 @@ export default function ConsoleUsersPage() {
                     return (
                       <tr
                         key={r.id}
-                        className="cursor-pointer border-b border-zinc-800/80 hover:bg-zinc-900/40"
+                        className="cursor-pointer border-b border-gray-200 hover:bg-white"
                         onClick={() => openOverview(r)}
                       >
-                        <td className="px-4 py-2 text-zinc-200">
+                        <td className="px-4 py-2 text-gray-800">
                           {rowLoginLabel(r)}
                         </td>
-                        <td className="px-4 py-2 text-zinc-400">
+                        <td className="px-4 py-2 text-gray-500">
                           {r.displayName ?? "—"}
                         </td>
-                        <td className="px-4 py-2 text-zinc-500">
+                        <td className="px-4 py-2 text-gray-500">
                           {registrationStatusLabelKo(r.registrationStatus)}
                         </td>
-                        <td className="px-4 py-2 text-zinc-400">
+                        <td className="px-4 py-2 text-gray-500">
                           {signupModeLabel(r.signupMode)}
                         </td>
-                        <td className="px-4 py-2 font-mono text-xs text-zinc-400">
+                        <td className="px-4 py-2 font-mono text-xs text-gray-500">
                           {r.signupReferralInput ?? "—"}
                         </td>
-                        <td className="px-4 py-2 text-zinc-400">
+                        <td className="px-4 py-2 text-gray-500">
                           {r.referredBy
                             ? r.referredBy.displayName ||
                               rowLoginLabel({
@@ -1037,11 +1031,11 @@ export default function ConsoleUsersPage() {
                               })
                             : "—"}
                         </td>
-                        <td className="max-w-[220px] truncate px-4 py-2 text-xs text-emerald-300/80">
+                        <td className="max-w-[220px] truncate px-4 py-2 text-xs text-emerald-700/80">
                           {r.signupMode === "anonymous" ? r.usdtWalletAddress ?? "—" : "—"}
                         </td>
                         <td
-                          className="px-4 py-2 text-zinc-400"
+                          className="px-4 py-2 text-gray-500"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {parent ? (
@@ -1056,10 +1050,10 @@ export default function ConsoleUsersPage() {
                               {parent.displayName || rowLoginLabel(parent)}
                             </button>
                           ) : (
-                            <span className="text-zinc-600">무소속</span>
+                            <span className="text-gray-400">무소속</span>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-xs text-zinc-500">
+                        <td className="px-4 py-2 text-xs text-gray-500">
                           {new Date(r.createdAt).toLocaleDateString()}
                         </td>
                         <td
@@ -1069,7 +1063,7 @@ export default function ConsoleUsersPage() {
                           <button
                             type="button"
                             onClick={() => openMemo(r)}
-                            className="text-xs text-violet-400 hover:text-violet-300 hover:underline"
+                            className="text-xs text-violet-500 hover:text-violet-700 hover:underline"
                           >
                             {(r.userMemo || r.agentMemo) && "● "}
                             메모
@@ -1098,10 +1092,10 @@ export default function ConsoleUsersPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-gray-500">
             소속 총판 이름을 누르면 총판 탭으로 이동해 해당 총판·하위 목록을 엽니다.
           </p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-gray-500">
             일반 유저 행을 누르면 현재 출금 가능액, 롤링 진행률, 포인트 환산,
             최근 입출금까지 상세하게 볼 수 있습니다.
           </p>
@@ -1110,10 +1104,10 @@ export default function ConsoleUsersPage() {
 
       {otherRoles.length > 0 && (
         <div className="space-y-2">
-          <h2 className="text-sm font-medium text-zinc-400">기타 역할</h2>
-          <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <h2 className="text-sm font-medium text-gray-500">기타 역할</h2>
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400">
+              <thead className="border-b border-gray-200 bg-white text-gray-500">
                 <tr>
                   <th className="px-4 py-2">아이디</th>
                   <th className="px-4 py-2">역할</th>
@@ -1122,14 +1116,14 @@ export default function ConsoleUsersPage() {
               </thead>
               <tbody>
                 {otherRoles.map((r) => (
-                  <tr key={r.id} className="border-b border-zinc-800/80">
-                    <td className="px-4 py-2 text-zinc-200">
+                  <tr key={r.id} className="border-b border-gray-200">
+                    <td className="px-4 py-2 text-gray-800">
                       {rowLoginLabel(r)}
                     </td>
-                    <td className="px-4 py-2 text-zinc-400">
+                    <td className="px-4 py-2 text-gray-500">
                       {userRoleLabelKo(r.role)}
                     </td>
-                    <td className="px-4 py-2 text-zinc-500">
+                    <td className="px-4 py-2 text-gray-500">
                       {r.displayName ?? "—"}
                     </td>
                   </tr>
@@ -1150,38 +1144,38 @@ export default function ConsoleUsersPage() {
 
       {referralCodeUser && canCreate && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-white p-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
-            <h2 className="text-lg font-semibold text-zinc-100">
+          <div className="w-full max-w-md rounded-xl border border-gray-300 bg-white p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-black">
               마스터 코드 설정
             </h2>
-            <p className="mt-1 font-mono text-xs text-zinc-500">
+            <p className="mt-1 font-mono text-xs text-gray-500">
               {rowLoginLabel(referralCodeUser)}
             </p>
-            <p className="mt-3 text-sm text-zinc-400">
+            <p className="mt-3 text-sm text-gray-500">
               회원가입에서 사용하는 관리자(마스터) 코드입니다. 비워두면 자동으로
               새 코드가 재발급됩니다.
             </p>
             {referralCodeErr && (
               <p className="mt-3 text-sm text-red-400">{referralCodeErr}</p>
             )}
-            <label className="mt-4 block text-sm text-zinc-400">
+            <label className="mt-4 block text-sm text-gray-500">
               마스터 코드
               <input
                 value={referralCodeDraft}
                 onChange={(e) => setReferralCodeDraft(e.target.value.toUpperCase())}
                 placeholder="예: ION001"
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black"
               />
             </label>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setReferralCodeUser(null)}
-                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
               >
                 닫기
               </button>
@@ -1189,7 +1183,7 @@ export default function ConsoleUsersPage() {
                 type="button"
                 disabled={referralCodeSaving}
                 onClick={() => void saveReferralCode()}
-                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+                className="rounded-lg bg-[#3182f6] px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
               >
                 {referralCodeSaving ? "저장 중…" : "저장"}
               </button>
@@ -1200,26 +1194,26 @@ export default function ConsoleUsersPage() {
 
       {rateHist && canCreate && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-white p-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-gray-300 bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h2 className="text-lg font-semibold text-zinc-100">
+                <h2 className="text-lg font-semibold text-black">
                   {rateHist.kind === "commission"
                     ? "총판 요율 변경 이력"
                     : "회원 롤링 % 변경 이력"}
                 </h2>
-                <p className="mt-1 font-mono text-xs text-zinc-500">
+                <p className="mt-1 font-mono text-xs text-gray-500">
                   {rowLoginLabel(rateHist.row)}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setRateHist(null)}
-                className="rounded p-1 text-zinc-500 hover:bg-zinc-800"
+                className="rounded p-1 text-gray-500 hover:bg-gray-100"
                 aria-label="닫기"
               >
                 ✕
@@ -1229,13 +1223,13 @@ export default function ConsoleUsersPage() {
               <p className="mt-3 text-xs text-teal-200/80">{rateHistHint}</p>
             )}
             {rateHistLoading ? (
-              <p className="mt-4 text-sm text-zinc-500">불러오는 중…</p>
+              <p className="mt-4 text-sm text-gray-500">불러오는 중…</p>
             ) : rateHist.kind === "commission" ? (
               rateHistComm.length === 0 ? (
-                <p className="mt-4 text-sm text-zinc-500">이력이 없습니다.</p>
+                <p className="mt-4 text-sm text-gray-500">이력이 없습니다.</p>
               ) : (
                 <table className="mt-4 w-full text-left text-xs">
-                  <thead className="border-b border-zinc-800 text-zinc-500">
+                  <thead className="border-b border-gray-200 text-gray-500">
                     <tr>
                       <th className="py-2 pr-2">적용 시작</th>
                       <th className="py-2">플랫폼 %</th>
@@ -1244,14 +1238,14 @@ export default function ConsoleUsersPage() {
                   </thead>
                   <tbody>
                     {rateHistComm.map((h) => (
-                      <tr key={h.id} className="border-b border-zinc-800/60">
-                        <td className="py-2 pr-2 text-zinc-400">
+                      <tr key={h.id} className="border-b border-gray-200">
+                        <td className="py-2 pr-2 text-gray-500">
                           {new Date(h.effectiveFrom).toLocaleString()}
                         </td>
-                        <td className="py-2 font-mono text-zinc-200">
+                        <td className="py-2 font-mono text-gray-800">
                           {h.agentPlatformSharePct ?? "—"}
                         </td>
-                        <td className="py-2 font-mono text-zinc-200">
+                        <td className="py-2 font-mono text-gray-800">
                           {h.agentSplitFromParentPct ?? "—"}
                         </td>
                       </tr>
@@ -1260,11 +1254,11 @@ export default function ConsoleUsersPage() {
                 </table>
               )
             ) : rateHistRoll.length === 0 ? (
-              <p className="mt-4 text-sm text-zinc-500">이력이 없습니다.</p>
+              <p className="mt-4 text-sm text-gray-500">이력이 없습니다.</p>
             ) : (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[520px] text-left text-xs">
-                  <thead className="border-b border-zinc-800 text-zinc-500">
+                  <thead className="border-b border-gray-200 text-gray-500">
                     <tr>
                       <th className="py-2 pr-2">적용 시작</th>
                       <th className="py-2">사용</th>
@@ -1277,26 +1271,26 @@ export default function ConsoleUsersPage() {
                   </thead>
                   <tbody>
                     {rateHistRoll.map((h) => (
-                      <tr key={h.id} className="border-b border-zinc-800/60">
-                        <td className="py-2 pr-2 text-zinc-400">
+                      <tr key={h.id} className="border-b border-gray-200">
+                        <td className="py-2 pr-2 text-gray-500">
                           {new Date(h.effectiveFrom).toLocaleString()}
                         </td>
-                        <td className="py-2 text-zinc-300">
+                        <td className="py-2 text-gray-700">
                           {h.rollingEnabled ? "O" : "—"}
                         </td>
-                        <td className="py-2 font-mono text-zinc-200">
+                        <td className="py-2 font-mono text-gray-800">
                           {h.rollingSportsDomesticPct ?? "—"}
                         </td>
-                        <td className="py-2 font-mono text-zinc-200">
+                        <td className="py-2 font-mono text-gray-800">
                           {h.rollingSportsOverseasPct ?? "—"}
                         </td>
-                        <td className="py-2 font-mono text-zinc-200">
+                        <td className="py-2 font-mono text-gray-800">
                           {h.rollingCasinoPct ?? "—"}
                         </td>
-                        <td className="py-2 font-mono text-zinc-200">
+                        <td className="py-2 font-mono text-gray-800">
                           {h.rollingSlotPct ?? "—"}
                         </td>
-                        <td className="py-2 font-mono text-zinc-200">
+                        <td className="py-2 font-mono text-gray-800">
                           {h.rollingMinigamePct ?? "—"}
                         </td>
                       </tr>
@@ -1308,7 +1302,7 @@ export default function ConsoleUsersPage() {
             <button
               type="button"
               onClick={() => setRateHist(null)}
-              className="mt-5 w-full rounded-lg border border-zinc-600 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+              className="mt-5 w-full rounded-lg border border-gray-300 py-2 text-sm text-gray-500 hover:bg-gray-100"
             >
               닫기
             </button>
@@ -1318,18 +1312,18 @@ export default function ConsoleUsersPage() {
 
       {commissionUser && canCreate && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-white p-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
-            <h2 className="text-lg font-semibold text-zinc-100">
+          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-gray-300 bg-white p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-black">
               총판 요율 (다단계)
             </h2>
-            <p className="mt-1 font-mono text-xs text-zinc-500">
+            <p className="mt-1 font-mono text-xs text-gray-500">
               {rowLoginLabel(commissionUser)}
             </p>
-            <p className="mt-2 text-xs text-zinc-500">
+            <p className="mt-2 text-xs text-gray-500">
               {isNestedMaster(commissionUser, byId)
                 ? "하위 총판: 상위 실효 요율 × 분배% ÷ 100. 아래는 분배%만 수정합니다."
                 : "최상위 총판: 플랫폼이 부여한 기준 요율(%)입니다."}
@@ -1338,7 +1332,7 @@ export default function ConsoleUsersPage() {
               <p className="mt-2 text-sm text-red-400">{commissionErr}</p>
             )}
             {isNestedMaster(commissionUser, byId) ? (
-              <label className="mt-4 block text-sm text-zinc-400">
+              <label className="mt-4 block text-sm text-gray-500">
                 상위 대비 분배 %
                 <input
                   type="number"
@@ -1347,11 +1341,11 @@ export default function ConsoleUsersPage() {
                   step={0.01}
                   value={commissionSplitDraft}
                   onChange={(e) => setCommissionSplitDraft(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black"
                 />
               </label>
             ) : (
-              <label className="mt-4 block text-sm text-zinc-400">
+              <label className="mt-4 block text-sm text-gray-500">
                 플랫폼 부여 요율 %
                 <input
                   type="number"
@@ -1360,7 +1354,7 @@ export default function ConsoleUsersPage() {
                   step={0.01}
                   value={commissionPlatformDraft}
                   onChange={(e) => setCommissionPlatformDraft(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm text-black"
                 />
               </label>
             )}
@@ -1368,7 +1362,7 @@ export default function ConsoleUsersPage() {
               <button
                 type="button"
                 onClick={() => setCommissionUser(null)}
-                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
               >
                 닫기
               </button>
@@ -1376,7 +1370,7 @@ export default function ConsoleUsersPage() {
                 type="button"
                 disabled={commissionSaving}
                 onClick={() => void saveCommission()}
-                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+                className="rounded-lg bg-[#3182f6] px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
               >
                 {commissionSaving ? "저장 중…" : "저장"}
               </button>
@@ -1387,21 +1381,21 @@ export default function ConsoleUsersPage() {
 
       {memoUser && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-white p-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
-            <h2 className="text-lg font-semibold text-zinc-100">메모</h2>
-            <p className="mt-1 font-mono text-xs text-zinc-500">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-300 bg-white p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-black">메모</h2>
+            <p className="mt-1 font-mono text-xs text-gray-500">
               {rowLoginLabel(memoUser)}
             </p>
             {memoErr && (
               <p className="mt-2 text-sm text-red-400">{memoErr}</p>
             )}
-            <label className="mt-4 block text-sm text-zinc-400">
+            <label className="mt-4 block text-sm text-gray-500">
               총판 메모
-              <span className="mb-1 block text-[11px] text-zinc-600">
+              <span className="mb-1 block text-[11px] text-gray-400">
                 소속 총판(또는 플랫폼)이 이 회원에게 남기는 메모입니다.
               </span>
               <textarea
@@ -1409,12 +1403,12 @@ export default function ConsoleUsersPage() {
                 onChange={(e) => setAgentDraft(e.target.value)}
                 disabled={!canEditAgentMemo(getStoredUser(), memoUser)}
                 rows={4}
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black disabled:opacity-50"
               />
             </label>
-            <label className="mt-4 block text-sm text-zinc-400">
+            <label className="mt-4 block text-sm text-gray-500">
               회원 메모
-              <span className="mb-1 block text-[11px] text-zinc-600">
+              <span className="mb-1 block text-[11px] text-gray-400">
                 회원 본인이 쓰는 메모입니다. 플랫폼 관리자도 수정할 수 있습니다.
               </span>
               <textarea
@@ -1425,14 +1419,14 @@ export default function ConsoleUsersPage() {
                   !canEditOwnUserMemo(getStoredUser(), memoUser)
                 }
                 rows={4}
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black disabled:opacity-50"
               />
             </label>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setMemoUser(null)}
-                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
               >
                 닫기
               </button>
@@ -1440,7 +1434,7 @@ export default function ConsoleUsersPage() {
                 type="button"
                 disabled={memoSaving}
                 onClick={() => saveMemos()}
-                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+                className="rounded-lg bg-[#3182f6] px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
               >
                 {memoSaving ? "저장 중…" : "저장"}
               </button>

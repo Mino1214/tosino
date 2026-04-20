@@ -114,8 +114,17 @@ model Platform {
   semiVirtualAccountHolder     String?
   /** 입금 후 출금 잠금: rollingEnabled 회원만 의무 생성 */
   rollingLockWithdrawals       Boolean  @default(true)
-  /** 입금액 대비 필요 롤링 턴오버 배수 (예: 1 = 100%) */
+  /**
+   * 입금액 대비 필요 롤링 턴오버 배수 (예: 1 = 100%).
+   * 아래 게임별 배수가 지정되지 않았을 때의 폴백.
+   */
   rollingTurnoverMultiplier    Decimal  @default(1) @db.Decimal(8, 4)
+  /** 게임별 턴오버 배수 — 지정 시 이 값을 사용, 미지정 시 rollingTurnoverMultiplier 폴백 */
+  rollingTurnoverSports        Decimal? @db.Decimal(8, 4)
+  rollingTurnoverCasino        Decimal? @db.Decimal(8, 4)
+  rollingTurnoverSlot          Decimal? @db.Decimal(8, 4)
+  rollingTurnoverMinigame      Decimal? @db.Decimal(8, 4)
+  rollingTurnoverArcade        Decimal? @db.Decimal(8, 4)
   /** 총판이 하위 회원 롤링 % 편집 가능 여부 */
   agentCanEditMemberRolling    Boolean  @default(true)
   minDepositKrw                Decimal? @db.Decimal(18, 2)
@@ -127,6 +136,30 @@ model Platform {
   minPointRedeemUsdt           Decimal? @db.Decimal(18, 8)
   /** 출석·낙첨·추천 등 포인트 규칙 JSON */
   pointRulesJson               Json     @default("{}")
+  /**
+   * 솔루션 알(크레딧) 잔액 — 마스터어드민 승인 시 증가, 솔루션 청구 정산 실행 시 감소.
+   * 음수 가능(연체 상태 표현). 잔액이 0 이하이면 솔루션 서비스 차단 로직 적용 가능.
+   */
+  creditBalance                Decimal  @default(0) @db.Decimal(18, 2)
+  /**
+   * 알 잔액 상한(초기 충전 기준). 승인된 크레딧 요청 합계로 누적 증가.
+   * creditBalance 복구(가상) 시 이 값을 초과할 수 없다.
+   */
+  reserveInitialAmount         Decimal  @default(0) @db.Decimal(18, 2)
+  /**
+   * 알 가상 잔액 시스템 마스터 스위치.
+   * true = 실시간(Vinus 카지노 콜백) + 배치 정산 모두에서 DEDUCT/RESTORE 처리
+   * false = 모든 reserve 이벤트 무시 (테스트 전용 모드). 수동 API/테스트시나리오는 계속 동작.
+   * 이 플래그 하나만 true→true 로 바꾸면 그 즉시 운영 반영이 시작된다.
+   */
+  reserveEnabled               Boolean  @default(true)
+  /** 승리 시 가상 복구 사용 여부 (관리자 토글). true 일 때만 RESTORE 이벤트가 잔액에 반영된다. */
+  reserveRestoreEnabled        Boolean  @default(false)
+  /**
+   * 알 차감/복구 계산에 사용할 비율 (예: 0.07 = 7%).
+   * null 이면 기존 solutionRatePolicy 의 platform 비율이 폴백으로 사용된다.
+   */
+  reserveRatePct               Decimal? @db.Decimal(8, 4)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -150,6 +183,72 @@ model Platform {
   depositEvents        DepositEvent[]
   compSettlements      CompSettlement[]
   solutionBillingSettlements SolutionBillingSettlement[]
+  creditRequests       PlatformCreditRequest[]
+  reserveLogs          PlatformReserveLog[]
+  semiVirtualBundles   SemiVirtualBundle[]
+  semiVirtualAccounts  SemiVirtualAccount[]
+  policyHistory        PlatformPolicyHistory[]
+}
+
+/**
+ * 반가상 입금 계좌 번들.
+ * 운영자가 여러 계좌를 하나의 번들로 묶어 저장하며, 번들이 새로 만들어지면
+ * 이전 번들은 status=RETIRED 로 보존한다. 과거 번들 계좌로 잘못 입금하는
+ * 회원을 식별하기 위해 계좌 자체는 삭제하지 않는다.
+ */
+model SemiVirtualBundle {
+  id             String   @id @default(cuid())
+  platformId     String
+  platform       Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  /** 운영자 별칭 — 예: "2026-04 1차", 미입력 시 자동 번호 */
+  label          String?
+  /** CURRENT (활성) | RETIRED (보존) */
+  status         String   @default("CURRENT")
+  createdByUserId String?
+  createdAt      DateTime @default(now())
+  retiredAt      DateTime?
+  retiredReason  String?
+  accounts       SemiVirtualAccount[]
+
+  @@index([platformId, status, createdAt])
+}
+
+model SemiVirtualAccount {
+  id            String   @id @default(cuid())
+  bundleId      String
+  bundle        SemiVirtualBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  platformId    String
+  platform      Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  bankName      String
+  accountNumber String
+  accountHolder String
+  memo          String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([bundleId])
+  @@index([platformId])
+  @@index([platformId, accountNumber])
+}
+
+/**
+ * 운영 정책 변경 이력 — 롤링/콤프/포인트/회원가입 등 주요 운영 설정의
+ * Before/After JSON 을 누적 보존하여 감사(audit) · 되돌아보기에 사용.
+ */
+model PlatformPolicyHistory {
+  id               String   @id @default(cuid())
+  platformId       String
+  platform         Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  /** 정책 유형: rolling | comp | point | signup | semi_virtual | general */
+  policyType       String
+  beforeJson       Json     @default("{}")
+  afterJson        Json     @default("{}")
+  changedByUserId  String?
+  changedByLoginId String?
+  note             String?
+  createdAt        DateTime @default(now())
+
+  @@index([platformId, policyType, createdAt])
 }
 
 /// Vinus Gaming 게임 실행 시 회원 식별용(15~25자). 입장 시마다 재발급.
@@ -480,6 +579,12 @@ model User {
   agentPlatformSharePct   Decimal?        @db.Decimal(5, 2)
   /** 직속 상위가 총판일 때: 상위 실효 요율의 몇 %를 이 총판이 가져가는지(0~100). 실효 = 상위실효 × 이값/100 */
   agentSplitFromParentPct Decimal?        @db.Decimal(5, 2)
+  /** 블랙리스트 차단 여부. 플랫폼 어드민이 유저별로 관리 */
+  isBlocked            Boolean            @default(false)
+  blockedReason        String?            @db.Text
+  blockedAt            DateTime?
+  /** 차단을 수행한 관리자 userId (선택) */
+  blockedByUserId      String?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
@@ -506,6 +611,9 @@ model User {
   @@index([platformId, registrationResolvedAt])
   @@index([loginId])
   @@index([platformId, loginId])
+  @@index([platformId, isBlocked])
+  @@index([phone])
+  @@index([bankAccountNumber])
 }
 
 /// 회원 롤링 % 변경 이력. 정산 시각 T에는 effectiveFrom ≤ T 인 최신 행 기준.
@@ -694,4 +802,78 @@ model AgentInquiry {
   @@index([platformId, status])
   @@index([platformId, createdAt])
   @@index([agentUserId, createdAt])
+}
+
+/// HQ가 상위 벤더(알값 공급처)에 직접 충전한 내역
+model HqVendorDeposit {
+  id              String   @id @default(cuid())
+  /// 충전 금액 (KRW)
+  amountKrw       Decimal  @db.Decimal(18, 2)
+  /// 메모 (ex: "4월 1차 선충전", 은행 이체 확인번호 등)
+  note            String?
+  createdAt       DateTime @default(now())
+  createdByUserId String?
+
+  @@index([createdAt])
+}
+
+/// 하위 플랫폼이 HQ에 알값 크레딧 충전을 요청하는 내역
+model PlatformCreditRequest {
+  id               String    @id @default(cuid())
+  platformId       String
+  platform         Platform  @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  /// 요청 금액 (KRW)
+  requestedAmountKrw Decimal @db.Decimal(18, 2)
+  /// 요청자 메모 (플랫폼 어드민 작성)
+  requesterNote    String?
+  /// 상태: PENDING | APPROVED | REJECTED
+  status           String    @default("PENDING")
+  /// 승인된 금액 (승인 시 기입)
+  approvedAmountKrw Decimal? @db.Decimal(18, 2)
+  /// 관리자 처리 메모
+  adminNote        String?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  createdAt        DateTime  @default(now())
+
+  @@index([platformId, status])
+  @@index([status, createdAt])
+  @@index([createdAt])
+}
+
+/**
+ * 플랫폼 알(크레딧) 잔액 변동 로그.
+ * 실제 돈 이동과 무관한 관리자용 "가상 잔액" 이벤트 기록.
+ * type = DEDUCT (유저 낙첨 시 차감) | RESTORE (유저 승리 시 가상 복구) | ADJUST (수동 보정)
+ * 같은 bet result 이벤트가 중복 수신돼도 eventKey 로 멱등 처리한다.
+ */
+model PlatformReserveLog {
+  id             String   @id @default(cuid())
+  platformId     String
+  platform       Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  /// DEDUCT | RESTORE | ADJUST | ROLLBACK
+  type           String   @db.VarChar(16)
+  /// user_loss_amount 또는 user_win_amount (원금 기준)
+  baseAmount     Decimal  @db.Decimal(18, 2)
+  /// 적용된 알 비율 (예: 0.0700)
+  rate           Decimal  @db.Decimal(8, 4)
+  /// 이론 변동액 (baseAmount * rate, 클램프 전)
+  computedAmount Decimal  @db.Decimal(18, 2)
+  /// 실제 적용된 변동액 (잔액 상/하한 클램프 반영 후)
+  changedAmount  Decimal  @db.Decimal(18, 2)
+  balanceBefore  Decimal  @db.Decimal(18, 2)
+  balanceAfter   Decimal  @db.Decimal(18, 2)
+  initialAmount  Decimal  @db.Decimal(18, 2)
+  relatedUserId  String?
+  relatedGameId  String?
+  relatedBetId   String?
+  /// 같은 베팅 결과 이벤트의 중복 수신 방지용 멱등 키
+  eventKey       String?  @unique @db.VarChar(128)
+  note           String?  @db.Text
+  createdByUserId String?
+  createdAt      DateTime @default(now())
+
+  @@index([platformId, createdAt])
+  @@index([platformId, type, createdAt])
+  @@index([relatedBetId])
 }

@@ -1,17 +1,18 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
+import Link from "next/link";
+import { apiFetch, getStoredUser } from "@/lib/api";
 
 type GameBlock = {
   betSum: string;
   betStakeAbs: string;
   winSum: string;
+  byKind?: Record<string, GameBlock>;
 };
 
 type GameSales = {
-  LIVE_CASINO: GameBlock & { byKind: Record<string, GameBlock> };
+  LIVE_CASINO: GameBlock;
   SPORTS: GameBlock;
   MINIGAME: GameBlock;
   SLOT: GameBlock;
@@ -44,232 +45,165 @@ type Sales = {
   estGgr?: string;
   effectiveAgentSharePct?: number;
   myEstimatedSettlement?: string;
+  subAgentSettlementTotal?: string;
   gameSales: GameSales;
   gameSalesMeta?: string;
   members?: MemberSalesRow[];
 };
 
-type SalesView =
-  | { kind: "all" }
-  | { kind: "members" }
-  | { kind: "live"; subKey?: string }
-  | { kind: "vertical"; vertical: "SPORTS" | "MINIGAME" | "SLOT" | "UNKNOWN" };
-
-const LIVE_SUB_KO: Record<string, string> = {
-  BACCARAT: "바카라",
-  BLACKJACK: "블랙잭",
-  ROULETTE: "룰렛",
-  DRAGON_TIGER: "드래곤타이거",
-  SICBO: "식보",
-  GAME_SHOW: "게임쇼",
-  POKER: "포커",
-  OTHER: "기타",
+type SalesActivityItem = {
+  source: string;
+  id: string;
+  occurredAt: string;
+  entryType: string;
+  amount: string;
+  note: string | null;
+  reference: string | null;
+  vertical: string | null;
+  subVertical: string | null;
 };
-
-function defaultRange() {
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(start.getDate() - 30);
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10),
-  };
-}
-
-function ggrHint(stakeAbs: string, winSum: string): string {
-  const s = Number(stakeAbs);
-  const w = Number(winSum);
-  if (Number.isNaN(s) || Number.isNaN(w)) return "—";
-  return (s - w).toFixed(2);
-}
-
-function entryTypeLabel(t: string): string {
-  switch (t) {
-    case "DEPOSIT":
-      return "충전";
-    case "WITHDRAWAL":
-      return "환전";
-    case "BET":
-      return "배팅";
-    case "WIN":
-      return "당첨";
-    default:
-      return t;
-  }
-}
 
 type SalesActivityRes = {
   page: number;
   pageSize: number;
   total: number;
-  items: Array<{
-    source: string;
-    id: string;
-    occurredAt: string;
-    entryType: string;
-    amount: string;
-    note: string | null;
-    reference: string | null;
-    vertical: string | null;
-    subVertical: string | null;
-  }>;
+  items: SalesActivityItem[];
 };
 
-function MemberSalesActivityPanel({
-  userId,
-  from,
-  to,
-}: {
-  userId: string;
-  from: string;
-  to: string;
-}) {
+function num(v: string | number | undefined) {
+  return Number(v ?? 0);
+}
+
+function fmt(v: string | number | undefined | null) {
+  const n = Math.round(Number(v ?? 0));
+  if (!Number.isFinite(n)) return "₩0";
+  return "₩" + n.toLocaleString("ko-KR");
+}
+
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function defaultRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 30);
+  return { from: localDateStr(start), to: localDateStr(end) };
+}
+
+const VERTICAL_LABEL: Record<string, string> = {
+  LIVE_CASINO: "🎰 라이브 카지노",
+  SPORTS: "⚽ 스포츠",
+  MINIGAME: "🎮 미니게임",
+  SLOT: "🎯 슬롯",
+  UNKNOWN: "기타",
+};
+
+function verticalBadge(v: string | null) {
+  if (!v) return <span className="text-gray-400">—</span>;
+  const u = v.toUpperCase();
+  if (u.includes("CASINO") || u === "CASINO") return <span className="rounded bg-[#3182f6]/10 px-1.5 py-0.5 text-[11px] font-bold text-[#3182f6]">카지노</span>;
+  if (u === "SPORTS" || u.includes("SPORT")) return <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700">스포츠</span>;
+  if (u === "MINIGAME" || u.includes("MINI")) return <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[11px] font-bold text-violet-700">미니</span>;
+  if (u === "SLOT") return <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">슬롯</span>;
+  return <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-600">{v}</span>;
+}
+
+function entryLabel(t: string) {
+  switch (t) {
+    case "DEPOSIT": return "충전";
+    case "WITHDRAWAL": return "환전";
+    case "BET": return "배팅";
+    case "WIN": return "당첨";
+    default: return t;
+  }
+}
+
+function MemberActivityPanel({ userId, from, to }: { userId: string; from: string; to: string }) {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
   const [data, setData] = useState<SalesActivityRes | null>(null);
 
-  useEffect(() => {
-    setPage(1);
-  }, [userId, from, to]);
+  useEffect(() => { setPage(1); }, [userId, from, to]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setErr(null);
-    const q = new URLSearchParams({
-      from,
-      to,
-      page: String(page),
-      pageSize: "10",
-    });
-    apiFetch<SalesActivityRes>(
-      `/me/agent/downline/${userId}/sales-activity?${q}`,
-    )
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setErr(e instanceof Error ? e.message : "오류");
-          setData(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    const q = new URLSearchParams({ from, to, page: String(page), pageSize: "15" });
+    apiFetch<SalesActivityRes>(`/me/agent/downline/${userId}/sales-activity?${q}`)
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [userId, from, to, page]);
 
-  const totalPages = data
-    ? Math.max(1, Math.ceil(data.total / data.pageSize))
-    : 1;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   return (
-    <div
-      className="border-t border-zinc-800/80 bg-zinc-950/90 px-3 py-3"
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
-      role="presentation"
-    >
-      <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-        구간 내 내역 (승인 입출금 · 배팅/당첨, 최신순)
-      </p>
-      {err && (
-        <p className="mt-2 text-xs text-red-300">{err}</p>
-      )}
+    <div className="border-t border-gray-200 bg-gray-50 px-4 py-3" onClick={(e) => e.stopPropagation()} role="presentation" onKeyDown={(e) => e.stopPropagation()}>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">구간 내 내역 (최신순)</p>
       {loading ? (
-        <p className="mt-2 text-xs text-zinc-500">불러오는 중…</p>
+        <p className="text-[13px] text-gray-500">불러오는 중…</p>
       ) : !data || data.items.length === 0 ? (
-        <p className="mt-2 text-xs text-zinc-500">이 구간에 표시할 내역이 없습니다.</p>
+        <p className="text-[13px] text-gray-500">이 구간에 표시할 내역이 없습니다.</p>
       ) : (
         <>
-          <div className="mt-2 overflow-x-auto rounded-lg border border-zinc-800/90">
-            <table className="w-full min-w-[640px] text-left text-xs">
-              <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-500">
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <table className="w-full min-w-[640px] text-left text-[13px]">
+              <thead className="border-b border-gray-200 bg-gray-50 text-[11px] text-gray-500">
                 <tr>
-                  <th className="px-2 py-2">시각</th>
-                  <th className="px-2 py-2">구분</th>
-                  <th className="px-2 py-2 text-right">금액</th>
-                  <th className="px-2 py-2">비고</th>
+                  <th className="px-3 py-2">일시</th>
+                  <th className="px-3 py-2">구분</th>
+                  <th className="px-3 py-2">게임</th>
+                  <th className="px-3 py-2 text-right">금액</th>
+                  <th className="px-3 py-2">비고</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((row) => {
-                  const gameHint =
-                    row.vertical || row.subVertical
-                      ? [row.vertical, row.subVertical].filter(Boolean).join(" · ")
-                      : null;
-                  const extra =
-                    row.source === "WALLET"
-                      ? row.note
-                      : [row.reference, gameHint].filter(Boolean).join(" · ") ||
-                        null;
+                  const gameHint = row.vertical || row.subVertical
+                    ? [row.vertical, row.subVertical].filter(Boolean).join(" · ")
+                    : null;
+                  const note = row.source === "WALLET" ? row.note
+                    : [row.reference, gameHint].filter(Boolean).join(" · ") || null;
+                  const amtColor =
+                    row.entryType === "DEPOSIT" || row.entryType === "WIN"
+                      ? "text-[#3182f6] font-semibold"
+                      : row.entryType === "WITHDRAWAL"
+                      ? "text-red-500 font-semibold"
+                      : "text-gray-800";
                   return (
-                    <tr
-                      key={`${row.source}-${row.id}`}
-                      className="border-b border-zinc-800/60 last:border-0"
-                    >
-                      <td className="whitespace-nowrap px-2 py-1.5 text-zinc-400">
-                        {new Date(row.occurredAt).toLocaleString()}
+                    <tr key={`${row.source}-${row.id}`} className="border-b border-gray-100 last:border-0">
+                      <td className="whitespace-nowrap px-3 py-2 text-gray-500">
+                        {new Date(row.occurredAt).toLocaleString("ko-KR")}
                       </td>
-                      <td className="px-2 py-1.5 text-zinc-300">
-                        {entryTypeLabel(row.entryType)}
-                        {row.source === "LEDGER" && (
-                          <span className="ml-1 text-[10px] text-zinc-600">
-                            원장
-                          </span>
-                        )}
-                        {row.source === "WALLET" && (
-                          <span className="ml-1 text-[10px] text-zinc-600">
-                            입출금
-                          </span>
-                        )}
+                      <td className="px-3 py-2 font-medium text-gray-900">
+                        {entryLabel(row.entryType)}
+                        <span className="ml-1 text-[10px] font-normal text-gray-400">
+                          {row.source === "WALLET" ? "입출금" : "원장"}
+                        </span>
                       </td>
-                      <td
-                        className={`px-2 py-1.5 text-right font-mono ${
-                          row.entryType === "DEPOSIT" ||
-                          row.entryType === "WIN"
-                            ? "text-emerald-300/85"
-                            : row.entryType === "WITHDRAWAL"
-                              ? "text-rose-300/85"
-                              : "text-sky-300/85"
-                        }`}
-                      >
-                        {row.amount}
+                      <td className="px-3 py-2">
+                        {row.vertical ? verticalBadge(row.vertical) : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="max-w-[280px] truncate px-2 py-1.5 text-zinc-500">
-                        {extra ?? "—"}
-                      </td>
+                      <td className={`px-3 py-2 text-right font-mono ${amtColor}`}>{row.amount}</td>
+                      <td className="max-w-[240px] truncate px-3 py-2 text-gray-500 text-[12px]">{note ?? "—"}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
-            <span>
-              총 {data.total}건 · {data.page}/{totalPages} 페이지
-            </span>
+          <div className="mt-2 flex items-center justify-between text-[12px] text-gray-500">
+            <span>총 {data.total}건 · {data.page}/{totalPages}페이지</span>
             <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded border border-zinc-600 px-2 py-1 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
-              >
-                이전
-              </button>
-              <button
-                type="button"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded border border-zinc-600 px-2 py-1 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
-              >
-                다음
-              </button>
+              <button type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded border border-gray-300 px-2.5 py-1 text-gray-700 hover:bg-gray-100 disabled:opacity-40">이전</button>
+              <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}
+                className="rounded border border-gray-300 px-2.5 py-1 text-gray-700 hover:bg-gray-100 disabled:opacity-40">다음</button>
             </div>
           </div>
         </>
@@ -279,15 +213,13 @@ function MemberSalesActivityPanel({
 }
 
 export default function AgentSalesPage() {
-  const router = useRouter();
   const [from, setFrom] = useState(defaultRange().from);
   const [to, setTo] = useState(defaultRange().to);
   const [data, setData] = useState<Sales | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<SalesView>({ kind: "all" });
-  const [memberQ, setMemberQ] = useState("");
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [memberQ, setMemberQ] = useState("");
 
   const load = useCallback(async () => {
     setErr(null);
@@ -295,19 +227,12 @@ export default function AgentSalesPage() {
     try {
       const q = new URLSearchParams({ from, to });
       const s = await apiFetch<Sales>(`/me/agent/sales?${q}`);
+      const zero: GameBlock = { betSum: "0.00", betStakeAbs: "0.00", winSum: "0.00", byKind: {} };
       if (!s.gameSales) {
-        s.gameSales = {
-          LIVE_CASINO: {
-            betSum: "0.00",
-            betStakeAbs: "0.00",
-            winSum: "0.00",
-            byKind: {},
-          },
-          SPORTS: { betSum: "0.00", betStakeAbs: "0.00", winSum: "0.00" },
-          MINIGAME: { betSum: "0.00", betStakeAbs: "0.00", winSum: "0.00" },
-          SLOT: { betSum: "0.00", betStakeAbs: "0.00", winSum: "0.00" },
-          UNKNOWN: { betSum: "0.00", betStakeAbs: "0.00", winSum: "0.00" },
-        };
+        s.gameSales = { LIVE_CASINO: { ...zero }, SPORTS: { ...zero }, MINIGAME: { ...zero }, SLOT: { ...zero }, UNKNOWN: { ...zero } };
+      }
+      for (const k of ["LIVE_CASINO", "SPORTS", "MINIGAME", "SLOT", "UNKNOWN"] as const) {
+        if (!s.gameSales[k].byKind) s.gameSales[k].byKind = {};
       }
       setData({ ...s, members: s.members ?? [] });
       setExpandedMemberId(null);
@@ -320,708 +245,278 @@ export default function AgentSalesPage() {
   }, [from, to]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
-    if (getStoredUser()?.role !== "MASTER_AGENT") {
-      router.replace("/login");
-      return;
-    }
     void load();
-  }, [load, router]);
+  }, [load]);
 
-  const liveSubs = useMemo(() => {
-    if (!data) return [] as string[];
-    return Object.keys(data.gameSales.LIVE_CASINO.byKind).sort();
-  }, [data]);
-
-  const memberRows = useMemo(() => data?.members ?? [], [data?.members]);
+  const members = useMemo(() => data?.members ?? [], [data?.members]);
   const filteredMembers = useMemo(() => {
     const t = memberQ.trim().toLowerCase();
-    if (!t) return memberRows;
-    return memberRows.filter(
-      (m) =>
-        m.loginId.toLowerCase().includes(t) ||
-        (m.displayName?.toLowerCase().includes(t) ?? false) ||
-        (m.uplinePrivateMemo?.toLowerCase().includes(t) ?? false),
+    if (!t) return members;
+    return members.filter((m) =>
+      m.loginId.toLowerCase().includes(t) ||
+      (m.displayName?.toLowerCase().includes(t) ?? false) ||
+      (m.uplinePrivateMemo?.toLowerCase().includes(t) ?? false),
     );
-  }, [memberRows, memberQ]);
+  }, [members, memberQ]);
 
-  if (!getAccessToken()) return null;
+
+  const settleAmt = data?.myEstimatedSettlement;
+  const currentUser = getStoredUser();
+  const hasNoMembers = !loading && data !== null && members.length === 0;
+
+  const GAME_ROWS: Array<{ key: keyof GameSales; label: string; emoji: string }> = [
+    { key: "LIVE_CASINO", label: "라이브 카지노", emoji: "🎰" },
+    { key: "SPORTS", label: "스포츠", emoji: "⚽" },
+    { key: "MINIGAME", label: "미니게임", emoji: "🎮" },
+    { key: "SLOT", label: "슬롯", emoji: "🎯" },
+    { key: "UNKNOWN", label: "분류없음", emoji: "?" },
+  ];
 
   return (
     <div className="space-y-6">
-        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <label className="text-sm text-zinc-400">
-            시작
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="mt-1 block rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-zinc-100"
-            />
-          </label>
-          <label className="text-sm text-zinc-400">
-            종료
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="mt-1 block rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-zinc-100"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            className="rounded-lg bg-amber-700/80 px-4 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
-          >
-            {loading ? "조회 중…" : "조회"}
-          </button>
-        </div>
-
+      {/* Header with current user */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-100">매출</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            총판 정산은 회원별 낙첨금
-            <span className="text-zinc-400"> (충전 − 환전) </span>
-            통합 합계 기준입니다. 게임 수치는{" "}
-            <span className="text-zinc-400">metaJson.vertical</span>·
-            <span className="text-zinc-400">subVertical</span> 기준 집계입니다.
-          </p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#3182f6]">Agent Sales</p>
+          <h1 className="mt-0.5 text-[22px] font-bold text-black">매출 현황</h1>
         </div>
-
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/45 p-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            매출 구분
-          </p>
-          <div className="overflow-x-auto overscroll-x-contain pb-0.5 [-webkit-overflow-scrolling:touch]">
-            <div className="flex w-max max-w-none flex-nowrap items-center gap-2 md:w-full md:max-w-full md:flex-wrap">
-            <SalesSegTab
-              active={view.kind === "all"}
-              onClick={() => setView({ kind: "all" })}
-            >
-              전체 요약
-            </SalesSegTab>
-            <SalesSegTab
-              active={view.kind === "members"}
-              onClick={() => setView({ kind: "members" })}
-            >
-              회원별
-              {data ? (
-                <span className="ml-1 font-mono text-[11px] text-zinc-500">
-                  ({memberRows.length})
-                </span>
-              ) : null}
-            </SalesSegTab>
-            <span
-              className="hidden h-5 w-px shrink-0 bg-zinc-700 md:block"
-              aria-hidden
-            />
-            <span className="shrink-0 text-[10px] font-medium uppercase text-zinc-600 md:pl-1">
-              게임
-            </span>
-            <SalesSegTab
-              active={view.kind === "live" && view.subKey === undefined}
-              onClick={() => setView({ kind: "live" })}
-            >
-              라이브
-            </SalesSegTab>
-            {liveSubs.map((key) => (
-              <SalesSegTab
-                key={key}
-                active={view.kind === "live" && view.subKey === key}
-                nested
-                onClick={() => setView({ kind: "live", subKey: key })}
-              >
-                {LIVE_SUB_KO[key] ?? key}
-              </SalesSegTab>
-            ))}
-            <SalesSegTab
-              active={view.kind === "vertical" && view.vertical === "SPORTS"}
-              onClick={() => setView({ kind: "vertical", vertical: "SPORTS" })}
-            >
-              스포츠
-            </SalesSegTab>
-            <SalesSegTab
-              active={view.kind === "vertical" && view.vertical === "MINIGAME"}
-              onClick={() =>
-                setView({ kind: "vertical", vertical: "MINIGAME" })
-              }
-            >
-              미니게임
-            </SalesSegTab>
-            <SalesSegTab
-              active={view.kind === "vertical" && view.vertical === "SLOT"}
-              onClick={() => setView({ kind: "vertical", vertical: "SLOT" })}
-            >
-              슬롯
-            </SalesSegTab>
-            <SalesSegTab
-              active={view.kind === "vertical" && view.vertical === "UNKNOWN"}
-              onClick={() =>
-                setView({ kind: "vertical", vertical: "UNKNOWN" })
-              }
-            >
-              분류 없음
-            </SalesSegTab>
-            </div>
+        {currentUser && (
+          <div className="text-right">
+            <p className="text-[11px] text-gray-400">현재 계정</p>
+            <p className="text-[14px] font-bold text-black">{currentUser.loginId ?? currentUser.email}</p>
           </div>
-        </div>
-
-        {err && (
-          <p className="rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-200">
-            {err}
-          </p>
         )}
+      </div>
 
-        {loading ? (
-          <p className="text-zinc-500">불러오는 중…</p>
-        ) : data ? (
-          <>
-            {view.kind === "all" && (
-              <div className="space-y-6">
-                <h2 className="text-sm font-medium text-amber-200/90">
-                  전체 요약
-                </h2>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <StatCard
-                    label="승인 충전 합계"
-                    value={data.approvedDepositSum}
-                    accent="text-emerald-300"
-                  />
-                  <StatCard
-                    label="승인 환전 합계"
-                    value={data.approvedWithdrawSum}
-                    accent="text-rose-300"
-                  />
-                  <StatCard
-                    label="총 낙첨금 (충전 − 환전)"
-                    value={data.netInflow}
-                    accent="text-amber-200"
-                  />
-                  <StatCard
-                    label="유저 손익 합계 (환전 − 충전)"
-                    value={(
-                      Number(data.approvedWithdrawSum) -
-                      Number(data.approvedDepositSum)
-                    ).toFixed(2)}
-                    accent={
-                      Number(data.approvedWithdrawSum) -
-                        Number(data.approvedDepositSum) >=
-                      0
-                        ? "text-rose-300"
-                        : "text-emerald-300"
-                    }
-                  />
-                  <StatCard
-                    label="배팅 원장 합 (BET, 부호 유지)"
-                    value={data.ledgerBetSum}
-                    accent="text-zinc-200"
-                  />
-                  <StatCard
-                    label="배팅액 (|BET| 합)"
-                    value={data.ledgerBetStakeAbs}
-                    accent="text-sky-300/90"
-                  />
-                  <StatCard
-                    label="당첨 합 (WIN)"
-                    value={data.ledgerWinSum}
-                    accent="text-violet-300/90"
-                  />
-                  {data.estGgr !== undefined && (
-                    <StatCard
-                      label="GGR (배팅액 − 당첨)"
-                      value={data.estGgr}
-                      accent="text-orange-300"
-                    />
-                  )}
-                  {data.myEstimatedSettlement !== undefined && (
-                    <StatCard
-                      label={`내 예상 정산금 (총 낙첨금 × ${data.effectiveAgentSharePct ?? 0}%)`}
-                      value={data.myEstimatedSettlement}
-                      accent="text-amber-400 font-bold"
-                    />
-                  )}
-                </div>
-                {memberRows.length > 0 && (
-                  <TopMembersStrip
-                    members={memberRows}
-                    onSeeAll={() => setView({ kind: "members" })}
-                  />
-                )}
-                <GameGridPreview gs={data.gameSales} />
-              </div>
-            )}
-
-            {view.kind === "members" && (
-              <div className="space-y-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <h2 className="text-sm font-medium text-amber-200/90">
-                      회원별 매출
-                    </h2>
-                    <p className="mt-1 max-w-xl text-xs leading-relaxed text-zinc-500">
-                      구간 내{" "}
-                      <span className="text-zinc-400">승인된 충전·환전</span> 또는{" "}
-                      <span className="text-zinc-400">배팅·당첨 원장</span>이 있는
-                      회원만 표시됩니다. 기본 정렬은 배팅액(|BET|) 높은 순입니다.{" "}
-                      <span className="text-zinc-600">
-                        행을 누르면 해당 기간 상세 내역이 펼쳐집니다 (10건씩).
-                      </span>
-                    </p>
-                  </div>
-                  <input
-                    type="search"
-                    value={memberQ}
-                    onChange={(e) => setMemberQ(e.target.value)}
-                    placeholder="아이디·닉네임·식별 메모 검색"
-                    className="w-full min-w-[200px] max-w-sm rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 sm:w-auto"
-                  />
-                </div>
-                {filteredMembers.length === 0 ? (
-                  <p className="text-zinc-500">
-                    {memberRows.length === 0
-                      ? "이 구간에 활동한 하위 회원이 없습니다."
-                      : "검색 결과가 없습니다."}
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                    <table className="w-full min-w-[980px] text-left text-sm">
-                      <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-400">
-                        <tr>
-                          <th className="w-8 px-2 py-2.5" aria-label="펼침" />
-                          <th className="px-3 py-2.5">No</th>
-                          <th className="px-3 py-2.5">회원</th>
-                          <th className="px-3 py-2.5">식별 메모</th>
-                          <th className="px-3 py-2.5 text-right">충전</th>
-                          <th className="px-3 py-2.5 text-right">환전</th>
-                          <th className="px-3 py-2.5 text-right">유저손익</th>
-                          <th className="px-3 py-2.5 text-right">총 낙첨금</th>
-                          <th className="px-3 py-2.5 text-right">배팅(|BET|)</th>
-                          <th className="px-3 py-2.5 text-right">당첨</th>
-                          <th className="px-3 py-2.5 text-right">추정 GGR</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredMembers.map((m, i) => {
-                          const agentDrop =
-                            Number(m.approvedDepositSum) -
-                            Number(m.approvedWithdrawSum);
-                          const userProfit = -agentDrop;
-                          const open = expandedMemberId === m.userId;
-                          const stakeN = Number(m.ledgerBetStakeAbs);
-                          const maxStake =
-                            filteredMembers.reduce(
-                              (acc, row) =>
-                                Math.max(acc, Number(row.ledgerBetStakeAbs)),
-                              0,
-                            ) || 1;
-                          const barPct = Math.min(
-                            100,
-                            (stakeN / maxStake) * 100,
-                          );
-                          return (
-                            <Fragment key={m.userId}>
-                              <tr
-                                className={`cursor-pointer border-b border-zinc-800/70 transition hover:bg-zinc-900/50 ${
-                                  open ? "bg-zinc-900/35" : ""
-                                }`}
-                                onClick={() =>
-                                  setExpandedMemberId((id) =>
-                                    id === m.userId ? null : m.userId,
-                                  )
-                                }
-                              >
-                                <td className="px-2 py-2.5 text-center text-zinc-500">
-                                  <span className="text-xs" aria-hidden>
-                                    {open ? "▼" : "▶"}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2.5 text-zinc-500">
-                                  {i + 1}
-                                </td>
-                                <td className="max-w-[200px] px-3 py-2.5">
-                                  <p className="truncate font-mono text-xs text-zinc-200">
-                                    {m.loginId}
-                                  </p>
-                                  <p className="truncate text-xs text-zinc-500">
-                                    {m.displayName ?? "—"}
-                                  </p>
-                                  <div
-                                    className="mt-1.5 h-1 max-w-[180px] overflow-hidden rounded-full bg-zinc-800"
-                                    title="구간 배팅액(|BET|) 상대 비율"
-                                  >
-                                    <div
-                                      className="h-full rounded-full bg-sky-600/75"
-                                      style={{ width: `${barPct}%` }}
-                                    />
-                                  </div>
-                                </td>
-                                <td className="max-w-[140px] px-3 py-2.5 align-top">
-                                  <p className="line-clamp-3 text-[11px] leading-snug text-amber-200/85">
-                                    {m.uplinePrivateMemo?.trim()
-                                      ? m.uplinePrivateMemo
-                                      : "—"}
-                                  </p>
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono text-xs text-emerald-300/90">
-                                  {m.approvedDepositSum}
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono text-xs text-rose-300/90">
-                                  {m.approvedWithdrawSum}
-                                </td>
-                                <td
-                                  className={`px-3 py-2.5 text-right font-mono text-xs ${
-                                    userProfit >= 0
-                                      ? "text-rose-300/90"
-                                      : "text-emerald-300/90"
-                                  }`}
-                                >
-                                  {userProfit.toFixed(2)}
-                                </td>
-                                <td
-                                  className={`px-3 py-2.5 text-right font-mono text-xs ${
-                                    agentDrop >= 0
-                                      ? "text-amber-200/90"
-                                      : "text-red-300/90"
-                                  }`}
-                                >
-                                  {agentDrop.toFixed(2)}
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono text-xs text-sky-300/90">
-                                  {m.ledgerBetStakeAbs}
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono text-xs text-violet-300/90">
-                                  {m.ledgerWinSum}
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono text-xs text-amber-200/90">
-                                  {m.estGgr}
-                                </td>
-                              </tr>
-                              {open && (
-                                <tr className="border-b border-zinc-800/70 bg-zinc-950/50">
-                                  <td colSpan={11} className="p-0 align-top">
-                                    <MemberSalesActivityPanel
-                                      userId={m.userId}
-                                      from={from}
-                                      to={to}
-                                    />
-                                  </td>
-                                </tr>
-                              )}
-                            </Fragment>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {memberRows.length >= 400 && (
-                  <p className="text-xs text-zinc-600">
-                    서버에서 배팅·입출금 활동이 있는 회원 최대 400명까지
-                    내려줍니다.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {view.kind === "live" && (
-              <GameDetailPanel
-                title={
-                  view.subKey
-                    ? `라이브 카지노 · ${
-                        LIVE_SUB_KO[view.subKey] ?? view.subKey
-                      }`
-                    : "라이브 카지노"
-                }
-                block={
-                  view.subKey
-                    ? data.gameSales.LIVE_CASINO.byKind[view.subKey] ?? {
-                        betSum: "0.00",
-                        betStakeAbs: "0.00",
-                        winSum: "0.00",
-                      }
-                    : {
-                        betSum: data.gameSales.LIVE_CASINO.betSum,
-                        betStakeAbs: data.gameSales.LIVE_CASINO.betStakeAbs,
-                        winSum: data.gameSales.LIVE_CASINO.winSum,
-                      }
-                }
-              />
-            )}
-
-            {view.kind === "vertical" && view.vertical === "SPORTS" && (
-              <GameDetailPanel
-                title="스포츠"
-                block={data.gameSales.SPORTS}
-              />
-            )}
-            {view.kind === "vertical" && view.vertical === "MINIGAME" && (
-              <GameDetailPanel
-                title="미니게임"
-                block={data.gameSales.MINIGAME}
-              />
-            )}
-            {view.kind === "vertical" && view.vertical === "SLOT" && (
-              <GameDetailPanel title="슬롯" block={data.gameSales.SLOT} />
-            )}
-            {view.kind === "vertical" && view.vertical === "UNKNOWN" && (
-              <GameDetailPanel
-                title="분류 없음"
-                subtitle="metaJson.vertical 이 없거나 허용 값이 아닐 때"
-                block={data.gameSales.UNKNOWN}
-              />
-            )}
-
-            <p className="text-xs text-zinc-600">
-              집계 구간: {new Date(data.from).toLocaleString()} ~{" "}
-              {new Date(data.to).toLocaleString()}
-            </p>
-            {data.gameSalesMeta && (
-              <p className="text-[11px] leading-relaxed text-zinc-600">
-                연동 참고: {data.gameSalesMeta}
-              </p>
-            )}
-          </>
-        ) : null}
-    </div>
-  );
-}
-
-function TopMembersStrip({
-  members,
-  onSeeAll,
-}: {
-  members: MemberSalesRow[];
-  onSeeAll: () => void;
-}) {
-  const top = members.slice(0, 6);
-  const maxStake = Math.max(
-    ...top.map((m) => Number(m.ledgerBetStakeAbs)),
-    1e-9,
-  );
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/35 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-zinc-300">
-          회원별 한눈에 (배팅액 상위)
-        </h3>
-        <button
-          type="button"
-          onClick={onSeeAll}
-          className="text-xs font-medium text-amber-400 hover:text-amber-300 hover:underline"
-        >
-          전체 표 보기 →
+      {/* Date filter */}
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-4">
+        <label className="block text-[13px] font-medium text-gray-700">
+          시작
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+            className="mt-1 block rounded-lg border border-gray-300 bg-gray-50 px-2.5 py-1.5 text-[14px] text-gray-900" />
+        </label>
+        <label className="block text-[13px] font-medium text-gray-700">
+          종료
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
+            className="mt-1 block rounded-lg border border-gray-300 bg-gray-50 px-2.5 py-1.5 text-[14px] text-gray-900" />
+        </label>
+        {[
+          { label: "오늘", days: 0 },
+          { label: "7일", days: 7 },
+          { label: "30일", days: 30 },
+          { label: "90일", days: 90 },
+        ].map(({ label, days }) => (
+          <button key={label} type="button"
+            onClick={() => {
+              const e = new Date();
+              const s = new Date(e);
+              s.setDate(s.getDate() - days);
+              setFrom(localDateStr(s));
+              setTo(localDateStr(e));
+            }}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-100 transition">
+            {label}
+          </button>
+        ))}
+        <button type="button" onClick={() => void load()} disabled={loading}
+          className="rounded-lg bg-[#3182f6] px-5 py-1.5 text-[14px] font-semibold text-white hover:bg-blue-600 disabled:opacity-50 transition">
+          {loading ? "조회 중…" : "조회"}
         </button>
       </div>
-      <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
-        {top.map((m) => {
-          const agentDrop =
-            Number(m.approvedDepositSum) - Number(m.approvedWithdrawSum);
-          const userProfit = -agentDrop;
-          const stakeN = Number(m.ledgerBetStakeAbs);
-          const barPct = Math.min(100, (stakeN / maxStake) * 100);
-          return (
-            <div
-              key={m.userId}
-              className="min-w-[210px] max-w-[240px] shrink-0 rounded-lg border border-zinc-800/90 bg-zinc-950/70 px-3 py-2.5"
-            >
-              <p className="truncate font-mono text-[11px] text-zinc-200">
-                {m.loginId}
-              </p>
-              <p className="truncate text-[11px] text-zinc-500">
-                {m.displayName ?? "닉네임 없음"}
-              </p>
-              {m.uplinePrivateMemo?.trim() ? (
-                <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-amber-200/80">
-                  {m.uplinePrivateMemo}
-                </p>
-              ) : null}
-              <div
-                className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800"
-                title="배팅액 상대 비율"
-              >
-                <div
-                  className="h-full rounded-full bg-sky-600/80"
-                  style={{ width: `${barPct}%` }}
-                />
+
+      {err && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[14px] text-red-700">{err}</p>}
+
+      {hasNoMembers && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <p className="text-[14px] font-bold text-amber-800">하위 회원(유저)이 없거나 이 기간에 활동 내역이 없습니다</p>
+          <p className="mt-1 text-[13px] text-amber-700">
+            테스트 시나리오를 실행하려면 <strong>슈퍼어드민 → 테스트 시나리오</strong>에서 1~9단계를 실행하세요.<br />
+            테스트 계정: <code className="rounded bg-amber-100 px-1 font-mono text-[13px]">test_top_agent_a</code> / <code className="rounded bg-amber-100 px-1 font-mono text-[13px]">Test1234!</code>
+          </p>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="py-8 text-center text-[14px] text-gray-500">집계 중…</p>
+      ) : data ? (
+        <>
+          {/* 정산금 Hero */}
+          {settleAmt !== undefined && (
+            <div className="rounded-2xl border-2 border-[#3182f6]/30 bg-[#3182f6]/5 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-[#3182f6]">
+                    내 정산금
+                  </p>
+                  <p className="mt-2 text-[36px] font-bold text-[#3182f6]">
+                    {fmt(settleAmt)}원
+                  </p>
+                </div>
+                <Link href="/agent/commission-history"
+                  className="shrink-0 rounded-xl border border-[#3182f6]/30 bg-white px-4 py-2 text-[13px] font-semibold text-[#3182f6] hover:bg-[#3182f6]/5 transition">
+                  정산 내역 →
+                </Link>
               </div>
-              <dl className="mt-2 space-y-1.5 text-[11px]">
-                <div className="flex justify-between gap-2 text-zinc-500">
-                  <dt>배팅액</dt>
-                  <dd className="font-mono text-sky-300/90">
-                    {m.ledgerBetStakeAbs}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 text-zinc-500">
-                  <dt>당첨</dt>
-                  <dd className="font-mono text-violet-300/85">
-                    {m.ledgerWinSum}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 text-zinc-500">
-                  <dt>유저손익</dt>
-                  <dd
-                    className={`font-mono ${
-                      userProfit >= 0 ? "text-rose-300/90" : "text-emerald-300/90"
-                    }`}
-                  >
-                    {userProfit.toFixed(2)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 text-zinc-500">
-                  <dt>총 낙첨금</dt>
-                  <dd
-                    className={`font-mono ${
-                      agentDrop >= 0 ? "text-amber-200/90" : "text-red-300/90"
-                    }`}
-                  >
-                    {agentDrop.toFixed(2)}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2 text-zinc-500">
-                  <dt>추정 GGR</dt>
-                  <dd className="font-mono text-amber-200/90">{m.estGgr}</dd>
-                </div>
-              </dl>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+          )}
 
-function SalesSegTab({
-  children,
-  active,
-  nested,
-  onClick,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  nested?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-lg px-3 py-1.5 text-sm transition ${
-        nested ? "border border-dashed border-zinc-700/80 text-xs" : ""
-      } ${
-        active
-          ? "bg-amber-600/15 font-medium text-amber-200 ring-1 ring-amber-600/40"
-          : "bg-zinc-950/50 text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent: string;
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-4 py-3">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className={`mt-1 font-mono text-lg ${accent}`}>
-        {value} <span className="text-sm text-zinc-500">원</span>
-      </p>
-    </div>
-  );
-}
-
-function GameGridPreview({ gs }: { gs: GameSales }) {
-  const rows: { key: string; label: string; b: GameBlock }[] = [
-    { key: "lc", label: "라이브 카지노", b: gs.LIVE_CASINO },
-    { key: "sp", label: "스포츠", b: gs.SPORTS },
-    { key: "mg", label: "미니게임", b: gs.MINIGAME },
-    { key: "sl", label: "슬롯", b: gs.SLOT },
-  ];
-  return (
-    <div>
-      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-        게임별 배팅·당첨 (미리보기)
-      </h3>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {rows.map((r) => (
-          <div
-            key={r.key}
-            className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-4 py-3"
-          >
-            <p className="text-sm font-medium text-zinc-200">{r.label}</p>
-            <dl className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-zinc-500">
-              <div>
-                <dt>배팅액</dt>
-                <dd className="font-mono text-zinc-300">{r.b.betStakeAbs}</dd>
-              </div>
-              <div>
-                <dt>당첨</dt>
-                <dd className="font-mono text-emerald-400/80">{r.b.winSum}</dd>
-              </div>
-              <div>
-                <dt>추정 GGR</dt>
-                <dd className="font-mono text-amber-200/80">
-                  {ggrHint(r.b.betStakeAbs, r.b.winSum)}
-                </dd>
-              </div>
-            </dl>
+          {/* 게임별 요약 */}
+          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+            <div className="border-b border-gray-100 px-5 py-3">
+              <h2 className="text-[15px] font-bold text-black">게임별 배팅 요약</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-[14px]">
+                <thead className="border-b border-gray-100 bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3 text-left">게임 종류</th>
+                    <th className="px-4 py-3 text-right">총 배팅</th>
+                    <th className="px-4 py-3 text-right">총 당첨금</th>
+                    <th className="px-4 py-3 text-right">비율</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {GAME_ROWS.map(({ key, label, emoji }) => {
+                    const g = data.gameSales[key];
+                    const stake = num(g.betStakeAbs);
+                    const win = num(g.winSum);
+                    const totalStake = GAME_ROWS.reduce((s, r) => s + num(data.gameSales[r.key].betStakeAbs), 0);
+                    const pct = totalStake > 0 ? (stake / totalStake) * 100 : 0;
+                    if (stake === 0 && win === 0) return null;
+                    return (
+                      <tr key={key} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-semibold text-black">{emoji} {label}</td>
+                        <td className="px-4 py-3 text-right font-mono text-gray-800">{fmt(stake)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-gray-800">{fmt(win)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
+                              <div className="h-full rounded-full bg-[#3182f6]" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-[12px] text-gray-600">{pct.toFixed(1)}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {GAME_ROWS.every(({ key }) => num(data.gameSales[key].betStakeAbs) === 0) ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center">
+                        <p className="text-[14px] font-semibold text-gray-600">이 기간 내 게임 배팅 내역이 없습니다</p>
+                        <p className="mt-1 text-[12px] text-gray-400">기간을 넓히거나 테스트 시나리오를 실행해 보세요</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">
+                      <td className="px-4 py-3 text-[13px] text-gray-700">합계</td>
+                      <td className="px-4 py-3 text-right font-mono text-[13px] text-black">
+                        {fmt(GAME_ROWS.reduce((s, r) => s + num(data.gameSales[r.key].betStakeAbs), 0))}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-[13px] text-black">
+                        {fmt(GAME_ROWS.reduce((s, r) => s + num(data.gameSales[r.key].winSum), 0))}
+                      </td>
+                      <td className="px-4 py-3" />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-function GameDetailPanel({
-  title,
-  subtitle,
-  block,
-}: {
-  title: string;
-  subtitle?: string;
-  block: GameBlock;
-}) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-amber-200/90">{title}</h2>
-        {subtitle && (
-          <p className="mt-1 text-xs text-zinc-500">{subtitle}</p>
-        )}
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="BET 합 (부호 유지)"
-          value={block.betSum}
-          accent="text-zinc-200"
-        />
-        <StatCard
-          label="배팅액 (절댓값 합)"
-          value={block.betStakeAbs}
-          accent="text-sky-300/90"
-        />
-        <StatCard
-          label="WIN 합"
-          value={block.winSum}
-          accent="text-violet-300/90"
-        />
-        <StatCard
-          label="추정 GGR (배팅액 − 당첨)"
-          value={ggrHint(block.betStakeAbs, block.winSum)}
-          accent="text-amber-200"
-        />
-      </div>
+          {/* 회원별 매출 */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-[16px] font-bold text-black">
+                회원별 매출
+                <span className="ml-2 text-[14px] font-normal text-gray-500">({members.length}명)</span>
+              </h2>
+              <input
+                type="search"
+                value={memberQ}
+                onChange={(e) => setMemberQ(e.target.value)}
+                placeholder="아이디 / 닉네임 / 메모 검색"
+                className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-[14px] text-gray-900 placeholder:text-gray-400"
+              />
+            </div>
+
+            {filteredMembers.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 py-10 text-center">
+                <p className="text-[14px] font-semibold text-gray-600">
+                  {members.length === 0 ? "이 기간에 활동한 하위 회원이 없습니다" : "검색 결과가 없습니다"}
+                </p>
+                {members.length === 0 && (
+                  <p className="mt-1 text-[12px] text-gray-400">
+                    충전/환전 또는 배팅 내역이 있는 회원이 있어야 표시됩니다
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-left text-[14px]">
+                    <thead className="border-b border-gray-100 bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                      <tr>
+                        <th className="w-8 px-3 py-3" />
+                        <th className="px-3 py-3">No</th>
+                        <th className="px-3 py-3">회원</th>
+                        <th className="px-3 py-3 text-right">충전</th>
+                        <th className="px-3 py-3 text-right">환전</th>
+                        <th className="px-3 py-3 text-right">총 배팅액</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMembers.map((m, i) => {
+                        const open = expandedMemberId === m.userId;
+                        const stakeN = num(m.ledgerBetStakeAbs);
+                        const maxStake = filteredMembers.reduce((a, r) => Math.max(a, num(r.ledgerBetStakeAbs)), 0) || 1;
+                        const barPct = Math.min(100, (stakeN / maxStake) * 100);
+
+                        return (
+                          <Fragment key={m.userId}>
+                            <tr
+                              className={`cursor-pointer border-b border-gray-100 transition hover:bg-gray-50 ${open ? "bg-gray-50" : ""}`}
+                              onClick={() => setExpandedMemberId((id) => id === m.userId ? null : m.userId)}
+                            >
+                              <td className="px-3 py-3 text-center text-gray-400 text-[12px]">
+                                {open ? "▼" : "▶"}
+                              </td>
+                              <td className="px-3 py-3 text-gray-500">{i + 1}</td>
+                              <td className="px-3 py-3">
+                                <p className="font-mono text-[13px] font-semibold text-black">{m.loginId}</p>
+                                {m.displayName && <p className="text-[12px] text-gray-500">{m.displayName}</p>}
+                                {m.uplinePrivateMemo && (
+                                  <p className="text-[11px] text-[#3182f6]">{m.uplinePrivateMemo}</p>
+                                )}
+                                <div className="mt-1 h-1 max-w-[140px] overflow-hidden rounded-full bg-gray-100">
+                                  <div className="h-full rounded-full bg-[#3182f6]" style={{ width: `${barPct}%` }} />
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right font-mono text-[13px] font-semibold text-[#3182f6]">{fmt(m.approvedDepositSum)}</td>
+                              <td className="px-3 py-3 text-right font-mono text-[13px] font-semibold text-red-500">{fmt(m.approvedWithdrawSum)}</td>
+                              <td className="px-3 py-3 text-right font-mono text-[13px] text-gray-800">{fmt(m.ledgerBetStakeAbs)}</td>
+                            </tr>
+                            {open && (
+                              <tr className="border-b border-gray-100">
+                                <td colSpan={6} className="p-0">
+                                  <MemberActivityPanel userId={m.userId} from={from} to={to} />
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[12px] text-gray-400">
+            집계 구간: {new Date(data.from).toLocaleString("ko-KR")} ~ {new Date(data.to).toLocaleString("ko-KR")}
+          </p>
+        </>
+      ) : null}
     </div>
   );
 }

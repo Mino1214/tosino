@@ -1,25 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getAccessToken, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 import { SemiVirtualForm } from "@/components/SemiVirtualForm";
 
 export default function SemiVirtualSettingsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
-
-  useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
-    if (getStoredUser()?.role !== "SUPER_ADMIN") {
-      router.replace("/console/sales");
-    }
-  }, [router]);
 
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (

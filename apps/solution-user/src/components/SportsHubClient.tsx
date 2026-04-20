@@ -23,6 +23,8 @@ import { sportsLobbyShowOperatorTools } from "@/lib/sports-lobby-mode";
 import { useBootstrap, useBootstrapHost } from "@/components/BootstrapProvider";
 import { useOddsHostProxySecret } from "@/lib/useOddsHostProxySecret";
 import { OddsHostDiagnosticPanel } from "@/components/OddsHostDiagnosticPanel";
+import { OddsApiLivePanel } from "@/components/OddsApiLivePanel";
+import { OddsApiMatchBoard } from "@/components/OddsApiMatchBoard";
 
 const HUB_TABS = [
   { id: "live" as const, label: "실시간" },
@@ -713,33 +715,50 @@ export function SportsHubClient() {
 
       <HubSectionNav active={section} onSelect={setSection} />
 
-      {statusStrip}
-
-      {showOperatorTools ? (
-        <div className="border-b border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
-          {operatorPanel}
+      {/* live/prematch 는 odds-api.io 신규 매치 보드(서버 그룹핑·한글 보강·마진 9.95~10.1%) */}
+      {section === "live" || section === "prematch" ? (
+        <div className="px-2 py-3 md:px-6 lg:px-10">
+          <OddsApiMatchBoard mode={section} />
         </div>
       ) : null}
 
-      <SportsLobbyLayout
-        title={title}
-        betTabs={betTabs}
-        leagues={leagues}
-        bannerText={
-          showOperatorTools
-            ? `${title} — 개발 모드`
-            : `${title} — 스포츠`
-        }
-        hideBanner={!showOperatorTools}
-        betTabsNotice={
-          showOperatorTools
-            ? combinedBetNotice
-            : betTabsNoticeExtra ?? undefined
-        }
-        layoutChrome={showOperatorTools ? "full" : "feed"}
-        emptyStateMessage={emptyStateMessage}
-        feedAppend={feedAppend}
-      />
+      {/* 운영자 모드에서는 기존 OddsHost/DB 스냅샷 도구도 함께 노출 */}
+      {showOperatorTools ? (
+        <>
+          <div className="border-y border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
+            <OddsApiLivePanel />
+          </div>
+
+          {statusStrip}
+
+          <div className="border-b border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
+            {operatorPanel}
+          </div>
+
+          <SportsLobbyLayout
+            title={title}
+            betTabs={betTabs}
+            leagues={leagues}
+            bannerText={`${title} — 개발 모드`}
+            hideBanner={false}
+            betTabsNotice={combinedBetNotice}
+            layoutChrome="full"
+            emptyStateMessage={emptyStateMessage}
+            feedAppend={feedAppend}
+          />
+        </>
+      ) : (
+        <>
+          {/* pmspecial / ozmarkets 는 운영용 — 일반 사용자에게 빈 자리 대신 안내 */}
+          {section === "pmspecial" || section === "ozmarkets" ? (
+            <div className="px-2 py-6 md:px-6 lg:px-10">
+              <div className="rounded-2xl border border-dashed border-white/15 bg-zinc-950/60 px-4 py-8 text-center text-sm text-zinc-500">
+                준비 중인 탭입니다.
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

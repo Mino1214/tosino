@@ -1,8 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type InquiryStatus = "OPEN" | "ANSWERED" | "CLOSED";
@@ -52,7 +51,6 @@ function statusLabel(s: InquiryStatus) {
 }
 
 export default function ConsoleAgentInquiriesPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -87,17 +85,13 @@ export default function ConsoleAgentInquiriesPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       setSummary(null);
       return;
     }
     void load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   const openRows = useMemo(
     () => (rows ?? []).filter((r) => r.status === "OPEN"),
@@ -191,28 +185,28 @@ export default function ConsoleAgentInquiriesPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-100">총판 문의</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-xl font-semibold text-black">총판 문의</h1>
+        <p className="mt-1 text-sm text-gray-500">
           총판 계정이 보낸 1:1 문의를 플랫폼 단위로 모아 확인·답변합니다. 미답변
           건은 사이드 메뉴에 가입 승인과 동일한 배지로 표시됩니다.
         </p>
       </div>
 
       {err && (
-        <p className="rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {err}
         </p>
       )}
 
       {!selectedPlatformId || platformLoading ? (
-        <p className="text-zinc-500">플랫폼을 선택하세요.</p>
+        <p className="text-gray-500">플랫폼을 선택하세요.</p>
       ) : !rows ? (
-        <p className="text-zinc-500">불러오는 중…</p>
+        <p className="text-gray-500">불러오는 중…</p>
       ) : (
         <>
           <section className="space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
-              <h2 className="text-sm font-medium text-amber-200/90">
+              <h2 className="text-sm font-medium text-[#3182f6]">
                 미답변 문의
               </h2>
               <div className="flex gap-2 text-xs">
@@ -221,8 +215,8 @@ export default function ConsoleAgentInquiriesPage() {
                   onClick={() => setStatusScope("open_only")}
                   className={`rounded-lg px-3 py-1.5 ${
                     statusScope === "open_only"
-                      ? "bg-zinc-800 text-zinc-100"
-                      : "text-zinc-500 hover:bg-zinc-800/60"
+                      ? "bg-gray-100 text-black"
+                      : "text-gray-500 hover:bg-gray-100"
                   }`}
                 >
                   미답변만 표시
@@ -232,8 +226,8 @@ export default function ConsoleAgentInquiriesPage() {
                   onClick={() => setStatusScope("all")}
                   className={`rounded-lg px-3 py-1.5 ${
                     statusScope === "all"
-                      ? "bg-zinc-800 text-zinc-100"
-                      : "text-zinc-500 hover:bg-zinc-800/60"
+                      ? "bg-gray-100 text-black"
+                      : "text-gray-500 hover:bg-gray-100"
                   }`}
                 >
                   전체 상태 보기
@@ -243,7 +237,7 @@ export default function ConsoleAgentInquiriesPage() {
 
             {statusScope === "open_only" && (
               <>
-                <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-2">
+                <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
                   {filterTabs.map((t) => (
                     <button
                       key={t.key}
@@ -251,12 +245,12 @@ export default function ConsoleAgentInquiriesPage() {
                       onClick={() => setFilterKey(t.key)}
                       className={`rounded-t px-3 py-1.5 text-sm ${
                         filterKey === t.key
-                          ? "bg-zinc-800 text-violet-200"
-                          : "text-zinc-500 hover:text-zinc-300"
+                          ? "bg-gray-100 text-violet-700"
+                          : "text-gray-500 hover:text-gray-700"
                       }`}
                     >
                       {t.label}{" "}
-                      <span className="font-mono text-zinc-500">
+                      <span className="font-mono text-gray-500">
                         ({t.count})
                       </span>
                     </button>
@@ -264,7 +258,7 @@ export default function ConsoleAgentInquiriesPage() {
                 </div>
 
                 {filteredOpen.length === 0 ? (
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-sm text-gray-500">
                     미답변 문의가 없습니다.
                   </p>
                 ) : (
@@ -272,14 +266,14 @@ export default function ConsoleAgentInquiriesPage() {
                     {filteredOpen.map((r) => (
                       <li
                         key={r.id}
-                        className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4"
+                        className="rounded-xl border border-gray-200 bg-white p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
-                            <p className="text-sm font-medium text-zinc-200">
+                            <p className="text-sm font-medium text-gray-800">
                               {r.subject}
                             </p>
-                            <p className="mt-1 font-mono text-xs text-zinc-500">
+                            <p className="mt-1 font-mono text-xs text-gray-500">
                               {r.agent.email}
                               {r.agent.displayName
                                 ? ` · ${r.agent.displayName}`
@@ -288,15 +282,15 @@ export default function ConsoleAgentInquiriesPage() {
                                 ? ` · ${r.agent.referralCode}`
                                 : ""}
                             </p>
-                            <p className="mt-1 text-xs text-zinc-600">
+                            <p className="mt-1 text-xs text-gray-400">
                               {new Date(r.createdAt).toLocaleString()}
                             </p>
                           </div>
-                          <span className="rounded bg-amber-900/30 px-2 py-0.5 text-xs text-amber-200">
+                          <span className="rounded bg-amber-900/30 px-2 py-0.5 text-xs text-[#3182f6]">
                             {statusLabel(r.status)}
                           </span>
                         </div>
-                        <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">
+                        <p className="mt-3 whitespace-pre-wrap text-sm text-gray-700">
                           {r.body}
                         </p>
                         <div className="mt-3 space-y-2">
@@ -310,14 +304,14 @@ export default function ConsoleAgentInquiriesPage() {
                             }
                             placeholder="답변 내용을 입력하세요"
                             rows={4}
-                            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black placeholder:text-gray-400"
                           />
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
                               disabled={busy === r.id}
                               onClick={() => void sendReply(r.id)}
-                              className="rounded-lg bg-amber-700/80 px-4 py-2 text-sm text-white hover:bg-amber-600 disabled:opacity-50"
+                              className="rounded-lg bg-amber-700/80 px-4 py-2 text-sm text-white hover:bg-[#3182f6] disabled:opacity-50"
                             >
                               {busy === r.id ? "전송 중…" : "답변 전송"}
                             </button>
@@ -325,7 +319,7 @@ export default function ConsoleAgentInquiriesPage() {
                               type="button"
                               disabled={busy === `close:${r.id}`}
                               onClick={() => void closeInquiry(r.id)}
-                              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 disabled:opacity-50"
+                              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-50"
                             >
                               종료만 처리
                             </button>
@@ -339,9 +333,9 @@ export default function ConsoleAgentInquiriesPage() {
             )}
 
             {statusScope === "all" && (
-              <div className="overflow-x-auto rounded-xl border border-zinc-800">
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
                 <table className="w-full min-w-[720px] text-left text-sm">
-                  <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-400">
+                  <thead className="border-b border-gray-200 bg-white text-xs text-gray-500">
                     <tr>
                       <th className="px-3 py-2">상태</th>
                       <th className="px-3 py-2">제목</th>
@@ -360,7 +354,7 @@ export default function ConsoleAgentInquiriesPage() {
                       .map((r) => (
                       <Fragment key={r.id}>
                         <tr
-                          className="border-b border-zinc-800/70 hover:bg-zinc-900/30"
+                          className="border-b border-gray-200 hover:bg-white"
                         >
                           <td className="px-3 py-2 text-xs">
                             {statusLabel(r.status)}
@@ -368,10 +362,10 @@ export default function ConsoleAgentInquiriesPage() {
                           <td className="max-w-[200px] truncate px-3 py-2">
                             {r.subject}
                           </td>
-                          <td className="px-3 py-2 font-mono text-xs text-zinc-400">
+                          <td className="px-3 py-2 font-mono text-xs text-gray-500">
                             {r.agent.email}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-2 text-xs text-zinc-500">
+                          <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">
                             {new Date(r.createdAt).toLocaleString()}
                           </td>
                           <td className="px-3 py-2">
@@ -390,9 +384,9 @@ export default function ConsoleAgentInquiriesPage() {
                         </tr>
                         {expandedId === r.id && (
                           <tr>
-                            <td colSpan={5} className="bg-zinc-950/50 px-3 py-3">
-                              <p className="text-xs text-zinc-500">본문</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-300">
+                            <td colSpan={5} className="bg-white px-3 py-3">
+                              <p className="text-xs text-gray-500">본문</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
                                 {r.body}
                               </p>
                               {r.adminReply && (
@@ -418,7 +412,7 @@ export default function ConsoleAgentInquiriesPage() {
                                       }))
                                     }
                                     rows={3}
-                                    className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+                                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
                                   />
                                   <div className="flex gap-2">
                                     <button
@@ -433,7 +427,7 @@ export default function ConsoleAgentInquiriesPage() {
                                       type="button"
                                       disabled={busy === `close:${r.id}`}
                                       onClick={() => void closeInquiry(r.id)}
-                                      className="rounded border border-zinc-600 px-3 py-1 text-xs text-zinc-400 disabled:opacity-50"
+                                      className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-500 disabled:opacity-50"
                                     >
                                       종료
                                     </button>
@@ -453,12 +447,12 @@ export default function ConsoleAgentInquiriesPage() {
 
           {statusScope === "open_only" && historyRows.length > 0 && (
             <section className="space-y-3">
-              <h2 className="text-sm font-medium text-zinc-400">
+              <h2 className="text-sm font-medium text-gray-500">
                 최근 답변·종료 ({historyRows.length}건)
               </h2>
-              <div className="overflow-x-auto rounded-xl border border-zinc-800">
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
                 <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="border-b border-zinc-800 bg-zinc-900/60 text-xs text-zinc-500">
+                  <thead className="border-b border-gray-200 bg-white text-xs text-gray-500">
                     <tr>
                       <th className="px-3 py-2">상태</th>
                       <th className="px-3 py-2">제목</th>
@@ -470,12 +464,12 @@ export default function ConsoleAgentInquiriesPage() {
                     {historyRows.slice(0, 30).map((r) => (
                       <tr
                         key={r.id}
-                        className="border-b border-zinc-800/60 text-zinc-400"
+                        className="border-b border-gray-200 text-gray-500"
                       >
                         <td className="px-3 py-2 text-xs">
                           {statusLabel(r.status)}
                         </td>
-                        <td className="px-3 py-2 text-zinc-300">{r.subject}</td>
+                        <td className="px-3 py-2 text-gray-700">{r.subject}</td>
                         <td className="px-3 py-2 font-mono text-xs">
                           {r.agent.email}
                         </td>

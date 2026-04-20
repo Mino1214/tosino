@@ -68,6 +68,19 @@ function regLabel(s: string) {
   }
 }
 
+function fmtBal(v: string | number | null | undefined) {
+  const n = Number(v ?? 0);
+  if (!Number.isFinite(n)) return "₩0";
+  return `₩${Math.round(n).toLocaleString("ko-KR")}`;
+}
+
+/** 롤링 % → 배율 (0.3 → 3배) */
+function toMult(pct: number | null | undefined): string {
+  if (pct === null || pct === undefined || pct === 0) return "—";
+  const m = Math.round(pct * 10 * 10) / 10;
+  return `${m}배`;
+}
+
 function wrTypeLabel(t: string) {
   switch (t) {
     case "DEPOSIT":
@@ -221,20 +234,20 @@ export function MemberDetailModal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <h2 className="text-lg font-semibold text-zinc-100">회원 정보</h2>
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+          <h2 className="text-lg font-semibold text-gray-900">회원 정보</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
             aria-label="닫기"
           >
             ✕
           </button>
         </div>
 
-        <div className="flex gap-1 border-b border-zinc-800 px-2 pt-2">
+        <div className="flex gap-1 border-b border-gray-200 px-2 pt-2">
           {(
             [
               ["basic", "기본정보"],
@@ -252,8 +265,8 @@ export function MemberDetailModal({
               }}
               className={`rounded-t-lg px-3 py-2 text-sm font-medium transition ${
                 tab === k
-                  ? "bg-zinc-800 text-amber-200"
-                  : "text-zinc-500 hover:text-zinc-300"
+                  ? "bg-gray-100 text-[#3182f6]"
+                  : "text-gray-500 hover:text-gray-700"
               }`}
             >
               {label}
@@ -267,11 +280,11 @@ export function MemberDetailModal({
               {err}
             </p>
           )}
-          {loading && <p className="text-sm text-zinc-500">불러오는 중…</p>}
+          {loading && <p className="text-sm text-gray-500">불러오는 중…</p>}
           {!loading && detail && tab === "basic" && (
             <div className="space-y-6">
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   기본 정보
                 </h3>
                 <div className="grid gap-2 text-sm sm:grid-cols-2">
@@ -292,34 +305,33 @@ export function MemberDetailModal({
               </section>
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   자산
                 </h3>
-                <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                  <p className="text-sm text-zinc-500">보유 머니</p>
-                  <p className="font-mono text-xl text-amber-200">
-                    {detail.balance}{" "}
-                    <span className="text-sm text-zinc-500">원</span>
+                <div className="rounded-lg border border-gray-200 bg-white/60 px-4 py-3">
+                  <p className="text-sm text-gray-500">보유 머니</p>
+                  <p className="font-mono text-xl font-bold text-[#3182f6]">
+                    {fmtBal(detail.balance)}
                   </p>
                 </div>
               </section>
 
-              <section className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
+              <section className="space-y-3 rounded-lg border border-gray-200 bg-white/40 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-medium text-zinc-200">
-                    회원 롤링 배당 (%)
+                  <h3 className="text-sm font-medium text-gray-800">
+                    회원 롤링 배당
                   </h3>
-                  <label className="flex items-center gap-2 text-sm text-zinc-400">
+                  <label className="flex items-center gap-2 text-sm text-gray-500">
                     <input
                       type="checkbox"
                       checked={rollingEnabled}
                       onChange={(e) => setRollingEnabled(e.target.checked)}
-                      className="rounded border-zinc-600"
+                      className="rounded border-gray-300"
                     />
                     사용
                   </label>
                 </div>
-                <p className="text-xs text-zinc-600">
+                <p className="text-xs text-gray-400">
                   스포츠는 국내·해외를 각각 설정합니다. 카지노(라이브), 슬롯,
                   미니게임 구간별 배당입니다.
                 </p>
@@ -358,30 +370,30 @@ export function MemberDetailModal({
               </section>
 
               <section className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   메모
                 </h3>
-                <label className="block text-sm text-zinc-400">
+                <label className="block text-sm text-gray-500">
                   식별 메모 (본인만 조회·수정, 하위 식별용)
                   <textarea
                     value={uplinePrivateMemo}
                     onChange={(e) => setUplinePrivateMemo(e.target.value)}
                     rows={2}
-                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
                   />
                 </label>
-                <label className="block text-sm text-zinc-400">
+                <label className="block text-sm text-gray-500">
                   총판 메모 (회원에게 안내)
                   <textarea
                     value={agentMemo}
                     onChange={(e) => setAgentMemo(e.target.value)}
                     rows={3}
-                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
                   />
                 </label>
                 <div>
-                  <p className="text-sm text-zinc-400">회원 메모 (읽기 전용)</p>
-                  <p className="mt-1 whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-300">
+                  <p className="text-sm text-gray-500">회원 메모 (읽기 전용)</p>
+                  <p className="mt-1 whitespace-pre-wrap rounded-lg border border-gray-200 bg-white/60 px-3 py-2 text-sm text-gray-700">
                     {detail.userMemo?.trim() ? detail.userMemo : "—"}
                   </p>
                 </div>
@@ -400,17 +412,17 @@ export function MemberDetailModal({
 
           {!loading && tab === "settlement" && (
             <div className="space-y-3">
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-gray-500">
                 해당 회원의 충전·환전 신청 내역입니다.
               </p>
               {settleLoading ? (
-                <p className="text-sm text-zinc-500">불러오는 중…</p>
+                <p className="text-sm text-gray-500">불러오는 중…</p>
               ) : settleRows.length === 0 ? (
-                <p className="text-sm text-zinc-500">내역이 없습니다.</p>
+                <p className="text-sm text-gray-500">내역이 없습니다.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="w-full min-w-[520px] text-left text-xs">
-                    <thead className="border-b border-zinc-800 bg-zinc-950/80 text-zinc-500">
+                    <thead className="border-b border-gray-200 bg-white/80 text-gray-500">
                       <tr>
                         <th className="px-2 py-2">구분</th>
                         <th className="px-2 py-2">금액</th>
@@ -422,23 +434,23 @@ export function MemberDetailModal({
                       {settleRows.map((r) => (
                         <tr
                           key={r.id}
-                          className="border-b border-zinc-800/60"
+                          className="border-b border-gray-200/60"
                         >
-                          <td className="px-2 py-2 text-zinc-300">
+                          <td className="px-2 py-2 text-gray-700">
                             {wrTypeLabel(r.type)}
                             {r.depositorName ? (
-                              <span className="ml-1 text-zinc-500">
+                              <span className="ml-1 text-gray-500">
                                 ({r.depositorName})
                               </span>
                             ) : null}
                           </td>
-                          <td className="px-2 py-2 font-mono text-zinc-200">
+                          <td className="px-2 py-2 font-mono text-gray-800">
                             {r.amount}
                           </td>
-                          <td className="px-2 py-2 text-zinc-400">
+                          <td className="px-2 py-2 text-gray-500">
                             {regLabel(r.status)}
                           </td>
-                          <td className="whitespace-nowrap px-2 py-2 text-zinc-500">
+                          <td className="whitespace-nowrap px-2 py-2 text-gray-500">
                             {new Date(r.createdAt).toLocaleString()}
                           </td>
                         </tr>
@@ -452,17 +464,17 @@ export function MemberDetailModal({
 
           {!loading && tab === "stats" && (
             <div className="space-y-3">
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-gray-500">
                 최근 배팅·당첨 원장입니다. (BET / WIN)
               </p>
               {ledgerLoading ? (
-                <p className="text-sm text-zinc-500">불러오는 중…</p>
+                <p className="text-sm text-gray-500">불러오는 중…</p>
               ) : ledgerRows.length === 0 ? (
-                <p className="text-sm text-zinc-500">내역이 없습니다.</p>
+                <p className="text-sm text-gray-500">내역이 없습니다.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="w-full min-w-[480px] text-left text-xs">
-                    <thead className="border-b border-zinc-800 bg-zinc-950/80 text-zinc-500">
+                    <thead className="border-b border-gray-200 bg-white/80 text-gray-500">
                       <tr>
                         <th className="px-2 py-2">유형</th>
                         <th className="px-2 py-2">금액</th>
@@ -474,24 +486,24 @@ export function MemberDetailModal({
                       {ledgerRows.map((r) => (
                         <tr
                           key={r.id}
-                          className="border-b border-zinc-800/60"
+                          className="border-b border-gray-200/60"
                         >
-                          <td className="px-2 py-2 text-zinc-300">
+                          <td className="px-2 py-2 text-gray-700">
                             {ledgerTypeLabel(r.type)}
                           </td>
                           <td
                             className={`px-2 py-2 font-mono ${
                               r.type === "WIN"
-                                ? "text-emerald-400/90"
-                                : "text-zinc-200"
+                                ? "text-[#3182f6]/90"
+                                : "text-gray-800"
                             }`}
                           >
                             {r.amount}
                           </td>
-                          <td className="px-2 py-2 font-mono text-zinc-500">
+                          <td className="px-2 py-2 font-mono text-gray-500">
                             {r.balanceAfter}
                           </td>
-                          <td className="whitespace-nowrap px-2 py-2 text-zinc-500">
+                          <td className="whitespace-nowrap px-2 py-2 text-gray-500">
                             {new Date(r.createdAt).toLocaleString()}
                           </td>
                         </tr>
@@ -506,22 +518,21 @@ export function MemberDetailModal({
           {!loading && tab === "revisions" && (
             <div className="space-y-3">
               {revHint && (
-                <p className="rounded border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-200/90">
+                <p className="rounded border border-[#3182f6]/20 bg-[#3182f6]/5 px-3 py-2 text-xs text-[#3182f6]/90">
                   {revHint}
                 </p>
               )}
-              <p className="text-xs text-zinc-500">
-                위에서부터 최신 적용 시점입니다. 정산 배치는 각 베팅/정산
-                시각에 맞는 행의 %를 사용합니다.
+              <p className="text-xs text-gray-500">
+                위에서부터 최신 적용 시점입니다. 롤링 배율 기준으로 표시됩니다.
               </p>
               {revLoading ? (
-                <p className="text-sm text-zinc-500">불러오는 중…</p>
+                <p className="text-sm text-gray-500">불러오는 중…</p>
               ) : revRows.length === 0 ? (
-                <p className="text-sm text-zinc-500">이력이 없습니다.</p>
+                <p className="text-sm text-gray-500">이력이 없습니다.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="w-full min-w-[560px] text-left text-[11px]">
-                    <thead className="border-b border-zinc-800 bg-zinc-950/80 text-zinc-500">
+                    <thead className="border-b border-gray-200 bg-white/80 text-gray-500">
                       <tr>
                         <th className="px-2 py-2">적용 시작</th>
                         <th className="px-2 py-2">사용</th>
@@ -536,28 +547,28 @@ export function MemberDetailModal({
                       {revRows.map((r) => (
                         <tr
                           key={r.id}
-                          className="border-b border-zinc-800/60"
+                          className="border-b border-gray-200/60"
                         >
-                          <td className="whitespace-nowrap px-2 py-2 text-zinc-400">
+                          <td className="whitespace-nowrap px-2 py-2 text-gray-500">
                             {new Date(r.effectiveFrom).toLocaleString()}
                           </td>
-                          <td className="px-2 py-2 text-zinc-300">
+                          <td className="px-2 py-2 text-gray-700">
                             {r.rollingEnabled ? "O" : "—"}
                           </td>
-                          <td className="font-mono px-2 py-2 text-zinc-300">
-                            {r.rollingSportsDomesticPct ?? "—"}
+                          <td className="font-mono px-2 py-2 text-gray-700">
+                            {toMult(r.rollingSportsDomesticPct)}
                           </td>
-                          <td className="font-mono px-2 py-2 text-zinc-300">
-                            {r.rollingSportsOverseasPct ?? "—"}
+                          <td className="font-mono px-2 py-2 text-gray-700">
+                            {toMult(r.rollingSportsOverseasPct)}
                           </td>
-                          <td className="font-mono px-2 py-2 text-zinc-300">
-                            {r.rollingCasinoPct ?? "—"}
+                          <td className="font-mono px-2 py-2 text-gray-700">
+                            {toMult(r.rollingCasinoPct)}
                           </td>
-                          <td className="font-mono px-2 py-2 text-zinc-300">
-                            {r.rollingSlotPct ?? "—"}
+                          <td className="font-mono px-2 py-2 text-gray-700">
+                            {toMult(r.rollingSlotPct)}
                           </td>
-                          <td className="font-mono px-2 py-2 text-zinc-300">
-                            {r.rollingMinigamePct ?? "—"}
+                          <td className="font-mono px-2 py-2 text-gray-700">
+                            {toMult(r.rollingMinigamePct)}
                           </td>
                         </tr>
                       ))}
@@ -569,7 +580,7 @@ export function MemberDetailModal({
           )}
         </div>
 
-        <div className="border-t border-zinc-800 p-3">
+        <div className="border-t border-gray-200 p-3">
           <button
             type="button"
             onClick={onClose}
@@ -585,9 +596,9 @@ export function MemberDetailModal({
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-zinc-800/80 bg-zinc-950/50 px-3 py-2">
-      <p className="text-[11px] text-zinc-500">{label}</p>
-      <p className="mt-0.5 text-zinc-200">{value}</p>
+    <div className="rounded border border-gray-200/80 bg-white/50 px-3 py-2">
+      <p className="text-[11px] text-gray-500">{label}</p>
+      <p className="mt-0.5 text-gray-800">{value}</p>
     </div>
   );
 }
@@ -603,21 +614,23 @@ function PctField({
   onChange: (n: number) => void;
   disabled: boolean;
 }) {
+  // 입력: 배율 (표시), 저장: % (value = pct, e.g. 0.3)
+  const displayMult = Number.isFinite(value) ? Math.round(value * 10 * 10) / 10 : 0;
   return (
     <label className={`block text-sm ${disabled ? "opacity-50" : ""}`}>
-      <span className="text-zinc-400">{label}</span>
+      <span className="text-gray-500">{label}</span>
       <div className="mt-1 flex items-center gap-1">
         <input
           type="number"
           min={0}
-          max={100}
-          step={0.01}
-          value={Number.isFinite(value) ? value : 0}
+          max={1000}
+          step={0.1}
+          value={displayMult}
           disabled={disabled}
-          onChange={(e) => onChange(Number(e.target.value) || 0)}
-          className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-zinc-100 disabled:cursor-not-allowed"
+          onChange={(e) => onChange((Number(e.target.value) || 0) / 10)}
+          className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 font-mono text-gray-900 disabled:cursor-not-allowed"
         />
-        <span className="text-zinc-500">%</span>
+        <span className="text-gray-500">배</span>
       </div>
     </label>
   );

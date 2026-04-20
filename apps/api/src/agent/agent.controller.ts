@@ -92,6 +92,14 @@ export class AgentController {
     return this.agent.updateSubAgentSplit(user, userId, dto.splitFromParentPct);
   }
 
+  @Get('downline-agent/:agentId/members')
+  subAgentMembers(
+    @CurrentUser() user: JwtPayload,
+    @Param('agentId') agentId: string,
+  ) {
+    return this.agent.subAgentMembers(user, agentId);
+  }
+
   @Get('downline')
   downline(@CurrentUser() user: JwtPayload) {
     return this.agent.downline(user);
@@ -187,6 +195,16 @@ export class AgentController {
       dto.uplinePrivateMemo,
       user,
     );
+  }
+
+  @Get('my-settlements')
+  mySettlements(
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.agent.mySettlements(user, from, to, limit);
   }
 
   @Post('inquiries')

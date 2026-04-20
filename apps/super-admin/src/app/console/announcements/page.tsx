@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   apiFetch,
   apiUploadAnnouncementAsset,
-  getAccessToken,
   getApiBase,
 } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
@@ -61,7 +59,6 @@ function specDeltaOk(w: number | null, h: number | null): boolean {
 }
 
 export default function ConsoleAnnouncementsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Row[]>(emptyRows);
   const [selectedSlot, setSelectedSlot] = useState(0);
@@ -104,17 +101,12 @@ export default function ConsoleAnnouncementsPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) return;
     loadAnnouncements();
     loadLibrary();
   }, [
     loadAnnouncements,
     loadLibrary,
-    router,
     selectedPlatformId,
     platformLoading,
   ]);

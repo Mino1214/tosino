@@ -6,9 +6,16 @@ import { PlatformIntegrationsController } from './platform-integrations.controll
 import { PointsModule } from '../points/points.module';
 import { CompSettlementSchedulerService } from './comp-settlement-scheduler.service';
 import { CompSettlementProcessor } from './comp-settlement.processor';
+import { CreditsModule } from '../credits/credits.module';
+import { ReserveBalanceModule } from '../reserve-balance/reserve-balance.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: 'comp-settlement' }), PointsModule],
+  imports: [
+    BullModule.registerQueue({ name: 'comp-settlement' }),
+    PointsModule,
+    CreditsModule,
+    ReserveBalanceModule,
+  ],
   controllers: [PlatformsController, PlatformIntegrationsController],
   providers: [PlatformsService, CompSettlementSchedulerService, CompSettlementProcessor],
   exports: [PlatformsService],

@@ -59,56 +59,52 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#120c0a] px-4">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(225,29,72,0.16),transparent_26%),linear-gradient(180deg,#120c0a_0%,#09090b_100%)]" />
-      <form
-        onSubmit={onSubmit}
-        className="relative w-full max-w-md space-y-5 rounded-[2rem] border border-amber-900/40 bg-[#140f0d]/88 p-8 shadow-[0_28px_90px_rgba(0,0,0,0.45)] backdrop-blur"
-      >
-        <div className="text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-amber-300/75">
-            mod.tozinosolution.com
-          </p>
-          <h1 className="mt-3 text-2xl font-semibold text-zinc-100">
-            Super Admin HQ
-          </h1>
-          <p className="mt-2 text-sm text-zinc-500">
-            전체 솔루션의 매출, 알값, 청구, 자산 배정을 관리하는 본사 콘솔입니다.
-          </p>
+    <div className="flex min-h-screen items-center justify-center bg-[#f2f4f6] px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#3182f6] text-white text-[24px] font-bold shadow-lg">
+            S
+          </div>
+          <h1 className="mt-4 text-[22px] font-bold text-black">Super Admin HQ</h1>
+          <p className="mt-1 text-[14px] text-gray-500">전체 솔루션의 매출, 알값, 청구, 자산 배정을 관리하는 본사 콘솔입니다</p>
         </div>
-        {error && (
-          <p className="rounded bg-red-950/80 px-3 py-2 text-sm text-red-200">
-            {error}
-          </p>
-        )}
-        <label className="block text-sm text-zinc-400">
-          아이디
-          <input
-            type="text"
-            value={loginId}
-            onChange={(e) => setLoginId(e.target.value)}
-            className="mt-1 w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 font-mono text-sm text-zinc-100"
-            autoComplete="username"
-          />
-        </label>
-        <label className="block text-sm text-zinc-400">
-          비밀번호
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100"
-            autoComplete="current-password"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-2xl bg-amber-600 py-3 font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
-        >
-          {loading ? "처리 중…" : "로그인"}
-        </button>
-      </form>
+        <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+          {error && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-red-700">
+              {error}
+            </p>
+          )}
+          <label className="block">
+            <span className="text-[13px] font-semibold text-gray-700">아이디</span>
+            <input
+              type="text"
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
+              placeholder="관리자 아이디"
+              className="mt-1.5 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-[15px] text-black placeholder:text-gray-400 focus:border-[#3182f6] focus:outline-none focus:ring-2 focus:ring-[#3182f6]/20"
+              autoComplete="username"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[13px] font-semibold text-gray-700">비밀번호</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="비밀번호"
+              className="mt-1.5 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-[15px] text-black placeholder:text-gray-400 focus:border-[#3182f6] focus:outline-none focus:ring-2 focus:ring-[#3182f6]/20"
+              autoComplete="current-password"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-xl bg-[#3182f6] py-3 text-[15px] font-bold text-white hover:bg-blue-600 disabled:opacity-50 transition"
+          >
+            {loading ? "확인 중…" : "로그인"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

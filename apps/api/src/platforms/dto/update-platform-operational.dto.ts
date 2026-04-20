@@ -23,6 +23,41 @@ export class UpdatePlatformOperationalDto {
   rollingTurnoverMultiplier?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  rollingTurnoverSports?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  rollingTurnoverCasino?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  rollingTurnoverSlot?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  rollingTurnoverMinigame?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  rollingTurnoverArcade?: number | null;
+
+  @IsOptional()
   @IsBoolean()
   agentCanEditMemberRolling?: boolean;
 

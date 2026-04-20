@@ -32,10 +32,14 @@ import {
   getPlatformTemplatePreset,
   listPlatformTemplatePresets,
 } from './platform-template.util';
+import { ReserveBalanceService } from '../reserve-balance/reserve-balance.service';
 
 @Injectable()
 export class PlatformsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly reserve: ReserveBalanceService,
+  ) {}
 
   private asRecord(value: unknown): Record<string, unknown> {
     return value && typeof value === 'object' && !Array.isArray(value)
@@ -301,6 +305,48 @@ export class PlatformsService {
     return parts.reduce((a, b) => a + b, 0);
   }
 
+  /**
+   * 알 가상 복구 로직용: 지정 수직군의 원시 stake / win 합계를 분리 반환.
+   * - stake = 유저 베팅 금액 (LedgerEntryType.BET 절댓값 합, ≒ user_loss_amount 근사)
+   * - win   = 유저 승리 금액 (LedgerEntryType.WIN 합, ≒ user_win_amount)
+   * GGR = stake - win 이므로 기존 로직과 완전히 호환된다.
+   */
+  private async ledgerStakeWinForVerticals(
+    where: Prisma.LedgerEntryWhereInput,
+    verticals: readonly string[],
+  ): Promise<{ stake: number; win: number }> {
+    const parts = await Promise.all(
+      verticals.map(async (vertical) => {
+        const [betAgg, winAgg] = await Promise.all([
+          this.prisma.ledgerEntry.aggregate({
+            where: {
+              ...where,
+              type: LedgerEntryType.BET,
+              metaJson: { path: ['vertical'], equals: vertical },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.ledgerEntry.aggregate({
+            where: {
+              ...where,
+              type: LedgerEntryType.WIN,
+              metaJson: { path: ['vertical'], equals: vertical },
+            },
+            _sum: { amount: true },
+          }),
+        ]);
+        return {
+          stake: Math.abs(betAgg._sum.amount?.toNumber() ?? 0),
+          win: winAgg._sum.amount?.toNumber() ?? 0,
+        };
+      }),
+    );
+    return parts.reduce(
+      (acc, p) => ({ stake: acc.stake + p.stake, win: acc.win + p.win }),
+      { stake: 0, win: 0 },
+    );
+  }
+
   assertPlatformScope(actor: JwtPayload, platformId: string) {
     if (actor.role === UserRole.SUPER_ADMIN) return;
     if (actor.platformId !== platformId) throw new ForbiddenException();
@@ -312,23 +358,26 @@ export class PlatformsService {
     }
   }
 
-  list(user: JwtPayload) {
+  async list(user: JwtPayload) {
     const canSeeSolutionRates = user.role === UserRole.SUPER_ADMIN;
-    const decorate = (
-      rows: Array<{
-        id: string;
-        slug: string;
-        name: string;
-        previewPort: number | null;
-        flagsJson: unknown;
-        domains: { host: string }[];
-      }>,
-    ) =>
+    const decorate = (rows: Array<{
+      id: string;
+      slug: string;
+      name: string;
+      previewPort: number | null;
+      flagsJson: unknown;
+      domains: { host: string }[];
+    }>) =>
       rows.map((row) => {
         const flags = this.asRecord(row.flagsJson);
-      return {
-        ...row,
-        solutionTemplateKey:
+        return {
+          id: row.id,
+          slug: row.slug,
+          name: row.name,
+          previewPort: row.previewPort,
+          flagsJson: row.flagsJson,
+          domains: row.domains,
+          solutionTemplateKey:
             typeof flags.solutionTemplateKey === 'string'
               ? flags.solutionTemplateKey
               : 'HYBRID',
@@ -342,50 +391,35 @@ export class PlatformsService {
         };
       });
 
+    const select = {
+      id: true,
+      slug: true,
+      name: true,
+      previewPort: true,
+      flagsJson: true,
+      domains: { select: { host: true } },
+    } as const;
+
     if (user.role === UserRole.SUPER_ADMIN) {
-      return this.prisma.platform
-        .findMany({
+      const rows = await this.prisma.platform.findMany({
         orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          previewPort: true,
-          flagsJson: true,
-          domains: { select: { host: true } },
-        },
-      })
-        .then(decorate);
+        select,
+      });
+      return decorate(rows);
     }
     if (user.role === UserRole.PLATFORM_ADMIN && user.platformId) {
-      return this.prisma.platform
-        .findMany({
+      const rows = await this.prisma.platform.findMany({
         where: { id: user.platformId },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          previewPort: true,
-          flagsJson: true,
-          domains: { select: { host: true } },
-        },
-      })
-        .then(decorate);
+        select,
+      });
+      return decorate(rows);
     }
     if (user.role === UserRole.MASTER_AGENT && user.platformId) {
-      return this.prisma.platform
-        .findMany({
+      const rows = await this.prisma.platform.findMany({
         where: { id: user.platformId },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          previewPort: true,
-          flagsJson: true,
-          domains: { select: { host: true } },
-        },
-      })
-        .then(decorate);
+        select,
+      });
+      return decorate(rows);
     }
     throw new ForbiddenException();
   }
@@ -706,6 +740,11 @@ export class PlatformsService {
         flagsJson: true,
         rollingLockWithdrawals: true,
         rollingTurnoverMultiplier: true,
+        rollingTurnoverSports: true,
+        rollingTurnoverCasino: true,
+        rollingTurnoverSlot: true,
+        rollingTurnoverMinigame: true,
+        rollingTurnoverArcade: true,
         agentCanEditMemberRolling: true,
         minDepositKrw: true,
         minDepositUsdt: true,
@@ -725,6 +764,11 @@ export class PlatformsService {
     return {
       ...p,
       rollingTurnoverMultiplier: p.rollingTurnoverMultiplier?.toString() ?? '1',
+      rollingTurnoverSports: p.rollingTurnoverSports?.toString() ?? null,
+      rollingTurnoverCasino: p.rollingTurnoverCasino?.toString() ?? null,
+      rollingTurnoverSlot: p.rollingTurnoverSlot?.toString() ?? null,
+      rollingTurnoverMinigame: p.rollingTurnoverMinigame?.toString() ?? null,
+      rollingTurnoverArcade: p.rollingTurnoverArcade?.toString() ?? null,
       minDepositKrw: p.minDepositKrw?.toString() ?? null,
       minDepositUsdt: p.minDepositUsdt?.toString() ?? null,
       minWithdrawKrw: p.minWithdrawKrw?.toString() ?? null,
@@ -756,6 +800,72 @@ export class PlatformsService {
     };
   }
 
+  async getBalanceStats(platformId: string, actor: JwtPayload) {
+    this.assertPlatformScope(actor, platformId);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [
+      pointAgg,
+      walletAgg,
+      compAgg,
+      pendingCredits,
+      allocatedAgg,
+      platformRow,
+    ] = await Promise.all([
+      this.prisma.wallet.aggregate({
+        where: { platformId },
+        _sum: { pointBalance: true },
+      }),
+      this.prisma.wallet.aggregate({
+        where: { platformId },
+        _sum: { balance: true },
+      }),
+      // 이번 달 지급된 콤프 (당월 기준)
+      this.prisma.compSettlement.aggregate({
+        where: {
+          platformId,
+          createdAt: { gte: monthStart },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.platformCreditRequest.count({
+        where: { platformId, status: 'PENDING' },
+      }),
+      // 총 지급받은 알 (승인된 크레딧 요청 합계)
+      this.prisma.platformCreditRequest.aggregate({
+        where: { platformId, status: 'APPROVED' },
+        _sum: { approvedAmountKrw: true },
+      }),
+      // 현재 알 잔액은 platform.creditBalance 가 단일 진실 공급원 (single source of truth).
+      //   실시간 Vinus 콜백(BET/WIN → DEDUCT/RESTORE), 배치 청구(SolutionBillingSettlement),
+      //   수동 보정(ADJUST), 롤백(ROLLBACK) 이 모두 이 필드에 반영되어있음.
+      this.prisma.platform.findUnique({
+        where: { id: platformId },
+        select: { creditBalance: true },
+      }),
+    ]);
+
+    const totalAllocated = Number(allocatedAgg._sum.approvedAmountKrw ?? 0);
+    const creditBalance = Number(platformRow?.creditBalance ?? 0);
+    // 지금까지 소진된 알 = 받은 총액 − 현재 잔액 (양수 클램프).
+    //   실시간 DEDUCT + 배치 청구 모두 포함되고, RESTORE(복구)로 되돌아온 부분은 자연스럽게 차감됨.
+    const totalConsumed = Math.max(0, totalAllocated - creditBalance);
+
+    return {
+      /** 현재 잔여 알 잔액 (= platform.creditBalance) */
+      creditBalance: creditBalance.toString(),
+      /** 슈퍼어드민이 승인한 총 지급알 누계 */
+      totalAllocatedCredits: totalAllocated.toString(),
+      /** 지금까지 소진된 알 누계 (= 총지급 − 현잔액) */
+      totalConsumedCredits: totalConsumed.toString(),
+      pendingCreditRequests: pendingCredits,
+      totalPointBalance: (pointAgg._sum.pointBalance ?? 0).toString(),
+      totalWalletBalance: (walletAgg._sum.balance ?? 0).toString(),
+      /** 당월 지급된 콤프 합계 */
+      totalCompSettled: (compAgg._sum.amount ?? 0).toString(),
+    };
+  }
+
   async updateOperational(
     platformId: string,
     actor: JwtPayload,
@@ -765,7 +875,17 @@ export class PlatformsService {
     const data: Prisma.PlatformUpdateInput = {};
     const current = await this.prisma.platform.findUnique({
       where: { id: platformId },
-      select: { flagsJson: true },
+      select: {
+        flagsJson: true,
+        rollingLockWithdrawals: true,
+        rollingTurnoverMultiplier: true,
+        rollingTurnoverSports: true,
+        rollingTurnoverCasino: true,
+        rollingTurnoverSlot: true,
+        rollingTurnoverMinigame: true,
+        rollingTurnoverArcade: true,
+        agentCanEditMemberRolling: true,
+      },
     });
     if (!current) throw new NotFoundException('Platform not found');
     const nextFlags =
@@ -782,6 +902,27 @@ export class PlatformsService {
         dto.rollingTurnoverMultiplier,
       );
     }
+    const assignPerGameMult = (
+      key:
+        | 'rollingTurnoverSports'
+        | 'rollingTurnoverCasino'
+        | 'rollingTurnoverSlot'
+        | 'rollingTurnoverMinigame'
+        | 'rollingTurnoverArcade',
+    ) => {
+      if (dto[key] === undefined) return;
+      const v = dto[key];
+      if (v === null) {
+        (data as Record<string, unknown>)[key] = null;
+      } else if (typeof v === 'number' && Number.isFinite(v)) {
+        (data as Record<string, unknown>)[key] = new Prisma.Decimal(v);
+      }
+    };
+    assignPerGameMult('rollingTurnoverSports');
+    assignPerGameMult('rollingTurnoverCasino');
+    assignPerGameMult('rollingTurnoverSlot');
+    assignPerGameMult('rollingTurnoverMinigame');
+    assignPerGameMult('rollingTurnoverArcade');
     if (dto.agentCanEditMemberRolling !== undefined) {
       data.agentCanEditMemberRolling = dto.agentCanEditMemberRolling;
     }
@@ -923,11 +1064,110 @@ export class PlatformsService {
       }
       data.flagsJson = nextFlags as Prisma.InputJsonValue;
     }
-    await this.prisma.platform.update({
-      where: { id: platformId },
-      data,
+    const rollingKeys = [
+      'rollingLockWithdrawals',
+      'rollingTurnoverMultiplier',
+      'rollingTurnoverSports',
+      'rollingTurnoverCasino',
+      'rollingTurnoverSlot',
+      'rollingTurnoverMinigame',
+      'rollingTurnoverArcade',
+      'agentCanEditMemberRolling',
+    ] as const;
+    const rollingChanged = rollingKeys.some((k) => (data as Record<string, unknown>)[k] !== undefined);
+
+    const historyPayload = rollingChanged
+      ? {
+          before: Object.fromEntries(
+            rollingKeys.map((k) => [
+              k,
+              this.serializePlatformField(
+                current as unknown as Record<string, unknown>,
+                k,
+              ),
+            ]),
+          ),
+          after: Object.fromEntries(
+            rollingKeys.map((k) => [
+              k,
+              this.serializePlatformField(
+                data as unknown as Record<string, unknown>,
+                k,
+                current as unknown as Record<string, unknown>,
+              ),
+            ]),
+          ),
+        }
+      : null;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.platform.update({
+        where: { id: platformId },
+        data,
+      });
+      if (historyPayload) {
+        await tx.platformPolicyHistory.create({
+          data: {
+            platformId,
+            policyType: 'rolling',
+            beforeJson: historyPayload.before as Prisma.InputJsonValue,
+            afterJson: historyPayload.after as Prisma.InputJsonValue,
+            changedByUserId: actor.sub ?? null,
+          },
+        });
+      }
     });
     return this.getDetail(platformId, actor);
+  }
+
+  /**
+   * Platform 필드의 정책 이력 저장용 직렬화. Decimal/Date 를 원시값으로 변환.
+   * `data` 에서 undefined 이면 `fallback`(DB 현재값) 값을 사용.
+   */
+  private serializePlatformField(
+    data: Record<string, unknown>,
+    key: string,
+    fallback?: Record<string, unknown>,
+  ): string | number | boolean | null {
+    const raw = data[key] !== undefined ? data[key] : fallback?.[key];
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw === 'number') return raw;
+    if (typeof raw === 'string') return raw;
+    if (raw instanceof Prisma.Decimal) return raw.toString();
+    try {
+      return String(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  async listPolicyHistory(
+    platformId: string,
+    actor: JwtPayload,
+    policyType?: string,
+    take = 50,
+  ) {
+    this.assertPlatformScope(actor, platformId);
+    const rows = await this.prisma.platformPolicyHistory.findMany({
+      where: {
+        platformId,
+        ...(policyType ? { policyType } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(200, Math.max(1, take)),
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      platformId: r.platformId,
+      policyType: r.policyType,
+      beforeJson: r.beforeJson,
+      afterJson: r.afterJson,
+      changedByUserId: r.changedByUserId,
+      changedByLoginId: r.changedByLoginId,
+      note: r.note,
+      createdAt: r.createdAt.toISOString(),
+    }));
   }
 
   async updateTheme(
@@ -1725,32 +1965,96 @@ export class PlatformsService {
       };
     }
 
-    const created = await this.prisma.solutionBillingSettlement.create({
-      data: {
+    // 솔루션 청구 정산 생성 + 알(크레딧) 잔액 변동 (원자적 트랜잭션).
+    // - 기존 "GGR × 플랫폼 판매율 = platformCharge" 만큼 DEDUCT (낙첨 소진 구조 유지)
+    // - reserveRestoreEnabled = true 면 위와 동일 트랜잭션에서 win × 플랫폼 판매율 만큼 RESTORE
+    //   (유저 승리분에 대한 가상 복구; 실제 돈이 아니라 관리자용 수치 반영)
+    // ⚠︎ 알 가상 복구 로직은 **카지노 계열(casino/slot/minigame) 전용**.
+    //   스포츠 버티컬은 별개 정산 체계이므로 DEDUCT/RESTORE 대상에서 제외한다.
+    //   (정산 자체의 platformCharge 계산은 기존과 동일하게 유지)
+    const casinoVerticals = ['casino', 'slot', 'minigame'] as const;
+    const casinoRaw = await this.ledgerStakeWinForVerticals(
+      ledgerInPeriod,
+      casinoVerticals,
+    );
+    const platformCasinoPctNum = Number(settlementPayload.platformCasinoPct);
+    // 알 전용 비율: 카지노 판매율만 사용
+    const reserveRate =
+      Number.isFinite(platformCasinoPctNum) && platformCasinoPctNum > 0
+        ? platformCasinoPctNum / 100
+        : 0;
+    const deductBaseForLog = casinoRaw.stake;
+    const restoreBaseForLog = casinoRaw.win;
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.solutionBillingSettlement.create({
+        data: {
+          platformId,
+          periodFrom,
+          periodTo,
+          casinoBaseGgr: new Prisma.Decimal(settlementPayload.casinoBaseGgr),
+          sportsBaseGgr: new Prisma.Decimal(settlementPayload.sportsBaseGgr),
+          upstreamCasinoPct: new Prisma.Decimal(
+            settlementPayload.upstreamCasinoPct,
+          ),
+          upstreamSportsPct: new Prisma.Decimal(
+            settlementPayload.upstreamSportsPct,
+          ),
+          platformCasinoPct: new Prisma.Decimal(
+            settlementPayload.platformCasinoPct,
+          ),
+          platformSportsPct: new Prisma.Decimal(
+            settlementPayload.platformSportsPct,
+          ),
+          upstreamCost: new Prisma.Decimal(settlementPayload.upstreamCost),
+          platformCharge: new Prisma.Decimal(settlementPayload.platformCharge),
+          solutionMargin: new Prisma.Decimal(settlementPayload.solutionMargin),
+          note: settlementPayload.note,
+          settledByUserId: settlementPayload.settledByUserId,
+          settledByLoginId: settlementPayload.settledByLoginId,
+        },
+      });
+
+      // 알 가상 잔액 반영 — **카지노 계열 전용**. 스포츠는 제외.
+      // 마스터 스위치 reserveEnabled=false 이면 배치 정산도 reserve 기록을 건너뛴다
+      // (이 플래그 하나로 "테스트 전용 모드 ⇄ 운영 실시간 모드" 전환).
+      const reserveMasterEnabled = await this.reserve.isReserveEnabled(
         platformId,
-        periodFrom,
-        periodTo,
-        casinoBaseGgr: new Prisma.Decimal(settlementPayload.casinoBaseGgr),
-        sportsBaseGgr: new Prisma.Decimal(settlementPayload.sportsBaseGgr),
-        upstreamCasinoPct: new Prisma.Decimal(
-          settlementPayload.upstreamCasinoPct,
-        ),
-        upstreamSportsPct: new Prisma.Decimal(
-          settlementPayload.upstreamSportsPct,
-        ),
-        platformCasinoPct: new Prisma.Decimal(
-          settlementPayload.platformCasinoPct,
-        ),
-        platformSportsPct: new Prisma.Decimal(
-          settlementPayload.platformSportsPct,
-        ),
-        upstreamCost: new Prisma.Decimal(settlementPayload.upstreamCost),
-        platformCharge: new Prisma.Decimal(settlementPayload.platformCharge),
-        solutionMargin: new Prisma.Decimal(settlementPayload.solutionMargin),
-        note: settlementPayload.note,
-        settledByUserId: settlementPayload.settledByUserId,
-        settledByLoginId: settlementPayload.settledByLoginId,
-      },
+        tx,
+      );
+      if (reserveMasterEnabled) {
+        // DEDUCT: 카지노 stake × 카지노 판매율 만큼 차감.
+        if (deductBaseForLog > 0) {
+          await this.reserve.deduct(
+            platformId,
+            {
+              baseAmount: deductBaseForLog, // user_loss_amount ≈ casino stake
+              rate: reserveRate, // 카지노 판매율 (0~1 소수)
+              eventKey: `billing:${settlement.id}:deduct`,
+              note: `billing settlement ${settlement.id} (${periodFrom.toISOString()}~${periodTo.toISOString()})`,
+              createdByUserId: settlementPayload.settledByUserId ?? undefined,
+            },
+            tx,
+          );
+        }
+
+        // RESTORE: reserveRestoreEnabled=true 인 경우에만 잔액에 반영 (OFF 면 로그만 남음).
+        if (restoreBaseForLog > 0) {
+          await this.reserve.restore(
+            platformId,
+            {
+              baseAmount: restoreBaseForLog, // user_win_amount = casino win payouts
+              rate: reserveRate,
+              eventKey: `billing:${settlement.id}:restore`,
+              note: `billing settlement ${settlement.id} virtual restore`,
+              createdByUserId: settlementPayload.settledByUserId ?? undefined,
+            },
+            tx,
+          );
+        }
+      }
+
+      return settlement;
     });
 
     return {
@@ -2645,7 +2949,7 @@ export class PlatformsService {
         };
         }
 
-        const [betAgg, winAgg, depAgg, wdrAgg] = await Promise.all([
+        const [betAgg, winAgg, depAgg, wdrAgg, agentWallet] = await Promise.all([
           this.prisma.ledgerEntry.aggregate({
             where: { userId: { in: userIds }, type: LedgerEntryType.BET, ...(hasDate ? { createdAt: dateFilter } : {}) },
             _sum: { amount: true },
@@ -2662,6 +2966,11 @@ export class PlatformsService {
             where: { ...approvedInPeriod(userIds), type: WalletRequestType.WITHDRAWAL },
             _sum: { amount: true },
           }),
+          // 정산금 = 총판 지갑 잔액 (실시간 누적 커미션)
+          this.prisma.wallet.findUnique({
+            where: { userId: a.id },
+            select: { balance: true },
+          }),
         ]);
 
         const stake = Math.abs(betAgg._sum.amount?.toNumber() ?? 0);
@@ -2669,9 +2978,8 @@ export class PlatformsService {
         const ggr = stake - win;
         const dep = depAgg._sum.amount?.toNumber() ?? 0;
         const wdr = wdrAgg._sum.amount?.toNumber() ?? 0;
-        // 총판 정산은 회원별 낙첨금(입금-출금) 통합 합계 기준이다.
         const houseEdge = dep - wdr;
-        const settlement = (houseEdge * effPct) / 100;
+        const settlement = Number(agentWallet?.balance ?? 0);
 
         return {
           agentId: a.id,

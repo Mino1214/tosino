@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type Row = {
@@ -59,7 +58,6 @@ function buildQuery(status: string, deviceOnly: boolean): string {
 }
 
 export default function SemiSmsLogPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [walletRows, setWalletRows] = useState<WalletHistoryRow[] | null>(null);
@@ -86,14 +84,6 @@ export default function SemiSmsLogPage() {
   }, [selectedPlatformId, queryStr]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
-    if (getStoredUser()?.role !== "SUPER_ADMIN") {
-      router.replace("/console/sales");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       setWalletRows(null);
@@ -101,7 +91,7 @@ export default function SemiSmsLogPage() {
     }
     setErr(null);
     void load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (

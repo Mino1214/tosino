@@ -22,7 +22,8 @@ type DrawerNavItem =
   | { label: string; href: string; external: true };
 
 const DRAWER_NAV: DrawerNavItem[] = [
-  // 스포츠/e스포츠는 임시 비노출.
+  // 스포츠 = odds-api.io 라이브 패널 검토용으로 노출. e스포츠는 계속 보류.
+  { label: "스포츠", href: "/lobby/sports" },
   { label: "카지노", href: "/lobby/live-casino" },
   { label: "슬롯", href: "/lobby/slots" },
   { label: "아케이드", href: "/lobby/arcade" },

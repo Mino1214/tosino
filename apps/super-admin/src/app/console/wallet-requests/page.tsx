@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type ReqRow = {
@@ -14,6 +13,10 @@ type ReqRow = {
   note: string | null;
   depositorName: string | null;
   createdAt: string;
+  /** USDT 행에 한해 서버에서 내려주는 현재 환율 (KRW per 1 USDT) */
+  krwRate?: string | null;
+  /** USDT 행에 한해 서버에서 내려주는 환산 KRW */
+  krwAmount?: string | null;
   user: {
     id: string;
     loginId?: string | null;
@@ -40,8 +43,18 @@ function amountLabel(row: ReqRow) {
   return `${Number(row.amount).toLocaleString("ko-KR")}원`;
 }
 
+/** USDT 행에 한해 환산 원화/환율을 부가 표기 */
+function krwSubLabel(row: ReqRow) {
+  if (row.currency !== "USDT" || !row.krwAmount) return null;
+  const krw = Math.round(Number(row.krwAmount));
+  if (!Number.isFinite(krw) || krw <= 0) return null;
+  const rate = row.krwRate ? Math.round(Number(row.krwRate)) : null;
+  return rate
+    ? `≈ ${krw.toLocaleString("ko-KR")}원 (1 USDT = ${rate.toLocaleString("ko-KR")}원)`
+    : `≈ ${krw.toLocaleString("ko-KR")}원`;
+}
+
 export default function ConsoleWalletRequestsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<ReqRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -57,17 +70,13 @@ export default function ConsoleWalletRequestsPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       return;
     }
     setErr(null);
     load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   async function approve(id: string) {
     if (!selectedPlatformId) return;
@@ -168,7 +177,12 @@ export default function ConsoleWalletRequestsPage() {
                     {r.type} / {r.currency}
                   </td>
                   <td className="px-4 py-2 font-mono text-zinc-200">
-                    {amountLabel(r)}
+                    <div>{amountLabel(r)}</div>
+                    {krwSubLabel(r) ? (
+                      <div className="mt-0.5 text-[11px] font-normal text-zinc-400">
+                        {krwSubLabel(r)}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="max-w-[220px] truncate px-4 py-2 text-xs text-zinc-400">
                     {r.currency === "USDT"

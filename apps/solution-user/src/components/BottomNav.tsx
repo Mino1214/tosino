@@ -22,8 +22,9 @@ import { getAccessToken } from "@/lib/api";
 import { ProtectedNavLink } from "@/components/ProtectedNavLink";
 
 const PLAY_ITEMS = [
-  // 스포츠/e스포츠는 임시 비노출.
-  { label: "카지노", href: "/lobby/live-casino", emoji: "" },
+  // 스포츠 = odds-api.io WS 라이브 패널 + 트래커 검토용으로 노출. e스포츠는 계속 보류.
+  { label: "스포츠",   href: "/lobby/sports",     emoji: "" },
+  { label: "카지노",   href: "/lobby/live-casino", emoji: "" },
   { label: "슬롯",      href: "/lobby/slots",       emoji: "" },
   { label: "아케이드",  href: "/lobby/arcade",      emoji: "" },
   { label: "미니게임",  href: "/lobby/minigame",    emoji: "" },

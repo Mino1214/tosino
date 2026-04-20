@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type EventKind = "FIRST_CHARGE" | "LIMITED_TIME";
@@ -214,7 +213,6 @@ function buildPayload(events: EventEditor[]) {
 }
 
 export default function ConsoleDepositEventsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [events, setEvents] = useState<EventEditor[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -240,13 +238,9 @@ export default function ConsoleDepositEventsPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) return;
     void load();
-  }, [load, platformLoading, router, selectedPlatformId]);
+  }, [load, platformLoading, selectedPlatformId]);
 
   function updateEvent(clientId: string, patch: Partial<EventEditor>) {
     setEvents((current) =>

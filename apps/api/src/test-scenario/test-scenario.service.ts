@@ -15,6 +15,7 @@ import { RollingObligationService } from '../rolling/rolling-obligation.service'
 import { PointsService } from '../points/points.service';
 import { UpbitRateService } from '../usdt-deposit/upbit-rate.service';
 import { computeEffectiveAgentShares } from '../common/agent-commission.util';
+import { ReserveBalanceService } from '../reserve-balance/reserve-balance.service';
 
 const TAG = '[TEST]';
 const DEFAULT_PWD = 'Test1234!';
@@ -34,6 +35,18 @@ export interface StepResult {
 }
 
 export type BetProfile = 'loser_extreme' | 'loser_heavy' | 'balanced' | 'winner_moderate' | 'winner_jackpot';
+
+export type GameVertical = 'casino' | 'slot' | 'sports' | 'minigame';
+
+export interface BetRound {
+  bet: number;
+  win: number;
+  label: string;
+  vertical: GameVertical;
+  gameType: string;   // 바카라|블랙잭|룰렛|드래곤타이거|sweet_bonanza|gates_of_olympus|basketball|soccer|powerball 등
+  sport?: string;     // sports 전용: basketball|soccer|baseball
+  matchType?: string; // sports 전용: match|special|live
+}
 
 export interface ScenarioState {
   platformId: string;
@@ -64,67 +77,71 @@ const LOGIN_PROFILE_MAP: Record<string, BetProfile> = {
   'test_usdt_user_3_belowmin': 'balanced',
 };
 
-// 프로필별 배팅 라운드 시나리오
-function getBetRounds(profile: BetProfile = 'balanced', unit: number) {
+// 프로필별 배팅 라운드 시나리오 (vertical + gameType 분류 포함)
+function getBetRounds(profile: BetProfile = 'balanced', unit: number): BetRound[] {
   switch (profile) {
     case 'loser_extreme':
-      // 전패: 8전 8패
+      // 전패: 카지노(바카라·블랙잭) + 슬롯 혼합 — 전부 낙첨
       return [
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit * 2, win: 0, label: '더블 배팅 패배' },
-        { bet: unit * 2, win: 0, label: '더블 배팅 패배' },
-        { bet: unit * 3, win: 0, label: '3배 배팅 패배' },
-        { bet: unit * 3, win: 0, label: '3배 배팅 패배' },
+        { bet: unit,     win: 0, label: '바카라 낙첨',           vertical: 'casino',  gameType: '바카라' },
+        { bet: unit,     win: 0, label: '바카라 낙첨',           vertical: 'casino',  gameType: '바카라' },
+        { bet: unit,     win: 0, label: '블랙잭 낙첨',           vertical: 'casino',  gameType: '블랙잭' },
+        { bet: unit,     win: 0, label: '슬롯 낙첨',             vertical: 'slot',    gameType: 'sweet_bonanza' },
+        { bet: unit * 2, win: 0, label: '바카라 더블 낙첨',      vertical: 'casino',  gameType: '바카라' },
+        { bet: unit * 2, win: 0, label: '슬롯 더블 낙첨',        vertical: 'slot',    gameType: 'gates_of_olympus' },
+        { bet: unit * 3, win: 0, label: '스포츠 농구매치 낙첨',  vertical: 'sports',  gameType: '농구', sport: '농구', matchType: 'match' },
+        { bet: unit * 3, win: 0, label: '미니게임 파워볼 낙첨',  vertical: 'minigame',gameType: '파워볼' },
       ];
+
     case 'loser_heavy':
-      // 대패: 7전 6패 1승
+      // 대패: 카지노·슬롯·스포츠 혼합, 1승
       return [
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: unit * 1.5, label: '작은 승리(x1.5)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit * 2, win: 0, label: '더블 배팅 패배' },
-        { bet: unit * 2, win: 0, label: '더블 배팅 패배' },
-        { bet: unit * 3, win: 0, label: '3배 배팅 패배' },
+        { bet: unit,     win: 0,            label: '바카라 낙첨',           vertical: 'casino',  gameType: '바카라' },
+        { bet: unit,     win: 0,            label: '슬롯 낙첨',             vertical: 'slot',    gameType: 'sweet_bonanza' },
+        { bet: unit,     win: unit * 1.5,   label: '블랙잭 소승(x1.5)',     vertical: 'casino',  gameType: '블랙잭' },
+        { bet: unit,     win: 0,            label: '스포츠 축구매치 낙첨',  vertical: 'sports',  gameType: '축구', sport: '축구', matchType: 'match' },
+        { bet: unit * 2, win: 0,            label: '바카라 더블 낙첨',      vertical: 'casino',  gameType: '바카라' },
+        { bet: unit * 2, win: 0,            label: '슬롯 더블 낙첨',        vertical: 'slot',    gameType: 'gates_of_olympus' },
+        { bet: unit * 3, win: 0,            label: '미니게임 사다리 낙첨',  vertical: 'minigame',gameType: '사다리' },
       ];
+
     case 'balanced':
-      // 승3 패5 혼합
+      // 승3 패5: 4개 버티컬 골고루
       return [
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: unit * 1.95, label: '승리(x1.95)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: unit * 2.5, label: '승리(x2.5)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: unit * 1.8, label: '승리(x1.8)' },
-        { bet: unit, win: 0, label: '패배' },
+        { bet: unit, win: 0,          label: '바카라 낙첨',              vertical: 'casino',  gameType: '바카라' },
+        { bet: unit, win: unit * 1.95,label: '바카라 승리(x1.95)',       vertical: 'casino',  gameType: '바카라' },
+        { bet: unit, win: 0,          label: '슬롯 낙첨',                vertical: 'slot',    gameType: 'sweet_bonanza' },
+        { bet: unit, win: 0,          label: '스포츠 농구라이브 낙첨',   vertical: 'sports',  gameType: '농구', sport: '농구', matchType: 'live' },
+        { bet: unit, win: unit * 2.5, label: '룰렛 대승(x2.5)',          vertical: 'casino',  gameType: '룰렛' },
+        { bet: unit, win: 0,          label: '미니게임 파워볼 낙첨',     vertical: 'minigame',gameType: '파워볼' },
+        { bet: unit, win: unit * 1.8, label: '슬롯 승리(x1.8)',          vertical: 'slot',    gameType: 'gates_of_olympus' },
+        { bet: unit, win: 0,          label: '드래곤타이거 낙첨',        vertical: 'casino',  gameType: '드래곤타이거' },
       ];
+
     case 'winner_moderate':
-      // 승리 우세: 8전 5승 3패
+      // 승리 우세: 5승 3패, 다양한 게임 분산
       return [
-        { bet: unit, win: unit * 1.9, label: '승리(x1.9)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: unit * 2.0, label: '승리(x2.0)' },
-        { bet: unit, win: unit * 1.95, label: '승리(x1.95)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: unit * 2.2, label: '승리(x2.2)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit, win: unit * 1.8, label: '승리(x1.8)' },
+        { bet: unit, win: unit * 1.9, label: '바카라 승리(x1.9)',         vertical: 'casino',  gameType: '바카라' },
+        { bet: unit, win: 0,          label: '슬롯 낙첨',                 vertical: 'slot',    gameType: 'sweet_bonanza' },
+        { bet: unit, win: unit * 2.0, label: '블랙잭 승리(x2.0)',         vertical: 'casino',  gameType: '블랙잭' },
+        { bet: unit, win: unit * 1.95,label: '스포츠 농구스페셜 승리',    vertical: 'sports',  gameType: '농구', sport: '농구', matchType: 'special' },
+        { bet: unit, win: 0,          label: '미니게임 스피드키노 낙첨',  vertical: 'minigame',gameType: '스피드키노' },
+        { bet: unit, win: unit * 2.2, label: '슬롯 대승(x2.2)',           vertical: 'slot',    gameType: 'gates_of_olympus' },
+        { bet: unit, win: 0,          label: '드래곤타이거 낙첨',         vertical: 'casino',  gameType: '드래곤타이거' },
+        { bet: unit, win: unit * 1.8, label: '스포츠 야구매치 승리',      vertical: 'sports',  gameType: '야구', sport: '야구', matchType: 'match' },
       ];
+
     case 'winner_jackpot':
-      // 대박: 고배율 연속 당첨
+      // 대박: 승리 우세, 하우스 엣지 양수 유지 (총 베팅 300k, 당첨 426k)
       return [
-        { bet: unit * 2, win: unit * 2 * 5.0, label: '대박 당첨(x5.0)' },
-        { bet: unit * 2, win: unit * 2 * 3.5, label: '당첨(x3.5)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit * 3, win: unit * 3 * 4.0, label: '잭팟(x4.0)' },
-        { bet: unit, win: unit * 2.5, label: '승리(x2.5)' },
-        { bet: unit * 2, win: unit * 2 * 3.0, label: '승리(x3.0)' },
-        { bet: unit, win: 0, label: '패배' },
-        { bet: unit * 3, win: unit * 3 * 6.0, label: '초대박(x6.0)' },
+        { bet: unit * 2, win: unit * 2 * 2.5, label: '바카라 대박(x2.5)',         vertical: 'casino',  gameType: '바카라' },
+        { bet: unit * 2, win: unit * 2 * 2.0, label: '슬롯 잭팟(x2.0)',           vertical: 'slot',    gameType: 'sweet_bonanza' },
+        { bet: unit,     win: 0,              label: '블랙잭 낙첨',               vertical: 'casino',  gameType: '블랙잭' },
+        { bet: unit * 3, win: unit * 3 * 2.0, label: '스포츠 농구라이브 대박(x2.0)',vertical: 'sports', gameType: '농구', sport: '농구', matchType: 'live' },
+        { bet: unit,     win: unit * 1.8,     label: '룰렛 승리(x1.8)',           vertical: 'casino',  gameType: '룰렛' },
+        { bet: unit * 2, win: 0,              label: '슬롯 낙첨',                 vertical: 'slot',    gameType: 'gates_of_olympus' },
+        { bet: unit,     win: 0,              label: '미니게임 파워볼 낙첨',       vertical: 'minigame',gameType: '파워볼' },
+        { bet: unit * 3, win: unit * 3 * 1.5, label: '슬롯 대박(x1.5)',           vertical: 'slot',    gameType: 'gates_of_olympus' },
       ];
   }
 }
@@ -139,6 +156,7 @@ export class TestScenarioService {
     private rolling: RollingObligationService,
     private points: PointsService,
     private upbit: UpbitRateService,
+    private reserve: ReserveBalanceService,
   ) {}
 
   // ─── 메인 진입점 ─────────────────────────────────────────
@@ -225,6 +243,12 @@ export class TestScenarioService {
       results.push(await this.step9_agentSettlement(platformId));
     }
 
+    // STEP 10: 알값 크레딧 시뮬 — 본사 상위 원가 납입 & 플랫폼 크레딧 소진 기록
+    const runCreditSim = runStep(10) || (runAgentSettlement && end <= 9);
+    if (runCreditSim) {
+      results.push(await this.step10_creditSim(platformId));
+    }
+
     return { results, state };
   }
 
@@ -257,9 +281,10 @@ export class TestScenarioService {
       };
 
       // ── 최상위 총판 2명 ──
+      // 상위 총판은 플랫폼 GGR의 일정 %를 받음 (하위 총판에 split 후 순수익 = 상위% - 하위실효%)
       const topAgentDefs = [
-        { loginId: 'test_top_agent_a', name: `${TAG} 최상위총판A`, sharePct: 30 },
-        { loginId: 'test_top_agent_b', name: `${TAG} 최상위총판B`, sharePct: 20 },
+        { loginId: 'test_top_agent_a', name: `${TAG} 최상위총판A`, sharePct: 10 },
+        { loginId: 'test_top_agent_b', name: `${TAG} 최상위총판B`, sharePct: 8 },
       ];
 
       for (const def of topAgentDefs) {
@@ -275,10 +300,12 @@ export class TestScenarioService {
 
       // ── 각 최상위 총판의 하위 총판 ──
       const subAgentDefs = [
-        { parentLoginId: 'test_top_agent_a', loginId: 'test_sub_agent_a1', name: `${TAG} 하위총판A-1`, splitPct: 50 },
-        { parentLoginId: 'test_top_agent_a', loginId: 'test_sub_agent_a2', name: `${TAG} 하위총판A-2`, splitPct: 40 },
-        { parentLoginId: 'test_top_agent_b', loginId: 'test_sub_agent_b1', name: `${TAG} 하위총판B-1`, splitPct: 60 },
-        { parentLoginId: 'test_top_agent_b', loginId: 'test_sub_agent_b2', name: `${TAG} 하위총판B-2`, splitPct: 35 },
+        // 하위 split 30~40% 범위: 상위A(10%) × 40% = 하위 실효 4%, 상위 순수익 6%
+        { parentLoginId: 'test_top_agent_a', loginId: 'test_sub_agent_a1', name: `${TAG} 하위총판A-1`, splitPct: 40 },
+        { parentLoginId: 'test_top_agent_a', loginId: 'test_sub_agent_a2', name: `${TAG} 하위총판A-2`, splitPct: 35 },
+        // 상위B(8%) × 40% = 하위 실효 3.2%, 상위 순수익 4.8%
+        { parentLoginId: 'test_top_agent_b', loginId: 'test_sub_agent_b1', name: `${TAG} 하위총판B-1`, splitPct: 40 },
+        { parentLoginId: 'test_top_agent_b', loginId: 'test_sub_agent_b2', name: `${TAG} 하위총판B-2`, splitPct: 30 },
       ];
 
       for (const def of subAgentDefs) {
@@ -571,8 +598,11 @@ export class TestScenarioService {
                 balanceAfter: balance,
                 reference: ref,
                 metaJson: {
-                  vertical: 'casino',
-                  note: `${TAG} 카지노 라운드${i + 1} 배팅 - ${round.label}`,
+                  vertical: round.vertical,
+                  gameType: round.gameType,
+                  ...(round.sport ? { sport: round.sport } : {}),
+                  ...(round.matchType ? { matchType: round.matchType } : {}),
+                  note: `${TAG} 라운드${i + 1} 배팅 - ${round.label}`,
                 },
               },
             });
@@ -590,8 +620,11 @@ export class TestScenarioService {
                   balanceAfter: balance,
                   reference: ref,
                   metaJson: {
-                    vertical: 'casino',
-                    note: `${TAG} 카지노 라운드${i + 1} 당첨`,
+                    vertical: round.vertical,
+                    gameType: round.gameType,
+                    ...(round.sport ? { sport: round.sport } : {}),
+                    ...(round.matchType ? { matchType: round.matchType } : {}),
+                    note: `${TAG} 라운드${i + 1} 당첨`,
                   },
                 },
               });
@@ -602,6 +635,10 @@ export class TestScenarioService {
 
             // 패배 포인트 적립
             await this.points.maybeCreditLoseBet(txn, u.id, platformId, stake, didWin);
+
+            // 낙첨 즉시 에이전트 커미션 지급 (실시간 모델)
+            const roundGgr = stake.minus(winAmt); // 낙첨: 양수, 당첨: 음수
+            await this.creditAgentOnBetGgr(txn, platformId, u.id, roundGgr, ref);
           });
 
           userRounds.push({ round: i + 1, label: round.label, bet: round.bet, win: round.win, balanceAfter: balance.toFixed(2) });
@@ -668,6 +705,7 @@ export class TestScenarioService {
                 reference: ref,
                 metaJson: {
                   vertical: 'casino',
+                  gameType: '바카라',
                   note: `${TAG} 롤링충족 추가배팅 r${roundNum}`,
                 },
               },
@@ -686,6 +724,7 @@ export class TestScenarioService {
                   reference: ref,
                   metaJson: {
                     vertical: 'casino',
+                    gameType: '바카라',
                     note: `${TAG} 롤링충족 당첨 r${roundNum}`,
                   },
                 },
@@ -694,6 +733,10 @@ export class TestScenarioService {
 
             await this.rolling.applyBetStake(txn, u.id, stake);
             await this.points.maybeCreditLoseBet(txn, u.id, platformId, stake, didWin);
+
+            // 낙첨 즉시 에이전트 커미션 (롤링 추가 베팅도 동일 처리)
+            const roundGgr = stake.minus(winAmt);
+            await this.creditAgentOnBetGgr(txn, platformId, u.id, roundGgr, ref);
           });
 
           toFulfill = toFulfill.minus(stake);
@@ -826,9 +869,11 @@ export class TestScenarioService {
   }
 
   /**
-   * 매출(청구) 화면의 총판 예상정산과 동일한 산식:
-   * 다운라인 회원 승인 입금 합 − 승인 출금 합 = houseEdge, 정산금 = houseEdge × 실효요율 / 100.
-   * (실제 운영 정산 배치가 아닌 QA용 지갑·원장 반영 시뮬레이션)
+   * 에이전트 정산 검증 (실시간 모델 전환 후):
+   * - 충전 즉시 커미션: WalletRequestsService.approve() (DEPOSIT)
+   * - 낙첨 즉시 커미션: step4_casinoPlay → creditAgentOnBetGgr()
+   * - 출금 즉시 차감:  WalletRequestsService.approve() (WITHDRAWAL)
+   * → 이제 배치 GGR 크레딧은 없음. 본 step은 실제 잔액 vs 기대 정산금 비교만 수행.
    */
   private async step9_agentSettlement(platformId: string): Promise<StepResult> {
     try {
@@ -848,35 +893,22 @@ export class TestScenarioService {
         orderBy: { createdAt: 'asc' },
       });
       if (agents.length === 0) {
-        return {
-          step: 9,
-          name: 'AGENT_SETTLEMENT',
-          status: 'skip',
-          data: { message: '테스트 총판 계정이 없습니다' },
-        };
+        return { step: 9, name: 'AGENT_SETTLEMENT', status: 'skip', data: { message: '테스트 총판 계정이 없습니다' } };
       }
 
       const testChain = await this.prisma.user.findMany({
         where: { platformId, loginId: { startsWith: 'test_' } },
         select: { id: true, role: true, parentUserId: true },
       });
-      const parentByUserId = new Map(
-        testChain.map((r) => [r.id, r.parentUserId ?? null]),
-      );
+      const parentByUserId = new Map(testChain.map((r) => [r.id, r.parentUserId ?? null]));
       const roleById = new Map(testChain.map((r) => [r.id, r.role]));
       const masters = agents.map((a) => ({
         id: a.id,
         parentUserId: a.parentUserId,
-        agentPlatformSharePct:
-          a.agentPlatformSharePct != null ? Number(a.agentPlatformSharePct) : null,
-        agentSplitFromParentPct:
-          a.agentSplitFromParentPct != null ? Number(a.agentSplitFromParentPct) : null,
+        agentPlatformSharePct: a.agentPlatformSharePct != null ? Number(a.agentPlatformSharePct) : null,
+        agentSplitFromParentPct: a.agentSplitFromParentPct != null ? Number(a.agentSplitFromParentPct) : null,
       }));
-      const effectiveMap = computeEffectiveAgentShares(
-        masters,
-        roleById,
-        (uid) => parentByUserId.get(uid) ?? null,
-      );
+      const effectiveMap = computeEffectiveAgentShares(masters, roleById, (uid) => parentByUserId.get(uid) ?? null);
 
       const getDownlineUserIds = async (agentId: string): Promise<string[]> => {
         const userIds: string[] = [];
@@ -895,129 +927,475 @@ export class TestScenarioService {
         return userIds;
       };
 
-      const payouts: unknown[] = [];
+      const summary: unknown[] = [];
 
       for (const agent of agents) {
-        const existing = await this.prisma.ledgerEntry.findFirst({
-          where: {
-            userId: agent.id,
-            platformId,
-            reference: { startsWith: 'testscenario:settlement:' },
-          },
-        });
-        if (existing) {
-          payouts.push({
-            agentId: agent.id,
-            loginId: agent.loginId,
-            status: 'already_settled',
-            reference: existing.reference,
-          });
-          continue;
-        }
-
         const userIds = await getDownlineUserIds(agent.id);
         if (userIds.length === 0) {
-          payouts.push({
-            agentId: agent.id,
-            loginId: agent.loginId,
-            status: 'no_downline',
-          });
+          summary.push({ agentId: agent.id, loginId: agent.loginId, status: 'no_downline' });
           continue;
         }
 
-        const [depAgg, wdrAgg] = await Promise.all([
-          this.prisma.walletRequest.aggregate({
-            where: {
-              platformId,
-              userId: { in: userIds },
-              type: WalletRequestType.DEPOSIT,
-              status: WalletRequestStatus.APPROVED,
-            },
+        const [betAgg, winAgg, depAgg, wdrAgg] = await Promise.all([
+          this.prisma.ledgerEntry.aggregate({
+            where: { platformId, userId: { in: userIds }, type: LedgerEntryType.BET, amount: { lt: 0 } },
+            _sum: { amount: true },
+          }),
+          this.prisma.ledgerEntry.aggregate({
+            where: { platformId, userId: { in: userIds }, type: LedgerEntryType.WIN, amount: { gt: 0 } },
             _sum: { amount: true },
           }),
           this.prisma.walletRequest.aggregate({
-            where: {
-              platformId,
-              userId: { in: userIds },
-              type: WalletRequestType.WITHDRAWAL,
-              status: WalletRequestStatus.APPROVED,
-            },
+            where: { platformId, userId: { in: userIds }, type: WalletRequestType.DEPOSIT, status: WalletRequestStatus.APPROVED },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletRequest.aggregate({
+            where: { platformId, userId: { in: userIds }, type: WalletRequestType.WITHDRAWAL, status: WalletRequestStatus.APPROVED },
             _sum: { amount: true },
           }),
         ]);
 
+        const stakeAbs = Math.abs(betAgg._sum.amount?.toNumber() ?? 0);
+        const totalWin = winAgg._sum.amount?.toNumber() ?? 0;
         const dep = depAgg._sum.amount?.toNumber() ?? 0;
         const wdr = wdrAgg._sum.amount?.toNumber() ?? 0;
-        const houseEdge = dep - wdr;
+        const ggr = stakeAbs - totalWin;
+        // 낙첨금액 = 유저가 진 금액만 (GGR > 0인 라운드 합계 = 전체 배팅 - 당첨금)
+        // 적중 시 에이전트 차감 없음 → 기대 공식: (충전 + 낙첨 - 환전) × 실효요율
+        // 단순화: 낙첨분만 있으면 (dep + ggr_positive - wdr) × rate
+        const ggrPositive = Math.max(0, ggr); // 유저 순손실(낙첨 지배적일 때)
+
         const effPct = effectiveMap.get(agent.id) ?? 0;
-        const settlementNum = (houseEdge * effPct) / 100;
+        // 기대 정산금 = (충전 + 낙첨GGR - 환전) × 실효요율
+        const expectedSettlement = ((dep + ggrPositive - wdr) * effPct) / 100;
 
-        if (!(settlementNum > 0)) {
-          payouts.push({
-            agentId: agent.id,
-            loginId: agent.loginId,
-            depositTotal: dep,
-            withdrawTotal: wdr,
-            houseEdge,
-            effectivePct: effPct,
-            settlement: settlementNum,
-            status: 'nothing_to_pay',
-          });
-          continue;
-        }
+        // 실제 에이전트 지갑 잔액 (이미 실시간으로 적립된 금액)
+        const agentWallet = await this.prisma.wallet.findUnique({ where: { userId: agent.id } });
+        const actualBalance = agentWallet ? Number(agentWallet.balance) : 0;
 
-        const amt = new Prisma.Decimal(settlementNum.toFixed(2));
-        const reference = `testscenario:settlement:${agent.id}`;
-
-        await this.prisma.$transaction(async (tx) => {
-          const wallet = await tx.wallet.findUnique({ where: { userId: agent.id } });
-          if (!wallet) throw new Error(`총판 지갑 없음: ${agent.loginId}`);
-          const nextBal = wallet.balance.plus(amt);
-          await tx.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: nextBal },
-          });
-          await tx.ledgerEntry.create({
-            data: {
-              userId: agent.id,
-              platformId,
-              type: LedgerEntryType.ADJUSTMENT,
-              amount: amt,
-              balanceAfter: nextBal,
-              reference,
-              metaJson: {
-                testScenarioAgentSettlement: true,
-                houseEdge: houseEdge.toFixed(2),
-                effectivePct: effPct,
-                depositTotal: dep.toFixed(2),
-                withdrawTotal: wdr.toFixed(2),
-              },
-            },
-          });
-        });
-
-        payouts.push({
+        summary.push({
           agentId: agent.id,
           loginId: agent.loginId,
-          depositTotal: dep,
-          withdrawTotal: wdr,
-          houseEdge,
           effectivePct: effPct,
-          paid: settlementNum,
-          status: 'paid',
+          dep: dep.toFixed(2),
+          wdr: wdr.toFixed(2),
+          stakeAbs: stakeAbs.toFixed(2),
+          totalWin: totalWin.toFixed(2),
+          ggr: ggr.toFixed(2),
+          ggrPositive: ggrPositive.toFixed(2),
+          expectedSettlement: expectedSettlement.toFixed(2),
+          actualBalance: actualBalance.toFixed(2),
+          diff: (actualBalance - expectedSettlement).toFixed(2),
+          status: Math.abs(actualBalance - expectedSettlement) < 1 ? 'matched' : 'mismatch',
+          note: '실시간 지급 모델: 충전즉시+낙첨즉시+출금즉시차감',
         });
       }
 
+      return { step: 9, name: 'AGENT_SETTLEMENT_VERIFY', status: 'ok', data: { summary, note: '배치 GGR 크레딧 없음 — 실시간 모델로 step4/3/8에서 처리' } };
+    } catch (e) {
+      return { step: 9, name: 'AGENT_SETTLEMENT_VERIFY', status: 'error', error: String(e) };
+    }
+  }
+
+  // ─── STEP 10: 알값 크레딧 시뮬 ───────────────────────────────
+  private async step10_creditSim(platformId: string): Promise<StepResult> {
+    try {
+      const platform = await this.prisma.platform.findUnique({
+        where: { id: platformId },
+        select: { id: true, name: true, flagsJson: true },
+      });
+      if (!platform) throw new Error(`플랫폼 ${platformId}를 찾을 수 없습니다`);
+
+      const flags = (platform.flagsJson ?? {}) as Record<string, unknown>;
+      const ratePolicy = (flags.solutionRatePolicy ?? {}) as Record<string, unknown>;
+      const upstreamPct = Number(ratePolicy.upstreamCasinoPct ?? 0);
+      const platformPct = Number(ratePolicy.platformCasinoPct ?? 0);
+      if (upstreamPct === 0 && platformPct === 0) {
+        return {
+          step: 10,
+          name: 'CREDIT_SIM',
+          status: 'skip',
+          data: { message: '알값 요율이 설정되지 않았습니다 (알값/정책 탭에서 설정해주세요)' },
+        };
+      }
+
+      // 기간 GGR: 테스트 시나리오 기간의 입출금 집계 (기존 마진 표시용)
+      const [depAgg, wdrAgg] = await Promise.all([
+        this.prisma.walletRequest.aggregate({
+          where: {
+            platformId,
+            type: WalletRequestType.DEPOSIT,
+            status: WalletRequestStatus.APPROVED,
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.walletRequest.aggregate({
+          where: {
+            platformId,
+            type: WalletRequestType.WITHDRAWAL,
+            status: WalletRequestStatus.APPROVED,
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+
+      const dep = depAgg._sum.amount?.toNumber() ?? 0;
+      const wdr = wdrAgg._sum.amount?.toNumber() ?? 0;
+      const ggr = dep - wdr;
+
+      // 알 가상 복구 로직용: ledger BET / WIN 실제 합계 — **카지노 계열만** (스포츠 제외).
+      // Prisma JSON 필터는 `in` 미지원이라 버티컬별로 합산 후 누적한다.
+      // (stake = 낙첨 원금, win = 승리 금액)
+      const casinoVerticals = ['casino', 'slot', 'minigame'];
+      const perVertical = await Promise.all(
+        casinoVerticals.map(async (vertical) => {
+          const [betAgg, winAgg] = await Promise.all([
+            this.prisma.ledgerEntry.aggregate({
+              where: {
+                platformId,
+                type: LedgerEntryType.BET,
+                metaJson: { path: ['vertical'], equals: vertical },
+              },
+              _sum: { amount: true },
+            }),
+            this.prisma.ledgerEntry.aggregate({
+              where: {
+                platformId,
+                type: LedgerEntryType.WIN,
+                metaJson: { path: ['vertical'], equals: vertical },
+              },
+              _sum: { amount: true },
+            }),
+          ]);
+          return {
+            stake: Math.abs(betAgg._sum?.amount?.toNumber() ?? 0),
+            win: winAgg._sum?.amount?.toNumber() ?? 0,
+          };
+        }),
+      );
+      const stakeSum = perVertical.reduce((a, b) => a + b.stake, 0);
+      const winSum = perVertical.reduce((a, b) => a + b.win, 0);
+
+      const upstreamCostKrw = Math.round((ggr * upstreamPct) / 100);
+      const platformChargeKrw = Math.round((ggr * platformPct) / 100);
+      const marginKrw = platformChargeKrw - upstreamCostKrw;
+
+      const reference = `testscenario:creditsim:${platformId}`;
+
+      // 기존 테스트 크레딧 항목 삭제 (재실행 허용)
+      // 동시에 이전 실행의 reserve 로그도 함께 정리하여 깨끗한 상태로 다시 시뮬레이션.
+      await this.prisma.hqVendorDeposit.deleteMany({
+        where: { note: reference },
+      });
+      const oldRequests = await this.prisma.platformCreditRequest.findMany({
+        where: { platformId, requesterNote: reference },
+        select: { id: true, approvedAmountKrw: true },
+      });
+      const oldCreditAmount = oldRequests.reduce(
+        (acc, r) => acc.plus(r.approvedAmountKrw ?? 0),
+        new Prisma.Decimal(0),
+      );
+      await this.prisma.platformCreditRequest.deleteMany({
+        where: { platformId, requesterNote: reference },
+      });
+      // 이전 회차가 "시뮬용 상한 확보" 로 부풀려 놓은 delta 를 읽어서 정확히 되돌린다.
+      // 이 delta 는 아래 [1b] 에서 `${reference}:sim_bump` eventKey 의 ADJUST 로그로 기록된다.
+      const priorBump = await this.prisma.platformReserveLog.findUnique({
+        where: { eventKey: `${reference}:sim_bump` },
+        select: {
+          baseAmount: true, // = initial 증분
+          changedAmount: true, // = balance 실제 증분
+        },
+      });
+      await this.prisma.platformReserveLog.deleteMany({
+        where: {
+          platformId,
+          eventKey: { startsWith: `${reference}:` },
+        },
+      });
+      // 재실행 클린업: 이전 회차가 덧붙인 정산용 creditRequest 증분 + 시뮬 headroom 증분을
+      // 모두 빼고, 잔액이 음수가 되지 않도록 0 하한 + balance<=initial 불변식을 유지.
+      const cur = await this.prisma.platform.findUnique({
+        where: { id: platformId },
+        select: { creditBalance: true, reserveInitialAmount: true },
+      });
+      if (cur) {
+        const zero = new Prisma.Decimal(0);
+        const priorInitialBump = priorBump?.baseAmount ?? zero;
+        const priorBalanceBump = priorBump?.changedAmount ?? zero;
+        const removeFromInitial = oldCreditAmount.plus(priorInitialBump);
+        const removeFromBalance = oldCreditAmount.plus(priorBalanceBump);
+        const rawInitial = cur.reserveInitialAmount.minus(removeFromInitial);
+        const rawBalance = cur.creditBalance.minus(removeFromBalance);
+        const nextInitial = rawInitial.lt(zero) ? zero : rawInitial;
+        let nextBalance = rawBalance.lt(zero) ? zero : rawBalance;
+        if (nextBalance.gt(nextInitial)) nextBalance = nextInitial;
+        if (
+          !nextInitial.eq(cur.reserveInitialAmount) ||
+          !nextBalance.eq(cur.creditBalance)
+        ) {
+          await this.prisma.platform.update({
+            where: { id: platformId },
+            data: {
+              creditBalance: nextBalance,
+              reserveInitialAmount: nextInitial,
+            },
+          });
+        }
+      }
+
+      // 본사 상위 원가 납입 시뮬
+      const superAdmin = await this.prisma.user.findFirst({
+        where: { role: UserRole.SUPER_ADMIN },
+        select: { id: true },
+      });
+      if (upstreamCostKrw > 0 && superAdmin) {
+        await this.prisma.hqVendorDeposit.create({
+          data: {
+            amountKrw: new Prisma.Decimal(upstreamCostKrw),
+            note: reference,
+            createdByUserId: superAdmin.id,
+          },
+        });
+      }
+
+      /**
+       * 전체 알(크레딧) flow 시뮬레이션 (v2 — 가상 복구 로직 통합):
+       * 1) platformChargeKrw 만큼 크레딧 요청 생성 + 승인 → creditBalance & reserveInitialAmount 증가
+       * 2) 유저 낙첨(stake) * rate 만큼 DEDUCT → 알 잔액 차감 + 로그
+       * 3) restoreEnabled=true 면 유저 승리(win) * rate 만큼 RESTORE → 가상 복구 + 로그
+       *
+       * 결과적으로 관리자 화면에는:
+       *   - 최초 충전 (reserveInitialAmount)
+       *   - 현재 잔액 (creditBalance)
+       *   - 오늘 차감/복구 합계 + 건수
+       *   - 변동 로그 목록
+       * 가 모두 노출된다.
+       */
+      const rate = platformPct > 0 ? platformPct / 100 : 0;
+      let deductResult: Awaited<ReturnType<ReserveBalanceService['deduct']>> | null = null;
+      let restoreResult: Awaited<ReturnType<ReserveBalanceService['restore']>> | null = null;
+
+      // ── 알 시뮬용 한도(reserveInitialAmount) 계산 ──────────────────────────
+      // platformChargeKrw(= GGR × rate) 는 "정산 청구 금액" 기준이라 stake × rate 보다 작을 수 있다.
+      // 그대로 상한으로 쓰면 DEDUCT 한 번에 0 까지 찍혀서 이후 RESTORE 도 0 → 0 으로 보이게 된다.
+      // 테스트 시나리오에서는 DEDUCT(stake × rate) 는 물론, RESTORE 여유까지 확보해야
+      // 관리자 UI 에 "원금 + 실제 적용 + 잔액 변화" 가 또렷이 나타난다.
+      //   후보 1: stake × rate       (= DEDUCT 최대)
+      //   후보 2: win × rate         (= RESTORE 최대)
+      //   후보 3: platformChargeKrw  (= 실제 정산 금액)
+      // 셋 중 최대값을 상한으로 잡는다. 정산 청구 금액(platformChargeKrw)을 초과하는 부분은
+      // "시뮬 headroom bump" 로 별도 ADJUST 로그에 기록 → 재실행 시 정확히 되돌림.
+      const dedSim = Math.round(stakeSum * rate);
+      const resSim = Math.round(winSum * rate);
+      const targetInitial = Math.max(dedSim, resSim, platformChargeKrw, 0);
+      const simBumpDelta = Math.max(0, targetInitial - platformChargeKrw);
+
+      if (platformChargeKrw > 0 || simBumpDelta > 0) {
+        await this.prisma.$transaction(async (tx) => {
+          // [1a] 알 구매 요청(실제 정산 금액 기준) — 기존 정산/마진 리포트 유지.
+          if (platformChargeKrw > 0) {
+            await tx.platformCreditRequest.create({
+              data: {
+                platformId,
+                requestedAmountKrw: new Prisma.Decimal(platformChargeKrw),
+                approvedAmountKrw: new Prisma.Decimal(platformChargeKrw),
+                requesterNote: reference,
+                status: 'APPROVED',
+                resolvedAt: new Date(),
+              },
+            });
+            await tx.platform.update({
+              where: { id: platformId },
+              data: {
+                creditBalance: {
+                  increment: new Prisma.Decimal(platformChargeKrw),
+                },
+                reserveInitialAmount: {
+                  increment: new Prisma.Decimal(platformChargeKrw),
+                },
+              },
+            });
+          }
+
+          // [1b] 시뮬용 headroom bump: initial 과 balance 를 동일 크기로 끌어올려
+          //      DEDUCT / RESTORE 가 자연스럽게 발생하도록 한다. delta 는 ADJUST 로그로 기록.
+          if (simBumpDelta > 0) {
+            const cur = await tx.platform.findUnique({
+              where: { id: platformId },
+              select: { creditBalance: true, reserveInitialAmount: true },
+            });
+            if (cur) {
+              const bumpDec = new Prisma.Decimal(simBumpDelta);
+              const nextInitial = cur.reserveInitialAmount.plus(bumpDec);
+              const nextBalance = cur.creditBalance.plus(bumpDec);
+              await tx.platform.update({
+                where: { id: platformId },
+                data: {
+                  reserveInitialAmount: nextInitial,
+                  creditBalance: nextBalance,
+                },
+              });
+              await tx.platformReserveLog.create({
+                data: {
+                  platformId,
+                  type: 'ADJUST',
+                  eventKey: `${reference}:sim_bump`,
+                  baseAmount: bumpDec, // = initial 증분
+                  rate: new Prisma.Decimal(0),
+                  computedAmount: bumpDec,
+                  changedAmount: bumpDec, // = balance 실제 증분
+                  balanceBefore: cur.creditBalance,
+                  balanceAfter: nextBalance,
+                  initialAmount: nextInitial,
+                  note: `test-scenario: 시뮬 상한 확보 +${simBumpDelta.toLocaleString()} (DEDUCT/RESTORE 흡수용)`,
+                },
+              });
+            }
+          }
+
+          // [1c] 정산 금액만 충전됐는데 balance < initial 인 상태라면
+          //      balance 를 initial 까지 끌어올려 "가득 찬 상태" 로 시작.
+          const after = await tx.platform.findUnique({
+            where: { id: platformId },
+            select: { creditBalance: true, reserveInitialAmount: true },
+          });
+          if (
+            after &&
+            after.creditBalance.lt(after.reserveInitialAmount)
+          ) {
+            await tx.platform.update({
+              where: { id: platformId },
+              data: { creditBalance: after.reserveInitialAmount },
+            });
+          }
+        });
+      }
+
+      // [2] DEDUCT / RESTORE 를 **베팅 한 건씩** 적용 — 실시간 처리와 동일한 1 entry = 1 log 원칙.
+      //     카지노 계열(`casino|slot|minigame`) LedgerEntry 를 개별 조회해서 각각 이벤트화한다.
+      //     - eventKey 는 entry.id 기반으로 고유 → 재실행 시 reference prefix 삭제 로직과 맞물려 깨끗이 재계산.
+      //     - 집계값(deductTotal / restoreTotal)은 관리자 화면 상단 카드용.
+      let deductTotal = new Prisma.Decimal(0);
+      let restoreTotal = new Prisma.Decimal(0);
+      let deductCount = 0;
+      let restoreCount = 0;
+
+      if (rate > 0) {
+        const betEntries = await this.prisma.ledgerEntry.findMany({
+          where: {
+            platformId,
+            type: LedgerEntryType.BET,
+            OR: casinoVerticals.map((v) => ({
+              metaJson: { path: ['vertical'], equals: v },
+            })),
+          },
+          select: {
+            id: true,
+            userId: true,
+            amount: true,
+            reference: true,
+            metaJson: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+        for (const e of betEntries) {
+          const base = e.amount.isNegative()
+            ? e.amount.negated()
+            : e.amount;
+          if (base.lte(0)) continue;
+          const r = await this.reserve.deduct(platformId, {
+            baseAmount: base,
+            rate,
+            relatedUserId: e.userId,
+            relatedBetId: e.reference ?? e.id,
+            eventKey: `${reference}:bet:${e.id}`,
+            note: `베팅 ${base.toString()}원 낙첨분 × ${(rate * 100).toFixed(2)}%`,
+          });
+          if (r?.changedAmount) {
+            deductTotal = deductTotal.plus(r.changedAmount);
+            if (!r.idempotent) deductCount += 1;
+          }
+          deductResult = r; // 최종 1건 유지 (UI 하위 호환)
+        }
+
+        const winEntries = await this.prisma.ledgerEntry.findMany({
+          where: {
+            platformId,
+            type: LedgerEntryType.WIN,
+            OR: casinoVerticals.map((v) => ({
+              metaJson: { path: ['vertical'], equals: v },
+            })),
+          },
+          select: {
+            id: true,
+            userId: true,
+            amount: true,
+            reference: true,
+            metaJson: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+        for (const e of winEntries) {
+          const base = e.amount.isNegative() ? e.amount.negated() : e.amount;
+          if (base.lte(0)) continue;
+          const r = await this.reserve.restore(platformId, {
+            baseAmount: base,
+            rate,
+            relatedUserId: e.userId,
+            relatedBetId: e.reference ?? e.id,
+            eventKey: `${reference}:win:${e.id}`,
+            note: `베팅 ${base.toString()}원 승리분 × ${(rate * 100).toFixed(2)}%`,
+          });
+          if (r?.changedAmount) {
+            restoreTotal = restoreTotal.plus(r.changedAmount);
+            if (!r.idempotent) restoreCount += 1;
+          }
+          restoreResult = r;
+        }
+      }
+
+      const reserveSummary = await this.reserve.getSummary(platformId);
+
       return {
-        step: 9,
-        name: 'AGENT_SETTLEMENT',
+        step: 10,
+        name: 'CREDIT_SIM',
         status: 'ok',
-        data: { payouts },
+        data: {
+          platform: platform.name,
+          ggr,
+          upstreamPct,
+          platformPct,
+          upstreamCostKrw,
+          platformChargeKrw,
+          marginKrw,
+          stake: stakeSum,
+          win: winSum,
+          reserve: {
+            restoreEnabled: reserveSummary.restoreEnabled,
+            initialAmount: reserveSummary.initialAmount,
+            currentAmount: reserveSummary.currentAmount,
+            todayDeduct: reserveSummary.todayDeductAmount,
+            todayRestore: reserveSummary.todayRestoreAmount,
+            todayNetChange: reserveSummary.todayNetChange,
+            // 마지막 1건 (하위 호환) + 베팅별 집계
+            deductApplied: deductResult?.changedAmount ?? '0.00',
+            restoreApplied: restoreResult?.changedAmount ?? '0.00',
+            deductTotal: deductTotal.toFixed(2),
+            restoreTotal: restoreTotal.toFixed(2),
+            deductCount,
+            restoreCount,
+          },
+          message:
+            `GGR ${ggr.toLocaleString()}원 · 베팅 ${deductCount}건 낙첨분 차감(합계 ${deductTotal.toFixed(0)}) / ` +
+            `${restoreCount}건 승리분 복구(합계 ${restoreTotal.toFixed(0)}) ` +
+            `(${reserveSummary.restoreEnabled ? '복구 ON' : '복구 OFF'}) / 현재 잔액 ${reserveSummary.currentAmount}`,
+        },
       };
     } catch (e) {
       return {
-        step: 9,
-        name: 'AGENT_SETTLEMENT',
+        step: 10,
+        name: 'CREDIT_SIM',
         status: 'error',
         error: String(e),
       };
@@ -1059,6 +1437,32 @@ export class TestScenarioService {
           effectiveFrom: new Date(),
         },
       });
+    } else {
+      // 재실행 시: 요율·부모 관계를 항상 최신 설정으로 업데이트
+      agent = await this.prisma.user.update({
+        where: { id: agent.id },
+        data: {
+          agentPlatformSharePct: data.agentPlatformSharePct,
+          agentSplitFromParentPct: data.agentSplitFromParentPct,
+          parentUserId: data.parentUserId,
+        },
+      });
+      await this.prisma.agentCommissionRevision.create({
+        data: {
+          userId: agent.id,
+          agentPlatformSharePct: data.agentPlatformSharePct ?? new Prisma.Decimal(0),
+          agentSplitFromParentPct: data.agentSplitFromParentPct ?? new Prisma.Decimal(0),
+          effectiveFrom: new Date(),
+        },
+      });
+      // 재실행 시: 이전 커미션 원장 및 지갑 잔액도 초기화 (유저와 동일하게)
+      await this.prisma.ledgerEntry.deleteMany({ where: { userId: agent.id } });
+      const existingWallet = await this.prisma.wallet.findUnique({ where: { userId: agent.id } });
+      if (existingWallet) {
+        await this.prisma.wallet.update({ where: { id: existingWallet.id }, data: { balance: new Prisma.Decimal(0), pointBalance: new Prisma.Decimal(0) } });
+      } else {
+        await this.prisma.wallet.create({ data: { userId: agent.id, platformId, balance: new Prisma.Decimal(0), pointBalance: new Prisma.Decimal(0) } });
+      }
     }
     return agent;
   }
@@ -1285,6 +1689,7 @@ export class TestScenarioService {
             const betAmt = Math.abs(Number(b.amount ?? 0));
             const winAmt = win ? Number(win.amount ?? 0) : 0;
             const isWin = winAmt > 0;
+            const meta = (b.metaJson as Record<string, unknown> | null) ?? {};
             return {
               id: b.id,
               type: b.type,
@@ -1295,6 +1700,10 @@ export class TestScenarioService {
               balanceAfter: Number(
                 win ? (win.balanceAfter ?? 0) : (b.balanceAfter ?? 0),
               ),
+              vertical: String(meta.vertical ?? '').toLowerCase() || null,
+              gameType: String(meta.gameType ?? '').trim() || null,
+              sport: meta.sport ? String(meta.sport) : null,
+              matchType: meta.matchType ? String(meta.matchType) : null,
               note: metaNote(b.metaJson as Record<string, unknown> | null),
               createdAt: iso(b.createdAt),
             };
@@ -1313,7 +1722,34 @@ export class TestScenarioService {
             note: metaNote(l.metaJson as Record<string, unknown> | null),
             createdAt: iso(l.createdAt),
           }));
-          return [...betRows, ...others].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          return [...betRows, ...others].sort(
+            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          );
+        })(),
+        gameSummary: (() => {
+          // 유저별 vertical × gameType 집계
+          const acc = new Map<string, { betStake: number; win: number }>();
+          const key = (v: string, g: string) => `${v}::${g}`;
+          for (const l of userLedger) {
+            const meta = (l.metaJson as Record<string, unknown> | null) ?? {};
+            const v = String(meta.vertical ?? '').toLowerCase() || 'unknown';
+            const g = String(meta.gameType ?? '').trim() || '';
+            const k = key(v, g);
+            if (!acc.has(k)) acc.set(k, { betStake: 0, win: 0 });
+            const a = acc.get(k)!;
+            if (l.type === LedgerEntryType.BET) a.betStake += Math.abs(Number(l.amount));
+            if (l.type === LedgerEntryType.WIN) a.win += Number(l.amount);
+          }
+          return [...acc.entries()].map(([k, a]) => {
+            const [vertical, gameType] = k.split('::');
+            return {
+              vertical,
+              gameType: gameType || null,
+              betStake: Number(a.betStake.toFixed(2)),
+              win: Number(a.win.toFixed(2)),
+              ggr: Number((a.betStake - a.win).toFixed(2)),
+            };
+          }).sort((a, b) => b.betStake - a.betStake);
         })(),
         walletRequests: userRequests.map((r) => ({
           id: r.id,
@@ -1372,6 +1808,110 @@ export class TestScenarioService {
         pointEntries: pointLedger.length,
       },
     };
+  }
+
+  /**
+   * 배팅 GGR 즉시 에이전트 커미션 처리 — 전체 체인 지급 모델
+   *
+   * roundGgr = stake - win
+   *   양수(낙첨): 각 에이전트에 순 요율(net)만큼 즉시 적립
+   *   음수(당첨): 각 에이전트에서 순 요율만큼 차감 (잔액 0 하한)
+   *
+   * 플랫폼 총 지출 = 최상위 요율 × roundGgr 만큼만.
+   */
+  private async creditAgentOnBetGgr(
+    tx: Prisma.TransactionClient,
+    platformId: string,
+    memberId: string,
+    roundGgr: Prisma.Decimal,
+    betReference: string,
+  ): Promise<void> {
+    try {
+      // 낙첨(유저 패배, GGR > 0)일 때만 즉시 지급
+      // 적중(유저 승리, GGR < 0)은 에이전트에서 차감하지 않음
+      if (roundGgr.lte(0)) return;
+
+      // 1. 유저부터 위로 MASTER_AGENT 체인 수집 [직속부모, ..., 최상위]
+      const chain: string[] = [];
+      const memberRow = await tx.user.findUnique({ where: { id: memberId }, select: { parentUserId: true } });
+      if (!memberRow?.parentUserId) return;
+      let cur: string | null = memberRow.parentUserId;
+      const seen = new Set<string>();
+      while (cur) {
+        if (seen.has(cur)) break;
+        seen.add(cur);
+        const row: { role: UserRole; parentUserId: string | null } | null =
+          await tx.user.findFirst({ where: { id: cur, platformId }, select: { role: true, parentUserId: true } });
+        if (!row) break;
+        if (row.role === UserRole.MASTER_AGENT) chain.push(cur);
+        cur = row.parentUserId;
+      }
+      if (chain.length === 0) return;
+
+      // 2. 플랫폼 전체 MASTER_AGENT 실효 요율 맵
+      const agents = await tx.user.findMany({
+        where: { platformId, role: UserRole.MASTER_AGENT },
+        select: { id: true, parentUserId: true, role: true, agentPlatformSharePct: true, agentSplitFromParentPct: true },
+      });
+      const roleById = new Map<string, UserRole>(agents.map((a) => [a.id, a.role]));
+      const parentById = new Map<string, string | null>(agents.map((a) => [a.id, a.parentUserId]));
+      const nodes = agents.map((a) => ({
+        id: a.id,
+        parentUserId: a.parentUserId,
+        agentPlatformSharePct: a.agentPlatformSharePct != null ? Number(a.agentPlatformSharePct) : null,
+        agentSplitFromParentPct: a.agentSplitFromParentPct != null ? Number(a.agentSplitFromParentPct) : null,
+      }));
+      const effMap = computeEffectiveAgentShares(nodes, roleById, (uid) => parentById.get(uid) ?? null);
+
+      // 3. 체인 순서대로 순 요율만큼 적립/차감
+      for (let i = 0; i < chain.length; i++) {
+        const agentId = chain[i];
+        const myEff = effMap.get(agentId) ?? 0;
+        const childEff = i > 0 ? (effMap.get(chain[i - 1]) ?? 0) : 0;
+        const netPct = myEff - childEff;
+        if (netPct <= 0) continue;
+
+        const commission = roundGgr.times(new Prisma.Decimal(netPct).div(100));
+        if (commission.isZero()) continue;
+
+        const agentWallet = await tx.wallet.findUnique({ where: { userId: agentId } });
+        if (!agentWallet) continue;
+
+        let agentDelta: Prisma.Decimal;
+        if (commission.gt(0)) {
+          agentDelta = commission;
+        } else {
+          // 하우스 손실(유저 당첨)시 차감, 잔액 0 하한
+          agentDelta = agentWallet.balance.plus(commission).gte(0)
+            ? commission
+            : agentWallet.balance.negated();
+        }
+
+        const newBal = agentWallet.balance.plus(agentDelta);
+        await tx.wallet.update({ where: { id: agentWallet.id }, data: { balance: newBal } });
+        await tx.ledgerEntry.create({
+          data: {
+            userId: agentId,
+            platformId,
+            type: LedgerEntryType.ADJUSTMENT,
+            amount: agentDelta,
+            balanceAfter: newBal,
+            reference: `agent_bet_commission:${betReference}:lv${i}`,
+            metaJson: {
+              agentBetCommission: true,
+              memberId,
+              roundGgr: roundGgr.toFixed(2),
+              effectiveRate: myEff,
+              netRate: netPct,
+              chainLevel: i,
+              commission: agentDelta.toFixed(2),
+            },
+          },
+        });
+      }
+    } catch {
+      // 커미션 실패는 본 거래를 롤백하지 않음 (silent)
+    }
   }
 
   private makeAdminActor(platformId: string) {

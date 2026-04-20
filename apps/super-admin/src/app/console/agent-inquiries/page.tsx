@@ -1,8 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type InquiryStatus = "OPEN" | "ANSWERED" | "CLOSED";
@@ -52,7 +51,6 @@ function statusLabel(s: InquiryStatus) {
 }
 
 export default function ConsoleAgentInquiriesPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -87,17 +85,13 @@ export default function ConsoleAgentInquiriesPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       setSummary(null);
       return;
     }
     void load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   const openRows = useMemo(
     () => (rows ?? []).filter((r) => r.status === "OPEN"),

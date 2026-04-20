@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f2f4f6;
+  --foreground: #0a0a0a;
+  --toss-blue: #3182f6;
+  --toss-blue-light: #dbeafe;
+  --toss-border: #d1d5db;
+  --toss-card: #ffffff;
+  --toss-sidebar: #ffffff;
+  --toss-text-primary: #0a0a0a;
+  --toss-text-secondary: #374151;
+}
+
+html {
+  font-size: 15px;
 }
 
 @theme inline {
@@ -12,15 +23,162 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* ── Toss light theme overrides for legacy dark classes ── */
+/* These override the dark zinc classes used in page content */
+
+.t-card {
+  background: var(--toss-card);
+  border: 1px solid var(--toss-border);
+  border-radius: 0.75rem;
+}
+
+.t-input {
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  color: #0a0a0a;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.t-input:focus {
+  border-color: var(--toss-blue);
+  box-shadow: 0 0 0 3px rgba(49, 130, 246, 0.1);
+}
+
+.t-btn-primary {
+  background: var(--toss-blue);
+  color: white;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.t-btn-primary:hover { background: #2563eb; }
+.t-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.t-btn-secondary {
+  background: white;
+  color: #111827;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.t-btn-secondary:hover { background: #f9fafb; }
+
+/* ═══════════════════════════════════════════
+   DARK MODE OVERRIDES
+   html.dark 클래스 기반 — ThemeProvider가 주입
+═══════════════════════════════════════════ */
+html.dark {
+  color-scheme: dark;
+}
+.dark body {
+  background: #0f1117;
+  color: #e2e8f0;
+}
+
+/* — Backgrounds — */
+.dark .bg-white          { background-color: #1a1d27 !important; }
+.dark .bg-gray-50        { background-color: #0f1117 !important; }
+.dark .bg-gray-100       { background-color: #1e2130 !important; }
+.dark .bg-gray-200       { background-color: #252836 !important; }
+.dark .bg-\[#f2f4f6\]   { background-color: #0f1117 !important; }
+
+/* — Borders — */
+.dark .border-gray-100   { border-color: #252836 !important; }
+.dark .border-gray-200   { border-color: #2a2d3a !important; }
+.dark .border-gray-300   { border-color: #3a3d4a !important; }
+
+/* — Text — */
+.dark .text-black        { color: #f1f5f9 !important; }
+.dark .text-gray-900     { color: #f1f5f9 !important; }
+.dark .text-gray-800     { color: #e2e8f0 !important; }
+.dark .text-gray-700     { color: #cbd5e1 !important; }
+.dark .text-gray-600     { color: #94a3b8 !important; }
+.dark .text-gray-500     { color: #64748b !important; }
+.dark .text-gray-400     { color: #475569 !important; }
+
+/* — Hover text — */
+.dark .hover\:text-black:hover     { color: #f1f5f9 !important; }
+.dark .hover\:text-gray-800:hover  { color: #e2e8f0 !important; }
+.dark .hover\:text-gray-700:hover  { color: #cbd5e1 !important; }
+
+/* — Hover backgrounds — */
+.dark .hover\:bg-white:hover       { background-color: #252836 !important; }
+.dark .hover\:bg-gray-50:hover     { background-color: #1e2130 !important; }
+.dark .hover\:bg-gray-100:hover    { background-color: #252836 !important; }
+
+/* — Inputs — */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #252836 !important;
+  border-color: #3a3d4a !important;
+  color: #f1f5f9 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: #475569 !important; }
+
+/* — Tables — */
+.dark thead,
+.dark .bg-white thead  { background-color: #1e2130 !important; }
+.dark tbody tr:hover   { background-color: #1e2130 !important; }
+
+/* — Cards / Panels (details, summary) — */
+.dark details  { background-color: #1a1d27 !important; }
+.dark summary  { background-color: #1a1d27 !important; color: #e2e8f0 !important; }
+.dark summary:hover { background-color: #1e2130 !important; }
+
+/* — Colored state cards (keep tinted but darken bg) — */
+.dark .bg-emerald-50   { background-color: rgb(6 78 59 / 0.3) !important; }
+.dark .bg-red-50       { background-color: rgb(127 29 29 / 0.3) !important; }
+.dark .bg-amber-50     { background-color: rgb(120 53 15 / 0.3) !important; }
+.dark .bg-blue-50      { background-color: rgb(30 58 138 / 0.2) !important; }
+.dark .bg-violet-50    { background-color: rgb(76 29 149 / 0.2) !important; }
+.dark .bg-\[#3182f6\]\/5  { background-color: rgb(49 130 246 / 0.12) !important; }
+.dark .bg-\[#3182f6\]\/10 { background-color: rgb(49 130 246 / 0.18) !important; }
+
+/* — Colored text (keep) — */
+.dark .text-emerald-700 { color: #34d399 !important; }
+.dark .text-emerald-600 { color: #34d399 !important; }
+.dark .text-red-700     { color: #f87171 !important; }
+.dark .text-red-600     { color: #f87171 !important; }
+.dark .text-red-400     { color: #f87171 !important; }
+.dark .text-amber-700   { color: #fbbf24 !important; }
+.dark .text-amber-800   { color: #fbbf24 !important; }
+.dark .text-violet-700  { color: #a78bfa !important; }
+
+/* — Borders colored — */
+.dark .border-emerald-200 { border-color: rgb(6 78 59 / 0.5) !important; }
+.dark .border-red-200     { border-color: rgb(127 29 29 / 0.5) !important; }
+.dark .border-amber-200   { border-color: rgb(120 53 15 / 0.5) !important; }
+.dark .border-violet-200  { border-color: rgb(76 29 149 / 0.4) !important; }
+
+/* — Shadow — */
+.dark .shadow-sm  { box-shadow: 0 1px 2px 0 rgba(0,0,0,0.5) !important; }
+.dark .shadow-xl  { box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important; }
+
+/* — t-* utility classes dark override — */
+.dark .t-card      { background: #1a1d27; border-color: #2a2d3a; }
+.dark .t-input     { background: #252836; border-color: #3a3d4a; color: #f1f5f9; }
+.dark .t-btn-secondary { background: #1e2130; color: #e2e8f0; border-color: #3a3d4a; }
+.dark .t-btn-secondary:hover { background: #252836; }

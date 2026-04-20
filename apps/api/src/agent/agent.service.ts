@@ -61,7 +61,7 @@ function fmtAgg(a: GameAgg): {
 
 type SqlGameRow = {
   vertical: string;
-  sub_vertical: string;
+  game_type: string; // metaJson.gameType (바카라|블랙잭|슬롯명|농구 등) or legacy subVertical
   bet_sum: Prisma.Decimal;
   bet_stake_abs: Prisma.Decimal;
   win_sum: Prisma.Decimal;
@@ -82,34 +82,34 @@ const KNOWN_VERTICALS = [
   'UNKNOWN',
 ] as const;
 
-function buildGameSalesFromRows(rows: SqlGameRow[]): {
-  LIVE_CASINO: {
-    betSum: string;
-    betStakeAbs: string;
-    winSum: string;
-    byKind: Record<string, { betSum: string; betStakeAbs: string; winSum: string }>;
-  };
-  SPORTS: { betSum: string; betStakeAbs: string; winSum: string };
-  MINIGAME: { betSum: string; betStakeAbs: string; winSum: string };
-  SLOT: { betSum: string; betStakeAbs: string; winSum: string };
-  UNKNOWN: { betSum: string; betStakeAbs: string; winSum: string };
-} {
+type GameKindAgg = { betSum: string; betStakeAbs: string; winSum: string };
+type VerticalResult = {
+  betSum: string;
+  betStakeAbs: string;
+  winSum: string;
+  byKind: Record<string, GameKindAgg>;
+};
+
+function buildGameSalesFromRows(rows: SqlGameRow[]): Record<string, VerticalResult> {
   const nested = new Map<string, Map<string, GameAgg>>();
   for (const v of KNOWN_VERTICALS) {
     nested.set(v, new Map());
   }
   for (const r of rows) {
     const vRaw0 = (r.vertical || 'UNKNOWN').toUpperCase().trim();
-    /** 원장은 소문자 casino·sports… 총판 리포트는 LIVE_CASINO 키 사용 */
-    const vRaw =
-      vRaw0 === 'CASINO' ? 'LIVE_CASINO' : vRaw0 === 'MINIGAME' ? 'MINIGAME' : vRaw0;
-    const v = KNOWN_VERTICALS.includes(vRaw as (typeof KNOWN_VERTICALS)[number])
-      ? vRaw
+    /** 원장 소문자 casino → LIVE_CASINO, slot → SLOT, sports → SPORTS, minigame → MINIGAME */
+    let vNorm = vRaw0;
+    if (vNorm === 'CASINO') vNorm = 'LIVE_CASINO';
+    else if (vNorm === 'SLOT') vNorm = 'SLOT';
+    else if (vNorm === 'SPORTS') vNorm = 'SPORTS';
+    else if (vNorm === 'MINIGAME') vNorm = 'MINIGAME';
+    const v = KNOWN_VERTICALS.includes(vNorm as (typeof KNOWN_VERTICALS)[number])
+      ? vNorm
       : 'UNKNOWN';
-    const sub = (r.sub_vertical || '').toUpperCase().trim();
+    const gameType = (r.game_type || '').trim(); // 바카라|블랙잭|sweet_bonanza|농구|파워볼 등
     const inner = nested.get(v)!;
-    if (!inner.has(sub)) inner.set(sub, emptyAgg());
-    const a = inner.get(sub)!;
+    if (!inner.has(gameType)) inner.set(gameType, emptyAgg());
+    const a = inner.get(gameType)!;
     a.betSum += Number(r.bet_sum);
     a.betStakeAbs += Number(r.bet_stake_abs);
     a.winSum += Number(r.win_sum);
@@ -117,17 +117,12 @@ function buildGameSalesFromRows(rows: SqlGameRow[]): {
   const roll = (v: string) => {
     const inner = nested.get(v)!;
     const total = emptyAgg();
-    const byKind: Record<
-      string,
-      { betSum: string; betStakeAbs: string; winSum: string }
-    > = {};
-    for (const [sub, agg] of inner) {
+    const byKind: Record<string, GameKindAgg> = {};
+    for (const [gameType, agg] of inner) {
       total.betSum += agg.betSum;
       total.betStakeAbs += agg.betStakeAbs;
       total.winSum += agg.winSum;
-      if (sub !== '') {
-        byKind[sub] = fmtAgg(agg);
-      }
+      if (gameType !== '') byKind[gameType] = fmtAgg(agg);
     }
     return { total, byKind };
   };
@@ -137,25 +132,25 @@ function buildGameSalesFromRows(rows: SqlGameRow[]): {
   const slot = roll('SLOT');
   const unk = roll('UNKNOWN');
   return {
-    LIVE_CASINO: {
-      ...fmtAgg(live.total),
-      byKind: live.byKind,
-    },
-    SPORTS: fmtAgg(sports.total),
-    MINIGAME: fmtAgg(mini.total),
-    SLOT: fmtAgg(slot.total),
-    UNKNOWN: fmtAgg(unk.total),
+    LIVE_CASINO: { ...fmtAgg(live.total), byKind: live.byKind },
+    SPORTS:      { ...fmtAgg(sports.total), byKind: sports.byKind },
+    MINIGAME:    { ...fmtAgg(mini.total), byKind: mini.byKind },
+    SLOT:        { ...fmtAgg(slot.total), byKind: slot.byKind },
+    UNKNOWN:     { ...fmtAgg(unk.total), byKind: unk.byKind },
   };
 }
 
-function emptyGameSales() {
-  const z = { betSum: '0.00', betStakeAbs: '0.00', winSum: '0.00' };
+function emptyGameSales(): Record<string, VerticalResult> {
+  const z = (): VerticalResult => ({
+    betSum: '0.00', betStakeAbs: '0.00', winSum: '0.00',
+    byKind: {},
+  });
   return {
-    LIVE_CASINO: { ...z, byKind: {} as Record<string, typeof z> },
-    SPORTS: { ...z },
-    MINIGAME: { ...z },
-    SLOT: { ...z },
-    UNKNOWN: { ...z },
+    LIVE_CASINO: z(),
+    SPORTS:      z(),
+    MINIGAME:    z(),
+    SLOT:        z(),
+    UNKNOWN:     z(),
   };
 }
 
@@ -202,6 +197,27 @@ export class AgentService {
       }
     }
     return userIds;
+  }
+
+  /** 전체 트리를 BFS로 탐색해 모든 하위 MASTER_AGENT id를 반환 (본인 제외) */
+  private async collectDownlineAgentIds(
+    platformId: string,
+    agentId: string,
+  ): Promise<string[]> {
+    const agentIds: string[] = [];
+    const queue: string[] = [agentId];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const children = await this.prisma.user.findMany({
+        where: { platformId, parentUserId: currentId, role: UserRole.MASTER_AGENT },
+        select: { id: true },
+      });
+      for (const child of children) {
+        agentIds.push(child.id);
+        queue.push(child.id);
+      }
+    }
+    return agentIds;
   }
 
   private parseRange(fromStr?: string, toStr?: string): { start: Date; end: Date } {
@@ -367,6 +383,13 @@ export class AgentService {
     const platformId = actor.platformId!;
     const effPct = await this.effectiveShareForAgentUser(platformId, actor.sub);
     if (ids.length === 0) {
+      const subAgentIdsEarly = await this.collectDownlineAgentIds(platformId, actor.sub);
+      const [agentWalletEarly, subAgentWalletAggEarly] = await Promise.all([
+        this.prisma.wallet.findUnique({ where: { userId: actor.sub }, select: { balance: true } }),
+        subAgentIdsEarly.length > 0
+          ? this.prisma.wallet.aggregate({ where: { userId: { in: subAgentIdsEarly } }, _sum: { balance: true } })
+          : Promise.resolve({ _sum: { balance: null } }),
+      ]);
       return {
         from: start.toISOString(),
         to: end.toISOString(),
@@ -378,10 +401,11 @@ export class AgentService {
         ledgerWinSum: '0.00',
         estGgr: '0.00',
         effectiveAgentSharePct: Math.round(effPct * 1e4) / 1e4,
-        myEstimatedSettlement: '0.00',
+        myEstimatedSettlement: Number(agentWalletEarly?.balance ?? 0).toFixed(2),
+        subAgentSettlementTotal: Number(subAgentWalletAggEarly._sum.balance ?? 0).toFixed(2),
         gameSales: emptyGameSales(),
         gameSalesMeta:
-          '원장 BET/WIN의 metaJson.vertical (LIVE_CASINO|SPORTS|MINIGAME|SLOT) · metaJson.subVertical(라이브 종류 등)',
+          '원장 BET/WIN의 metaJson.vertical (casino|slot|sports|minigame) + metaJson.gameType (바카라|블랙잭|sweet_bonanza|농구 등) 기준 집계',
         members: [] as {
           userId: string;
           loginId: string;
@@ -460,7 +484,11 @@ export class AgentService {
       this.prisma.$queryRaw<SqlGameRow[]>`
         SELECT
           UPPER(TRIM(COALESCE("metaJson"->>'vertical', 'UNKNOWN'))) AS vertical,
-          UPPER(TRIM(COALESCE("metaJson"->>'subVertical', ''))) AS sub_vertical,
+          TRIM(COALESCE(
+            NULLIF("metaJson"->>'gameType', ''),
+            NULLIF("metaJson"->>'subVertical', ''),
+            ''
+          )) AS game_type,
           SUM(CASE WHEN "type"::text = 'BET' THEN "amount" ELSE 0 END) AS bet_sum,
           SUM(CASE WHEN "type"::text = 'BET' THEN ABS("amount") ELSE 0 END) AS bet_stake_abs,
           SUM(CASE WHEN "type"::text = 'WIN' THEN "amount" ELSE 0 END) AS win_sum
@@ -605,7 +633,23 @@ export class AgentService {
     const totalWin = Number(sumDec(winAgg._sum.amount));
     const ggr = stakeAbs - totalWin;
     const cashDrop = dep - wit;
-    const mySettlement = (cashDrop * effPct) / 100;
+
+    // 정산금 = 지갑 잔액 (실시간으로 쌓인 누적 커미션)
+    const subAgentIds = await this.collectDownlineAgentIds(platformId, actor.sub);
+    const [agentWallet, subAgentWalletAgg] = await Promise.all([
+      this.prisma.wallet.findUnique({
+        where: { userId: actor.sub },
+        select: { balance: true },
+      }),
+      subAgentIds.length > 0
+        ? this.prisma.wallet.aggregate({
+            where: { userId: { in: subAgentIds } },
+            _sum: { balance: true },
+          })
+        : Promise.resolve({ _sum: { balance: null } }),
+    ]);
+    const mySettlement = Number(agentWallet?.balance ?? 0);
+    const subAgentSettlement = Number(subAgentWalletAgg._sum.balance ?? 0);
 
     return {
       from: start.toISOString(),
@@ -619,9 +663,10 @@ export class AgentService {
       estGgr: ggr.toFixed(2),
       effectiveAgentSharePct: Math.round(effPct * 1e4) / 1e4,
       myEstimatedSettlement: mySettlement.toFixed(2),
+      subAgentSettlementTotal: subAgentSettlement.toFixed(2),
       gameSales,
       gameSalesMeta:
-        '원장 BET/WIN의 metaJson.vertical (LIVE_CASINO|SPORTS|MINIGAME|SLOT) · metaJson.subVertical(라이브 종류 등)',
+        '원장 BET/WIN의 metaJson.vertical (casino|slot|sports|minigame) + metaJson.gameType (바카라|블랙잭|sweet_bonanza|농구 등) 기준 집계',
       members,
     };
   }
@@ -717,18 +762,27 @@ export class AgentService {
       take: limit,
     });
     return {
-      items: rows.map((r) => ({
-        id: r.id,
-        type: r.type,
-        amount: r.amount.toFixed(2),
-        balanceAfter: r.balanceAfter.toFixed(2),
-        reference: r.reference,
-        createdAt: r.createdAt,
-        userId: r.userId,
-        userLoginId: r.user.loginId,
-        userEmail: r.user.email,
-        userDisplayName: r.user.displayName,
-      })),
+      items: rows.map((r) => {
+        const meta = (r.metaJson ?? {}) as Record<string, unknown>;
+        const vertical = typeof meta.vertical === 'string' && meta.vertical ? meta.vertical : null;
+        const gameType = typeof meta.gameType === 'string' && meta.gameType ? meta.gameType
+          : typeof meta.subVertical === 'string' && meta.subVertical ? meta.subVertical
+          : null;
+        return {
+          id: r.id,
+          type: r.type,
+          amount: r.amount.toFixed(2),
+          balanceAfter: r.balanceAfter.toFixed(2),
+          reference: r.reference,
+          createdAt: r.createdAt,
+          userId: r.userId,
+          userLoginId: r.user.loginId,
+          userEmail: r.user.email,
+          userDisplayName: r.user.displayName,
+          vertical,
+          gameType,
+        };
+      }),
     };
   }
 
@@ -1087,6 +1141,54 @@ export class AgentService {
     }));
   }
 
+  /** 직속 하위 총판의 직속 유저 목록 조회 */
+  async subAgentMembers(actor: JwtPayload, agentId: string) {
+    this.assertMaster(actor);
+    const platformId = actor.platformId!;
+    // 반드시 직속 하위 총판이어야 한다
+    const subAgent = await this.prisma.user.findFirst({
+      where: {
+        id: agentId,
+        platformId,
+        parentUserId: actor.sub,
+        role: UserRole.MASTER_AGENT,
+      },
+      select: { id: true, loginId: true, displayName: true },
+    });
+    if (!subAgent) {
+      throw new ForbiddenException('직속 하위 총판만 조회할 수 있습니다');
+    }
+    const rows = await this.prisma.user.findMany({
+      where: { platformId, parentUserId: agentId, role: UserRole.USER },
+      select: {
+        id: true,
+        loginId: true,
+        displayName: true,
+        createdAt: true,
+        registrationStatus: true,
+        rollingEnabled: true,
+        uplinePrivateMemo: true,
+        wallet: { select: { balance: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      agentId: subAgent.id,
+      agentLoginId: subAgent.loginId,
+      agentDisplayName: subAgent.displayName,
+      items: rows.map((r) => ({
+        id: r.id,
+        loginId: r.loginId,
+        displayName: r.displayName,
+        createdAt: r.createdAt,
+        registrationStatus: r.registrationStatus,
+        rollingEnabled: r.rollingEnabled,
+        uplinePrivateMemo: r.uplinePrivateMemo ?? null,
+        balance: r.wallet?.balance?.toFixed(2) ?? '0.00',
+      })),
+    };
+  }
+
   async downlineOne(actor: JwtPayload, userId: string) {
     await this.assertDownline(actor, userId);
     const r = await this.prisma.user.findUnique({
@@ -1192,6 +1294,94 @@ export class AgentService {
     return {
       hint: '정산 시각 T에는 effectiveFrom ≤ T 인 가장 최근 행의 %가 적용됩니다.',
       items,
+    };
+  }
+
+  /**
+   * 에이전트 자신이 지급받은 정산 내역
+   * - LedgerEntry 중 type이 WIN 또는 ADJUSTMENT이고
+   *   reference가 settlement 관련이거나 amount > 0인 항목
+   * - 즉 본인 계정의 수입 원장 전체 (배팅/당첨 제외)
+   */
+  async mySettlements(
+    actor: JwtPayload,
+    fromStr?: string,
+    toStr?: string,
+    limitRaw?: string,
+  ) {
+    this.assertMaster(actor);
+    const limit = Math.min(
+      500,
+      Math.max(1, Number.parseInt(limitRaw ?? '100', 10) || 100),
+    );
+    const dateFilter = (() => {
+      if (!fromStr && !toStr) return undefined;
+      const { start, end } = this.parseRange(fromStr, toStr);
+      return { gte: start, lte: end };
+    })();
+
+    // 커미션 원장만 필터 — agent_commission:deposit/withdrawal, agent_bet_commission
+    const commissionWhere: import('@prisma/client').Prisma.LedgerEntryWhereInput = {
+      userId: actor.sub,
+      platformId: actor.platformId!,
+      type: 'ADJUSTMENT' as any,
+      OR: [
+        { reference: { startsWith: 'agent_commission:' } },
+        { reference: { startsWith: 'agent_bet_commission:' } },
+        { reference: { contains: ':settlement:' } },
+        { reference: { contains: 'ggr_settlement' } },
+      ],
+      ...(dateFilter ? { createdAt: dateFilter } : {}),
+    };
+
+    const rows = await this.prisma.ledgerEntry.findMany({
+      where: commissionWhere,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        balanceAfter: true,
+        reference: true,
+        createdAt: true,
+      },
+    });
+
+    // 집계: 총 수령액 (양수만 합산 — 출금 차감 제외)
+    const totalReceived = rows.reduce(
+      (s, r) => s + Math.max(0, Number(r.amount)),
+      0,
+    );
+
+    const platformId = actor.platformId!;
+    const subAgentIds = await this.collectDownlineAgentIds(platformId, actor.sub);
+    const [agentWallet, subAgentWalletAgg, effRaw] = await Promise.all([
+      this.prisma.wallet.findUnique({ where: { userId: actor.sub }, select: { balance: true } }),
+      subAgentIds.length > 0
+        ? this.prisma.wallet.aggregate({ where: { userId: { in: subAgentIds } }, _sum: { balance: true } })
+        : Promise.resolve({ _sum: { balance: null } }),
+      this.effectiveShareForAgentUser(platformId, actor.sub),
+    ]);
+
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        amount: Number(r.amount).toFixed(2),
+        balanceAfter: Number(r.balanceAfter).toFixed(2),
+        reference: r.reference,
+        createdAt: r.createdAt,
+        isSettlement: !!(
+          r.reference?.includes('settlement') ||
+          r.reference?.includes('commission') ||
+          r.reference?.includes('agent_commission')
+        ),
+      })),
+      totalReceived: totalReceived.toFixed(2),
+      myBalance: Number(agentWallet?.balance ?? 0).toFixed(2),
+      subAgentSettlementTotal: Number(subAgentWalletAgg._sum.balance ?? 0).toFixed(2),
+      effectiveAgentSharePct: Math.round(effRaw * 1e4) / 1e4,
     };
   }
 }

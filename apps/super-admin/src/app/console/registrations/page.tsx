@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 import { registrationStatusLabelKo } from "@/lib/labels";
 
@@ -68,7 +67,6 @@ function signupModeLabel(mode: string | null | undefined) {
 }
 
 export default function ConsoleRegistrationsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Pending[] | null>(null);
   const [history, setHistory] = useState<HistoryRow[] | null>(null);
@@ -98,17 +96,13 @@ export default function ConsoleRegistrationsPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       setHistory(null);
       return;
     }
     void load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   const filterTabs = useMemo(() => {
     if (!rows?.length) {

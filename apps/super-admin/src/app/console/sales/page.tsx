@@ -176,7 +176,7 @@ type SolutionBillingRunResult = {
 
 // ─── 유틸 ─────────────────────────────────────────────────
 function krw(v: string | number | null | undefined) {
-  const n = Number(v ?? 0);
+  const n = Math.round(Number(v ?? 0));
   return Number.isFinite(n) ? n.toLocaleString("ko-KR") : "0";
 }
 function dt(s: string) {
@@ -190,7 +190,7 @@ function vertLabel(v: string) {
 }
 function ggrColor(v: string | number) {
   const n = Number(v);
-  return n > 0 ? "text-emerald-400" : n < 0 ? "text-red-400" : "text-zinc-400";
+  return n > 0 ? "text-[#3182f6]" : n < 0 ? "text-red-400" : "text-gray-500";
 }
 function pointText(v: string | number | null | undefined) {
   const n = Number(v ?? 0);
@@ -330,8 +330,8 @@ export default function SalesPage() {
     <div className="space-y-5 px-1">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-zinc-100">전체 매출 / 정산</h1>
-          <p className="mt-1 text-xs text-zinc-500">
+          <h1 className="text-xl font-bold text-gray-900">전체 매출 / 정산</h1>
+          <p className="mt-1 text-xs text-gray-500">
             선택한 솔루션의 현금 흐름, 총판 정산, 상위 알 원가, 플랫폼 청구액과
             본사 마진을 함께 봅니다. 본사 총괄 대시보드의 drill-down 화면으로
             생각하면 됩니다.
@@ -349,22 +349,22 @@ export default function SalesPage() {
               onClick={() => { setFrom(p.from); setTo(p.to); }}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                 from === p.from && to === p.to
-                  ? "bg-amber-600/20 text-amber-300"
-                  : "bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                  ? "bg-amber-600/20 text-[#3182f6]"
+                  : "bg-gray-100 text-gray-500 hover:text-gray-800"
               }`}
             >
               {p.label}
             </button>
           ))}
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300" />
-          <span className="text-zinc-600 text-xs">~</span>
+            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700" />
+          <span className="text-gray-400 text-xs">~</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300" />
+            className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700" />
           <button
             onClick={load}
             disabled={loading}
-            className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+            className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-[#3182f6] disabled:opacity-50"
           >
             {loading ? "조회중..." : "조회"}
           </button>
@@ -375,19 +375,19 @@ export default function SalesPage() {
         <div className="rounded-xl border border-red-900/50 bg-red-950/40 px-4 py-3 text-sm text-red-200">{err}</div>
       )}
       {msg && (
-        <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-200">{msg}</div>
+        <div className="rounded-xl border border-[#3182f6]/20 bg-[#3182f6]/5 px-4 py-3 text-sm text-[#3182f6]">{msg}</div>
       )}
 
       {/* 이너 탭 */}
-      <div className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900/40 p-1 w-fit">
+      <div className="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 w-fit">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
               tab === t.key
-                ? "bg-amber-600/20 text-amber-300"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "bg-amber-600/20 text-[#3182f6]"
+                : "text-gray-500 hover:text-gray-700"
             }`}
           >
             {t.label}
@@ -433,100 +433,100 @@ export default function SalesPage() {
         <div className="space-y-5">
           {/* 핵심 KPI 카드 - 현금 기준 */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className={`rounded-xl border p-4 ${houseEdge >= 0 ? "border-emerald-800/50 bg-emerald-950/20" : "border-red-800/50 bg-red-950/20"}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">💸 총 낙첨금</p>
-              <p className={`mt-2 text-2xl font-bold font-mono ${houseEdge >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            <div className={`rounded-xl border p-4 ${houseEdge >= 0 ? "border-emerald-800/50 bg-[#3182f6]/5" : "border-red-800/50 bg-red-950/20"}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">💸 총 낙첨금</p>
+              <p className={`mt-2 text-2xl font-bold font-mono ${houseEdge >= 0 ? "text-[#3182f6]" : "text-red-400"}`}>
                 {houseEdge >= 0 ? "+" : ""}{krw(houseEdge)}원
               </p>
-              <p className="mt-1 text-xs text-zinc-600">회원별 (충전 − 환전) 합계</p>
+              <p className="mt-1 text-xs text-gray-400">회원별 (충전 − 환전) 합계</p>
             </div>
-            <div className={`rounded-xl border p-4 ${userProfit >= 0 ? "border-rose-800/50 bg-rose-950/20" : "border-emerald-800/50 bg-emerald-950/20"}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">👤 유저 손익 합계</p>
-              <p className={`mt-2 text-2xl font-bold font-mono ${userProfit >= 0 ? "text-rose-300" : "text-emerald-300"}`}>
+            <div className={`rounded-xl border p-4 ${userProfit >= 0 ? "border-rose-800/50 bg-rose-950/20" : "border-emerald-800/50 bg-[#3182f6]/5"}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">👤 유저 손익 합계</p>
+              <p className={`mt-2 text-2xl font-bold font-mono ${userProfit >= 0 ? "text-rose-300" : "text-[#3182f6]"}`}>
                 {userProfit >= 0 ? "+" : ""}{krw(userProfit)}원
               </p>
-              <p className="mt-1 text-xs text-zinc-600">총환전 − 총충전</p>
+              <p className="mt-1 text-xs text-gray-400">총환전 − 총충전</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">✅ 총 입금</p>
-              <p className="mt-2 text-2xl font-bold font-mono text-emerald-300">{krw(deposit)}원</p>
-              <p className="mt-1 text-xs text-zinc-600">{summary.wallet.depositCount}건 승인</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">✅ 총 입금</p>
+              <p className="mt-2 text-2xl font-bold font-mono text-[#3182f6]">{krw(deposit)}원</p>
+              <p className="mt-1 text-xs text-gray-400">{summary.wallet.depositCount}건 승인</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">💳 총 출금</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">💳 총 출금</p>
               <p className="mt-2 text-2xl font-bold font-mono text-red-300">{krw(withdraw)}원</p>
-              <p className="mt-1 text-xs text-zinc-600">{summary.wallet.withdrawCount}건 승인</p>
+              <p className="mt-1 text-xs text-gray-400">{summary.wallet.withdrawCount}건 승인</p>
             </div>
           </div>
 
           <div className={`grid grid-cols-2 gap-3 md:grid-cols-3 ${isSuperAdmin ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">💰 총판 예상 정산금</p>
-              <p className="mt-2 text-xl font-bold font-mono text-amber-300">{krw(totalSettle)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">총 낙첨금 × 총판 실효율</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">💰 총판 예상 정산금</p>
+              <p className="mt-2 text-xl font-bold font-mono text-[#3182f6]">{krw(totalSettle)}원</p>
+              <p className="mt-0.5 text-xs text-gray-400">총 낙첨금 × 총판 실효율</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🎁 입금보너스</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🎁 입금보너스</p>
               <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(depositBonus)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">이벤트/첫충 등 머니 지급</p>
+              <p className="mt-0.5 text-xs text-gray-400">이벤트/첫충 등 머니 지급</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🔁 포인트 전환</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🔁 포인트 전환</p>
               <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(pointRedeem)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">포인트 → 머니 실제 전환</p>
+              <p className="mt-0.5 text-xs text-gray-400">포인트 → 머니 실제 전환</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🗂️ 실집행 콤프</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🗂️ 실집행 콤프</p>
               <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(actualComp)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">수동 정산으로 실제 지급된 콤프</p>
+              <p className="mt-0.5 text-xs text-gray-400">수동 정산으로 실제 지급된 콤프</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🧾 기타 머니지급</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🧾 기타 머니지급</p>
               <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(otherMoneyCredits)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">수동/기타 지갑 지급분</p>
+              <p className="mt-0.5 text-xs text-gray-400">수동/기타 지갑 지급분</p>
             </div>
-            <div className={`rounded-xl border p-4 ${cashNet >= 0 ? "border-emerald-800/40 bg-emerald-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏦 플랫폼 현금 순이익</p>
+            <div className={`rounded-xl border p-4 ${cashNet >= 0 ? "border-emerald-800/40 bg-[#3182f6]/5" : "border-red-800/40 bg-red-950/10"}`}>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🏦 플랫폼 현금 순이익</p>
               <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(cashNet)}`}>{krw(cashNet)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">낙첨금 − 총판 − 실제 머니비용</p>
+              <p className="mt-0.5 text-xs text-gray-400">낙첨금 − 총판 − 실제 머니비용</p>
             </div>
             {isSuperAdmin ? (
               <div className={`rounded-xl border p-4 ${solutionCashNet >= 0 ? "border-cyan-800/40 bg-cyan-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-                <p className="text-[10px] uppercase tracking-wider text-zinc-500">🛰️ 솔루션 현금 순이익</p>
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">🛰️ 솔루션 현금 순이익</p>
                 <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(solutionCashNet)}`}>{krw(solutionCashNet)}원</p>
-                <p className="mt-0.5 text-xs text-zinc-600">플랫폼 현금 순익 − 상위업체 비용</p>
+                <p className="mt-0.5 text-xs text-gray-400">플랫폼 현금 순익 − 상위업체 비용</p>
               </div>
             ) : null}
           </div>
 
           <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 ${isSuperAdmin ? "xl:grid-cols-8" : "xl:grid-cols-5"}`}>
-            <div className={`rounded-xl border p-4 ${policyEstimatedNet >= 0 ? "border-emerald-800/40 bg-emerald-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">📉 플랫폼 정책 추정 순이익</p>
+            <div className={`rounded-xl border p-4 ${policyEstimatedNet >= 0 ? "border-emerald-800/40 bg-[#3182f6]/5" : "border-red-800/40 bg-red-950/10"}`}>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">📉 플랫폼 정책 추정 순이익</p>
               <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(policyEstimatedNet)}`}>{krw(policyEstimatedNet)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">포인트 발행·콤프를 당기 비용으로 가정</p>
+              <p className="mt-0.5 text-xs text-gray-400">포인트 발행·콤프를 당기 비용으로 가정</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🪙 발행 포인트</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{pointText(pointIssued)}P</p>
-              <p className="mt-0.5 text-xs text-zinc-600">당기 포인트 적립 합계</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🪙 발행 포인트</p>
+              <p className="mt-2 text-xl font-bold font-mono text-gray-900">{pointText(pointIssued)}P</p>
+              <p className="mt-0.5 text-xs text-gray-400">당기 포인트 적립 합계</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">📌 포인트 충당 추정</p>
-              <p className="mt-2 text-xl font-bold font-mono text-amber-200">
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">📌 포인트 충당 추정</p>
+              <p className="mt-2 text-xl font-bold font-mono text-[#3182f6]">
                 {summary.costs.pointAccrual.estimatedKrw != null
                   ? `${krw(summary.costs.pointAccrual.estimatedKrw)}원`
                   : "환산율 없음"}
               </p>
-              <p className="mt-0.5 text-xs text-zinc-600">
+              <p className="mt-0.5 text-xs text-gray-400">
                 {summary.costs.pointAccrual.redeemKrwPerPoint
                   ? `1P = ${summary.costs.pointAccrual.redeemKrwPerPoint}원 기준`
                   : "KRW 전환율 미설정"}
               </p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🗓️ 콤프 추정</p>
-              <p className="mt-2 text-xl font-bold font-mono text-amber-200">{krw(compEstimated)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🗓️ 콤프 추정</p>
+              <p className="mt-2 text-xl font-bold font-mono text-[#3182f6]">{krw(compEstimated)}원</p>
+              <p className="mt-0.5 text-xs text-gray-400">
                 {summary.costs.comp.enabled
                   ? `${compCycleLabel(
                       summary.costs.comp.settlementCycle,
@@ -537,102 +537,102 @@ export default function SalesPage() {
             </div>
             {isSuperAdmin ? (
               <>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏢 상위업체 비용</p>
+                <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">🏢 상위업체 비용</p>
                   <p className="mt-2 text-xl font-bold font-mono text-rose-300">{krw(upstreamCost)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">
+                  <p className="mt-0.5 text-xs text-gray-400">
                     카지노·슬롯·미니 / 스포츠 양수 GGR 기준
                   </p>
                 </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">🧾 플랫폼 청구액</p>
-                  <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{krw(platformCharge)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">설정된 카지노/스포츠 요율</p>
+                <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">🧾 플랫폼 청구액</p>
+                  <p className="mt-2 text-xl font-bold font-mono text-gray-900">{krw(platformCharge)}원</p>
+                  <p className="mt-0.5 text-xs text-gray-400">설정된 카지노/스포츠 요율</p>
                 </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">📐 솔루션 요율 마진</p>
-                  <p className="mt-2 text-xl font-bold font-mono text-cyan-300">{krw(solutionRateMargin)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">플랫폼 청구액 − 상위업체 비용</p>
+                <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">📐 솔루션 요율 마진</p>
+                  <p className="mt-2 text-xl font-bold font-mono text-[#3182f6]">{krw(solutionRateMargin)}원</p>
+                  <p className="mt-0.5 text-xs text-gray-400">플랫폼 청구액 − 상위업체 비용</p>
                 </div>
                 <div className={`rounded-xl border p-4 ${solutionPolicyNet >= 0 ? "border-cyan-800/40 bg-cyan-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">🛰️ 솔루션 정책 추정 순이익</p>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-500">🛰️ 솔루션 정책 추정 순이익</p>
                   <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(solutionPolicyNet)}`}>{krw(solutionPolicyNet)}원</p>
-                  <p className="mt-0.5 text-xs text-zinc-600">플랫폼 정책 순익 − 상위업체 비용</p>
+                  <p className="mt-0.5 text-xs text-gray-400">플랫폼 정책 순익 − 상위업체 비용</p>
                 </div>
               </>
             ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <div className={`rounded-xl border p-4 ${lossRate >= 0 ? "border-amber-800/50 bg-amber-950/20" : "border-red-800/50 bg-red-950/20"}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">📈 낙첨률</p>
-              <p className={`mt-2 text-2xl font-bold font-mono ${lossRate >= 0 ? "text-amber-300" : "text-red-400"}`}>
+            <div className={`rounded-xl border p-4 ${lossRate >= 0 ? "border-[#3182f6]/30 bg-[#3182f6]/5" : "border-red-800/50 bg-red-950/20"}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">📈 낙첨률</p>
+              <p className={`mt-2 text-2xl font-bold font-mono ${lossRate >= 0 ? "text-[#3182f6]" : "text-red-400"}`}>
                 {lossRate >= 0 ? "+" : ""}{lossRate.toFixed(1)}%
               </p>
-              <p className="mt-1 text-xs text-zinc-600">총 낙첨금 ÷ 총 충전</p>
+              <p className="mt-1 text-xs text-gray-400">총 낙첨금 ÷ 총 충전</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🎰 총 배팅액</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{krw(summary.betting.betStake)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">{summary.betting.rounds}라운드</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🎰 총 배팅액</p>
+              <p className="mt-2 text-xl font-bold font-mono text-gray-900">{krw(summary.betting.betStake)}원</p>
+              <p className="mt-0.5 text-xs text-gray-400">{summary.betting.rounds}라운드</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏆 총 당첨금</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{krw(summary.betting.winTotal)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">RTP {rtp}%</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">🏆 총 당첨금</p>
+              <p className="mt-2 text-xl font-bold font-mono text-gray-900">{krw(summary.betting.winTotal)}원</p>
+              <p className="mt-0.5 text-xs text-gray-400">RTP {rtp}%</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">📊 베팅 순수익</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">📊 베팅 순수익</p>
               <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(summary.betting.ggr)}`}>{krw(summary.betting.ggr)}원</p>
-              <p className="mt-0.5 text-xs text-zinc-600">배팅 − 당첨 (참고값)</p>
+              <p className="mt-0.5 text-xs text-gray-400">배팅 − 당첨 (참고값)</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">👥 회원 / 총판</p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">{summary.platform.userCnt}명</p>
-              <p className="mt-0.5 text-xs text-zinc-600">총판 {summary.platform.agentCnt}명</p>
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">👥 회원 / 총판</p>
+              <p className="mt-2 text-xl font-bold font-mono text-gray-900">{summary.platform.userCnt}명</p>
+              <p className="mt-0.5 text-xs text-gray-400">총판 {summary.platform.agentCnt}명</p>
             </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-zinc-100">비용 · 충당 상세</h3>
+            <section className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-gray-900">비용 · 충당 상세</h3>
               <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-lg border border-zinc-800 bg-black/20 p-4">
-                  <p className="text-xs font-semibold text-zinc-300">실제 머니 차감</p>
+                <div className="rounded-lg border border-gray-200 bg-black/20 p-4">
+                  <p className="text-xs font-semibold text-gray-700">실제 머니 차감</p>
                   <div className="mt-3 space-y-2 text-sm">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">총판 예상 정산금</span>
-                      <span className="font-mono text-amber-300">{krw(totalSettle)}원</span>
+                      <span className="text-gray-500">총판 예상 정산금</span>
+                      <span className="font-mono text-[#3182f6]">{krw(totalSettle)}원</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">입금보너스</span>
+                      <span className="text-gray-500">입금보너스</span>
                       <span className="font-mono text-rose-300">{krw(depositBonus)}원</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">포인트 머니전환</span>
+                      <span className="text-gray-500">포인트 머니전환</span>
                       <span className="font-mono text-rose-300">{krw(pointRedeem)}원</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">실집행 콤프</span>
+                      <span className="text-gray-500">실집행 콤프</span>
                       <span className="font-mono text-rose-300">{krw(actualComp)}원</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">기타 머니지급</span>
+                      <span className="text-gray-500">기타 머니지급</span>
                       <span className="font-mono text-rose-300">{krw(otherMoneyCredits)}원</span>
                     </div>
-                    <div className="flex items-center justify-between gap-3 border-t border-zinc-800 pt-2">
-                      <span className="text-zinc-400">현금 순이익</span>
+                    <div className="flex items-center justify-between gap-3 border-t border-gray-200 pt-2">
+                      <span className="text-gray-500">현금 순이익</span>
                       <span className={`font-mono font-bold ${ggrColor(cashNet)}`}>{krw(cashNet)}원</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-zinc-800 bg-black/20 p-4">
-                  <p className="text-xs font-semibold text-zinc-300">포인트 · 콤프 충당</p>
+                <div className="rounded-lg border border-gray-200 bg-black/20 p-4">
+                  <p className="text-xs font-semibold text-gray-700">포인트 · 콤프 충당</p>
                   <div className="mt-3 space-y-2 text-sm">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">출석/연속출석</span>
-                      <span className="font-mono text-zinc-200">
+                      <span className="text-gray-500">출석/연속출석</span>
+                      <span className="font-mono text-gray-800">
                         {pointText(
                           Number(summary.costs.pointAccrual.attendancePoints) +
                             Number(summary.costs.pointAccrual.attendanceStreakPoints),
@@ -640,20 +640,20 @@ export default function SalesPage() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">낙첨 포인트</span>
-                      <span className="font-mono text-zinc-200">{pointText(summary.costs.pointAccrual.loseBetPoints)}P</span>
+                      <span className="text-gray-500">낙첨 포인트</span>
+                      <span className="font-mono text-gray-800">{pointText(summary.costs.pointAccrual.loseBetPoints)}P</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">추천 포인트</span>
-                      <span className="font-mono text-zinc-200">{pointText(summary.costs.pointAccrual.referralPoints)}P</span>
+                      <span className="text-gray-500">추천 포인트</span>
+                      <span className="font-mono text-gray-800">{pointText(summary.costs.pointAccrual.referralPoints)}P</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">충전형 포인트</span>
-                      <span className="font-mono text-zinc-200">{pointText(summary.costs.pointAccrual.depositPoints)}P</span>
+                      <span className="text-gray-500">충전형 포인트</span>
+                      <span className="font-mono text-gray-800">{pointText(summary.costs.pointAccrual.depositPoints)}P</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">전체/기타 포인트</span>
-                      <span className="font-mono text-zinc-200">
+                      <span className="text-gray-500">전체/기타 포인트</span>
+                      <span className="font-mono text-gray-800">
                         {pointText(
                           Number(summary.costs.pointAccrual.bulkGrantPoints) +
                             Number(summary.costs.pointAccrual.otherAdjustmentPoints),
@@ -661,56 +661,56 @@ export default function SalesPage() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">포인트 충당 추정</span>
-                      <span className="font-mono text-amber-200">
+                      <span className="text-gray-500">포인트 충당 추정</span>
+                      <span className="font-mono text-[#3182f6]">
                         {summary.costs.pointAccrual.estimatedKrw != null
                           ? `${krw(summary.costs.pointAccrual.estimatedKrw)}원`
                           : "환산율 없음"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-zinc-500">콤프 정책 추정</span>
-                      <span className="font-mono text-amber-200">{krw(compEstimated)}원</span>
+                      <span className="text-gray-500">콤프 정책 추정</span>
+                      <span className="font-mono text-[#3182f6]">{krw(compEstimated)}원</span>
                     </div>
-                    <div className="flex items-center justify-between gap-3 border-t border-zinc-800 pt-2">
-                      <span className="text-zinc-400">정책상 추정 순이익</span>
+                    <div className="flex items-center justify-between gap-3 border-t border-gray-200 pt-2">
+                      <span className="text-gray-500">정책상 추정 순이익</span>
                       <span className={`font-mono font-bold ${ggrColor(policyEstimatedNet)}`}>{krw(policyEstimatedNet)}원</span>
                     </div>
                   </div>
-                  <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">
+                  <p className="mt-3 text-[11px] leading-relaxed text-gray-400">
                     정책상 추정 순이익은 포인트 발행과 콤프를 당기 비용으로 본 값입니다.
                     포인트 머니전환과 실집행 콤프는 현금 순이익에만 반영해 이중 차감을 피했습니다.
                   </p>
                 </div>
               </div>
               {isSuperAdmin ? (
-              <div className="mt-4 rounded-lg border border-zinc-800 bg-black/20 p-4">
-                <p className="text-xs font-semibold text-zinc-300">상위업체 요율 기준</p>
+              <div className="mt-4 rounded-lg border border-gray-200 bg-black/20 p-4">
+                <p className="text-xs font-semibold text-gray-700">상위업체 요율 기준</p>
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-                    <p className="text-[11px] text-zinc-500">카지노</p>
-                    <p className="mt-1 text-sm text-zinc-200">
+                  <div className="rounded-lg border border-gray-200 bg-white/40 px-3 py-3">
+                    <p className="text-[11px] text-gray-500">카지노</p>
+                    <p className="mt-1 text-sm text-gray-800">
                       상위 {summary.costs.solutionRates.upstreamCasinoPct ?? "0"}% / 플랫폼 {summary.costs.solutionRates.platformCasinoPct ?? "0"}%
                     </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
+                    <p className="mt-1 text-[11px] text-gray-400">
                       기준 GGR {krw(summary.costs.solutionRates.casinoBaseGgr)}원
                     </p>
                   </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-                    <p className="text-[11px] text-zinc-500">스포츠</p>
-                    <p className="mt-1 text-sm text-zinc-200">
+                  <div className="rounded-lg border border-gray-200 bg-white/40 px-3 py-3">
+                    <p className="text-[11px] text-gray-500">스포츠</p>
+                    <p className="mt-1 text-sm text-gray-800">
                       상위 {summary.costs.solutionRates.upstreamSportsPct ?? "0"}% / 플랫폼 {summary.costs.solutionRates.platformSportsPct ?? "0"}%
                     </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
+                    <p className="mt-1 text-[11px] text-gray-400">
                       기준 GGR {krw(summary.costs.solutionRates.sportsBaseGgr)}원
                     </p>
                   </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-                    <p className="text-[11px] text-zinc-500">자동 마진</p>
-                    <p className="mt-1 text-sm text-cyan-300">
+                  <div className="rounded-lg border border-gray-200 bg-white/40 px-3 py-3">
+                    <p className="text-[11px] text-gray-500">자동 마진</p>
+                    <p className="mt-1 text-sm text-[#3182f6]">
                       {summary.costs.solutionRates.autoMarginPct ?? "0"}%
                     </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
+                    <p className="mt-1 text-[11px] text-gray-400">
                       기준: {summary.costs.solutionRates.modeledBase}
                     </p>
                   </div>
@@ -719,30 +719,30 @@ export default function SalesPage() {
               ) : null}
             </section>
 
-            <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-zinc-100">게임별 하우스 수익</h3>
+            <section className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-gray-900">게임별 하우스 수익</h3>
               <div className="space-y-2">
                 {Object.entries(summary.verticals).map(([vert, data]) => {
                   const ggrN = Number(data.ggr);
                   const stakeN = Number(data.betStake);
                   const pct = stakeN > 0 ? (ggrN / stakeN) * 100 : 0;
                   return (
-                    <div key={vert} className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3">
+                    <div key={vert} className="rounded-lg border border-gray-200 bg-black/20 px-4 py-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-zinc-400">{vertLabel(vert)}</span>
-                        <span className="text-xs text-zinc-600">{data.rounds}라운드</span>
+                        <span className="text-xs text-gray-500">{vertLabel(vert)}</span>
+                        <span className="text-xs text-gray-400">{data.rounds}라운드</span>
                       </div>
                       <div className="mt-1.5 flex items-end justify-between gap-2">
                         <div>
-                          <p className="text-[10px] text-zinc-600">배팅 {krw(data.betStake)}원 / 당첨 {krw(data.winTotal)}원</p>
+                          <p className="text-[10px] text-gray-400">배팅 {krw(data.betStake)}원 / 당첨 {krw(data.winTotal)}원</p>
                         </div>
                         <p className={`text-base font-bold font-mono ${ggrColor(data.ggr)}`}>
                           수익 {krw(data.ggr)}원
-                          <span className="ml-1 text-xs text-zinc-500">({pct.toFixed(1)}%)</span>
+                          <span className="ml-1 text-xs text-gray-500">({pct.toFixed(1)}%)</span>
                         </p>
                       </div>
                       {/* 진행바 */}
-                      <div className="mt-1.5 h-1 rounded-full bg-zinc-800">
+                      <div className="mt-1.5 h-1 rounded-full bg-gray-100">
                         <div
                           className={`h-1 rounded-full ${ggrN > 0 ? "bg-emerald-500" : "bg-red-500"}`}
                           style={{ width: `${Math.min(100, Math.abs(pct))}%` }}
@@ -762,16 +762,16 @@ export default function SalesPage() {
       {tab === "agents" && (() => {
         if (!selectedPlatformId) {
           return (
-            <p className="text-sm text-amber-200/90">
+            <p className="text-sm text-[#3182f6]/90">
               플랫폼을 선택해 주세요.
             </p>
           );
         }
         if (agents === null && loading) {
-          return <p className="text-sm text-zinc-500">불러오는 중...</p>;
+          return <p className="text-sm text-gray-500">불러오는 중...</p>;
         }
         if (!agents || agents.length === 0) {
-          return <p className="text-sm text-zinc-600">등록된 총판이 없습니다.</p>;
+          return <p className="text-sm text-gray-400">등록된 총판이 없습니다.</p>;
         }
 
         // 회원별 낙첨금(입금-출금)을 총판 트리 기준으로 통합 합산
@@ -802,35 +802,35 @@ export default function SalesPage() {
           const indent = depth * 20;
           const childSettleSum = Number(agent.childrenSettlementTotal ?? 0);
           return (
-            <div key={agent.agentId} className={depth > 0 ? "border-t border-zinc-800/40 bg-zinc-950/30" : ""}>
+            <div key={agent.agentId} className={depth > 0 ? "border-t border-gray-200/40 bg-white/30" : ""}>
               <button
                 type="button"
                 onClick={() => {
                   toggleAgent(agent.agentId);
                 }}
-                className="relative z-10 w-full cursor-pointer select-none flex items-center gap-2 px-4 py-3 text-left transition hover:bg-zinc-800/40"
+                className="relative z-10 w-full cursor-pointer select-none flex items-center gap-2 px-4 py-3 text-left transition hover:bg-gray-100"
                 style={{ paddingLeft: `${16 + indent}px` }}
               >
-                <span className="w-4 shrink-0 text-zinc-500 text-xs">
+                <span className="w-4 shrink-0 text-gray-500 text-xs">
                   {isOpen ? "▼" : "▶"}
                 </span>
                 <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                  depth === 0 ? "bg-amber-600/25 text-amber-400" :
-                  depth === 1 ? "bg-violet-700/30 text-violet-300" :
-                  "bg-zinc-700/40 text-zinc-400"
+                  depth === 0 ? "bg-amber-600/25 text-[#3182f6]" :
+                  depth === 1 ? "bg-violet-700/30 text-[#3182f6]" :
+                  "bg-gray-200/40 text-gray-500"
                 }`}>
                   {depth === 0 ? "최상위" : depth === 1 ? "하위" : `${depth + 1}단`}
                 </span>
-                <span className="font-mono text-sm font-semibold text-zinc-100 min-w-0 truncate">{agent.loginId}</span>
-                {agent.displayName && <span className="text-xs text-zinc-500 shrink-0 hidden sm:inline">{agent.displayName}</span>}
+                <span className="font-mono text-sm font-semibold text-gray-900 min-w-0 truncate">{agent.loginId}</span>
+                {agent.displayName && <span className="text-xs text-gray-500 shrink-0 hidden sm:inline">{agent.displayName}</span>}
                 {childAgents.length > 0 && (
-                  <span className="text-[10px] text-zinc-600 shrink-0 ml-1">하위 총판 {childAgents.length}</span>
+                  <span className="text-[10px] text-gray-400 shrink-0 ml-1">하위 총판 {childAgents.length}</span>
                 )}
                 {directUsers.length > 0 && (
-                  <span className="text-[10px] text-zinc-600 shrink-0">직속 유저 {directUsers.length}</span>
+                  <span className="text-[10px] text-gray-400 shrink-0">직속 유저 {directUsers.length}</span>
                 )}
                 {!hasChildren && (
-                  <span className="text-[10px] text-zinc-600 shrink-0">하위 없음</span>
+                  <span className="text-[10px] text-gray-400 shrink-0">하위 없음</span>
                 )}
                 <div className="pointer-events-none ml-auto flex flex-col items-end gap-0.5 text-xs shrink-0 sm:flex-row sm:items-center sm:gap-3">
                   {childAgents.length > 0 && (
@@ -841,48 +841,48 @@ export default function SalesPage() {
                       하위정산 Σ {krw(childSettleSum)}원
                     </span>
                   )}
-                  <span className="text-zinc-500 hidden md:block">전체 유저 {agent.downlineUsers}명</span>
-                  <span className={`font-mono font-bold ${Number(agent.houseEdge ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  <span className="text-gray-500 hidden md:block">전체 유저 {agent.downlineUsers}명</span>
+                  <span className={`font-mono font-bold ${Number(agent.houseEdge ?? 0) >= 0 ? "text-[#3182f6]" : "text-red-400"}`}>
                     낙첨금 {krw(agent.houseEdge ?? 0)}원
                   </span>
-                  <span className="text-amber-300 font-mono font-bold">예상정산 {krw(agent.myEstimatedSettlement)}원</span>
+                  <span className="text-[#3182f6] font-mono font-bold">예상정산 {krw(agent.myEstimatedSettlement)}원</span>
                 </div>
               </button>
               {isOpen && (
                 <div style={{ paddingLeft: `${indent}px` }} className="pb-1">
                   {!hasChildren && (
-                    <p className="px-8 py-2 text-[11px] text-zinc-500">
+                    <p className="px-8 py-2 text-[11px] text-gray-500">
                       이 기간에 직속 하위 총판·직속 유저 실적이 없습니다.
                     </p>
                   )}
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 px-8 py-1.5 text-[11px] text-zinc-500 bg-black/20">
-                    <span>입금 <b className="text-emerald-400">{krw(agent.depositTotal)}원</b></span>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 px-8 py-1.5 text-[11px] text-gray-500 bg-black/20">
+                    <span>입금 <b className="text-[#3182f6]">{krw(agent.depositTotal)}원</b></span>
                     <span>출금 <b className="text-red-400">{krw(agent.withdrawTotal)}원</b></span>
-                    <span>유저손익 <b className={Number(agent.houseEdge ?? 0) <= 0 ? "text-emerald-300" : "text-red-300"}>{krw(-Number(agent.houseEdge ?? 0))}원</b></span>
-                    <span>총 낙첨금 <b className={Number(agent.houseEdge ?? 0) >= 0 ? "text-emerald-300" : "text-red-300"}>{krw(agent.houseEdge ?? 0)}원</b></span>
-                    <span>예상 정산금 <b className="text-amber-300">{krw(agent.myEstimatedSettlement)}원</b></span>
+                    <span>유저손익 <b className={Number(agent.houseEdge ?? 0) <= 0 ? "text-[#3182f6]" : "text-red-300"}>{krw(-Number(agent.houseEdge ?? 0))}원</b></span>
+                    <span>총 낙첨금 <b className={Number(agent.houseEdge ?? 0) >= 0 ? "text-[#3182f6]" : "text-red-300"}>{krw(agent.houseEdge ?? 0)}원</b></span>
+                    <span>예상 정산금 <b className="text-[#3182f6]">{krw(agent.myEstimatedSettlement)}원</b></span>
                     {childAgents.length > 0 && (
-                      <span>하위정산 Σ <b className="text-cyan-300">{krw(childSettleSum)}원</b></span>
+                      <span>하위정산 Σ <b className="text-[#3182f6]">{krw(childSettleSum)}원</b></span>
                     )}
-                    {agent.platformSharePct > 0 && <span>플랫폼요율 <b className="text-zinc-300">{agent.platformSharePct}%</b></span>}
-                    {agent.splitFromParentPct > 0 && <span>분배율 <b className="text-zinc-300">{agent.splitFromParentPct}%</b></span>}
-                    {agent.effectivePct > 0 && <span>실효율 <b className="text-violet-300">{agent.effectivePct}%</b></span>}
+                    {agent.platformSharePct > 0 && <span>플랫폼요율 <b className="text-gray-700">{agent.platformSharePct}%</b></span>}
+                    {agent.splitFromParentPct > 0 && <span>분배율 <b className="text-gray-700">{agent.splitFromParentPct}%</b></span>}
+                    {agent.effectivePct > 0 && <span>실효율 <b className="text-[#3182f6]">{agent.effectivePct}%</b></span>}
                   </div>
                   {childAgents.length > 0 ? (
-                    <div className="mt-2 border-t border-zinc-800/50 pt-2">
-                      <p className="px-8 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">하위 총판</p>
+                    <div className="mt-2 border-t border-gray-200/50 pt-2">
+                      <p className="px-8 text-[11px] font-semibold uppercase tracking-wide text-gray-500">하위 총판</p>
                       <div className="mt-1">
                         {[...childAgents].sort((a, b) => a.loginId.localeCompare(b.loginId)).map((c) => renderAgent(c, depth + 1))}
                       </div>
                     </div>
                   ) : null}
                   {directUsers.length > 0 ? (
-                    <div className="mt-3 border-t border-zinc-800/50 pt-2 px-4 sm:px-8 pb-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-2">직속 유저</p>
-                      <div className="overflow-x-auto rounded-lg border border-zinc-800/80 bg-black/20">
+                    <div className="mt-3 border-t border-gray-200/50 pt-2 px-4 sm:px-8 pb-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">직속 유저</p>
+                      <div className="overflow-x-auto rounded-lg border border-gray-200/80 bg-black/20">
                         <table className="w-full text-[11px]">
                           <thead>
-                            <tr className="border-b border-zinc-800 bg-zinc-900/50 text-zinc-500">
+                            <tr className="border-b border-gray-200 bg-gray-50 text-gray-500">
                               {["로그인", "표시명", "입금", "출금", "유저손익", "총판기준 낙첨금", "현재 잔액"].map((h) => (
                                 <th key={h} className="px-3 py-2 text-left font-medium whitespace-nowrap">{h}</th>
                               ))}
@@ -893,18 +893,18 @@ export default function SalesPage() {
                               const agentDrop = Number(u.houseEdge);
                               const userProfit = -agentDrop;
                               return (
-                                <tr key={u.userId} className="border-b border-zinc-900/80 hover:bg-zinc-900/40">
-                                  <td className="px-3 py-2 font-mono text-zinc-200 whitespace-nowrap">{u.loginId}</td>
-                                  <td className="px-3 py-2 text-zinc-400 max-w-[140px] truncate" title={u.displayName}>{u.displayName || "—"}</td>
-                                  <td className="px-3 py-2 font-mono text-emerald-400/90 whitespace-nowrap">{krw(u.depositTotal)}원</td>
+                                <tr key={u.userId} className="border-b border-gray-100/80 hover:bg-gray-50">
+                                  <td className="px-3 py-2 font-mono text-gray-800 whitespace-nowrap">{u.loginId}</td>
+                                  <td className="px-3 py-2 text-gray-500 max-w-[140px] truncate" title={u.displayName}>{u.displayName || "—"}</td>
+                                  <td className="px-3 py-2 font-mono text-[#3182f6]/90 whitespace-nowrap">{krw(u.depositTotal)}원</td>
                                   <td className="px-3 py-2 font-mono text-red-400/90 whitespace-nowrap">{krw(u.withdrawTotal)}원</td>
-                                  <td className={`px-3 py-2 font-mono whitespace-nowrap ${userProfit >= 0 ? "text-rose-300/90" : "text-emerald-300/90"}`}>
+                                  <td className={`px-3 py-2 font-mono whitespace-nowrap ${userProfit >= 0 ? "text-rose-300/90" : "text-[#3182f6]/90"}`}>
                                     {krw(userProfit)}원
                                   </td>
-                                  <td className={`px-3 py-2 font-mono whitespace-nowrap ${agentDrop >= 0 ? "text-emerald-300/90" : "text-red-300/90"}`}>
+                                  <td className={`px-3 py-2 font-mono whitespace-nowrap ${agentDrop >= 0 ? "text-[#3182f6]/90" : "text-red-300/90"}`}>
                                     {krw(agentDrop)}원
                                   </td>
-                                  <td className="px-3 py-2 font-mono text-zinc-300 whitespace-nowrap">{krw(u.balance)}원</td>
+                                  <td className="px-3 py-2 font-mono text-gray-700 whitespace-nowrap">{krw(u.balance)}원</td>
                                 </tr>
                               );
                             })}
@@ -923,33 +923,33 @@ export default function SalesPage() {
           <div className="space-y-4">
             {/* 전체 합계 카드 */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-zinc-500">💸 총 낙첨금 합계</p>
+              <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">💸 총 낙첨금 합계</p>
                 <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(totalHouseEdge)}`}>{krw(totalHouseEdge)}원</p>
-                <p className="mt-0.5 text-xs text-zinc-600">총입금 {krw(totalDeposit)} − 총출금 {krw(totalWithdraw)}</p>
+                <p className="mt-0.5 text-xs text-gray-400">총입금 {krw(totalDeposit)} − 총출금 {krw(totalWithdraw)}</p>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-zinc-500">💰 총판 예상 정산금</p>
-                <p className="mt-2 text-xl font-bold font-mono text-amber-300">{krw(totalSettle)}원</p>
-                <p className="mt-0.5 text-xs text-zinc-600">총 낙첨금 × 각 총판 실효율</p>
+              <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">💰 총판 예상 정산금</p>
+                <p className="mt-2 text-xl font-bold font-mono text-[#3182f6]">{krw(totalSettle)}원</p>
+                <p className="mt-0.5 text-xs text-gray-400">총 낙첨금 × 각 총판 실효율</p>
               </div>
-              <div className={`rounded-xl border p-4 ${postSettlementResidual >= 0 ? "border-emerald-800/40 bg-emerald-950/10" : "border-red-800/40 bg-red-950/10"}`}>
-                <p className="text-[10px] uppercase tracking-wider text-zinc-500">🏦 총판 차감 후 잔여금</p>
+              <div className={`rounded-xl border p-4 ${postSettlementResidual >= 0 ? "border-emerald-800/40 bg-[#3182f6]/5" : "border-red-800/40 bg-red-950/10"}`}>
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">🏦 총판 차감 후 잔여금</p>
                 <p className={`mt-2 text-xl font-bold font-mono ${ggrColor(postSettlementResidual)}`}>{krw(postSettlementResidual)}원</p>
-                <p className="mt-1 text-xs text-zinc-600">총 낙첨금 − 총판 예상 정산금 (보너스/포인트/콤프 제외)</p>
+                <p className="mt-1 text-xs text-gray-400">총 낙첨금 − 총판 예상 정산금 (보너스/포인트/콤프 제외)</p>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <p className="text-[10px] uppercase tracking-wider text-zinc-500">👤 유저 손익 합계</p>
-                <p className={`mt-2 text-xl font-bold font-mono ${totalUserProfit >= 0 ? "text-rose-300" : "text-emerald-300"}`}>{krw(totalUserProfit)}원</p>
-                <p className="mt-0.5 text-xs text-zinc-600">총환전 − 총입금</p>
+              <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500">👤 유저 손익 합계</p>
+                <p className={`mt-2 text-xl font-bold font-mono ${totalUserProfit >= 0 ? "text-rose-300" : "text-[#3182f6]"}`}>{krw(totalUserProfit)}원</p>
+                <p className="mt-0.5 text-xs text-gray-400">총환전 − 총입금</p>
               </div>
             </div>
 
             {/* 트리 뷰 */}
-            <div className="rounded-xl border border-zinc-800 overflow-hidden">
-              <div className="bg-zinc-900/60 px-4 py-2.5 flex items-center gap-2 border-b border-zinc-800">
-                <span className="text-xs font-semibold text-zinc-400">총판 구조</span>
-                <span className="text-[10px] text-zinc-600">▶ 클릭하여 하위 총판 펼치기/닫기</span>
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2.5 flex items-center gap-2 border-b border-gray-200">
+                <span className="text-xs font-semibold text-gray-500">총판 구조</span>
+                <span className="text-[10px] text-gray-400">▶ 클릭하여 하위 총판 펼치기/닫기</span>
               </div>
               <div>
                 {topAgents.map(a => renderAgent(a, 0))}
@@ -962,13 +962,13 @@ export default function SalesPage() {
       {/* ── 솔루션 청구 탭 ── */}
       {tab === "solution" && isSuperAdmin && (
         <div className="space-y-5">
-          <section className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+          <section className="rounded-xl border border-gray-200 bg-white/50 p-4">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
-                <h2 className="text-base font-semibold text-zinc-100">
+                <h2 className="text-base font-semibold text-gray-900">
                   솔루션 청구 실행
                 </h2>
-                <p className="mt-1 text-sm text-zinc-500">
+                <p className="mt-1 text-sm text-gray-500">
                   선택 기간의 카지노·슬롯·미니(동일 버킷) 및 스포츠 양수 GGR 기준으로
                   상위업체 비용과 플랫폼 청구액을 계산해 원장으로 고정합니다.
                 </p>
@@ -979,14 +979,14 @@ export default function SalesPage() {
                   value={solutionBillingNote}
                   onChange={(e) => setSolutionBillingNote(e.target.value)}
                   placeholder="메모 (예: 4월 월마감 청구)"
-                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600"
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400"
                 />
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => void runSolutionBilling(true)}
                     disabled={solutionPreviewing || solutionRunning || loading}
-                    className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100 disabled:opacity-50"
                   >
                     {solutionPreviewing ? "미리보기 중..." : "미리보기"}
                   </button>
@@ -994,7 +994,7 @@ export default function SalesPage() {
                     type="button"
                     onClick={() => void runSolutionBilling(false)}
                     disabled={solutionRunning || solutionPreviewing || loading}
-                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-cyan-500 disabled:opacity-50"
+                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
                   >
                     {solutionRunning ? "원장 생성 중..." : "원장 생성"}
                   </button>
@@ -1005,18 +1005,18 @@ export default function SalesPage() {
             {solutionBillingResult ? (
               <div className="mt-4 space-y-4">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                  <div className="rounded-xl border border-zinc-800 bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  <div className="rounded-xl border border-gray-200 bg-black/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500">
                       상태
                     </p>
-                    <p className="mt-2 text-lg font-bold text-zinc-100">
+                    <p className="mt-2 text-lg font-bold text-gray-900">
                       {solutionBillingResult.status === "already_settled"
                         ? "기존 원장 있음"
                         : solutionBillingResult.status === "created"
                           ? "원장 생성 완료"
                           : "생성 가능"}
                     </p>
-                    <p className="mt-1 text-xs text-zinc-600">
+                    <p className="mt-1 text-xs text-gray-400">
                       {new Date(
                         solutionBillingResult.settlement.periodFrom,
                       ).toLocaleDateString("ko-KR")}{" "}
@@ -1026,53 +1026,53 @@ export default function SalesPage() {
                       ).toLocaleDateString("ko-KR")}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-zinc-800 bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  <div className="rounded-xl border border-gray-200 bg-black/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500">
                       카·슬·미니 양수 GGR
                     </p>
-                    <p className="mt-2 text-lg font-bold font-mono text-zinc-100">
+                    <p className="mt-2 text-lg font-bold font-mono text-gray-900">
                       {krw(solutionBillingResult.settlement.casinoBaseGgr)}원
                     </p>
-                    <p className="mt-1 text-xs text-zinc-600">
+                    <p className="mt-1 text-xs text-gray-400">
                       요율 {solutionBillingResult.settlement.platformCasinoPct}%
                     </p>
                   </div>
-                  <div className="rounded-xl border border-zinc-800 bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  <div className="rounded-xl border border-gray-200 bg-black/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500">
                       스포츠 양수 GGR
                     </p>
-                    <p className="mt-2 text-lg font-bold font-mono text-zinc-100">
+                    <p className="mt-2 text-lg font-bold font-mono text-gray-900">
                       {krw(solutionBillingResult.settlement.sportsBaseGgr)}원
                     </p>
-                    <p className="mt-1 text-xs text-zinc-600">
+                    <p className="mt-1 text-xs text-gray-400">
                       요율 {solutionBillingResult.settlement.platformSportsPct}%
                     </p>
                   </div>
-                  <div className="rounded-xl border border-zinc-800 bg-black/20 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  <div className="rounded-xl border border-gray-200 bg-black/20 p-4">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500">
                       상위업체 비용
                     </p>
                     <p className="mt-2 text-lg font-bold font-mono text-rose-300">
                       {krw(solutionBillingResult.settlement.upstreamCost)}원
                     </p>
-                    <p className="mt-1 text-xs text-zinc-600">
+                    <p className="mt-1 text-xs text-gray-400">
                       카지노 {solutionBillingResult.settlement.upstreamCasinoPct}% /
                       스포츠 {solutionBillingResult.settlement.upstreamSportsPct}%
                     </p>
                   </div>
                   <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/10 p-4">
-                    <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500">
                       솔루션 요율 마진
                     </p>
-                    <p className="mt-2 text-lg font-bold font-mono text-cyan-300">
+                    <p className="mt-2 text-lg font-bold font-mono text-[#3182f6]">
                       {krw(solutionBillingResult.settlement.solutionMargin)}원
                     </p>
-                    <p className="mt-1 text-xs text-zinc-600">
+                    <p className="mt-1 text-xs text-gray-400">
                       플랫폼 청구 {krw(solutionBillingResult.settlement.platformCharge)}원
                     </p>
                   </div>
                 </div>
-                <div className="rounded-lg border border-zinc-800 bg-black/20 px-4 py-3 text-sm text-zinc-400">
+                <div className="rounded-lg border border-gray-200 bg-black/20 px-4 py-3 text-sm text-gray-500">
                   {solutionBillingResult.settlement.note ? (
                     <span>메모: {solutionBillingResult.settlement.note}</span>
                   ) : (
@@ -1094,48 +1094,48 @@ export default function SalesPage() {
           </section>
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">
                 누적 청구 건수
               </p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">
+              <p className="mt-2 text-xl font-bold font-mono text-gray-900">
                 {solutionBilling?.count ?? 0}건
               </p>
-              <p className="mt-1 text-xs text-zinc-600">최근 생성 원장 기준</p>
+              <p className="mt-1 text-xs text-gray-400">최근 생성 원장 기준</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">
                 누적 상위업체 비용
               </p>
               <p className="mt-2 text-xl font-bold font-mono text-rose-300">
                 {krw(solutionBilling?.totalUpstreamCost ?? 0)}원
               </p>
-              <p className="mt-1 text-xs text-zinc-600">등록된 청구 원장 합계</p>
+              <p className="mt-1 text-xs text-gray-400">등록된 청구 원장 합계</p>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+            <div className="rounded-xl border border-gray-200 bg-white/60 p-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">
                 누적 플랫폼 청구액
               </p>
-              <p className="mt-2 text-xl font-bold font-mono text-zinc-100">
+              <p className="mt-2 text-xl font-bold font-mono text-gray-900">
                 {krw(solutionBilling?.totalPlatformCharge ?? 0)}원
               </p>
-              <p className="mt-1 text-xs text-zinc-600">플랫폼 대상 누적 청구</p>
+              <p className="mt-1 text-xs text-gray-400">플랫폼 대상 누적 청구</p>
             </div>
             <div className="rounded-xl border border-cyan-800/40 bg-cyan-950/10 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+              <p className="text-[10px] uppercase tracking-wider text-gray-500">
                 누적 솔루션 마진
               </p>
-              <p className="mt-2 text-xl font-bold font-mono text-cyan-300">
+              <p className="mt-2 text-xl font-bold font-mono text-[#3182f6]">
                 {krw(solutionBilling?.totalSolutionMargin ?? 0)}원
               </p>
-              <p className="mt-1 text-xs text-zinc-600">플랫폼 청구액 - 상위업체 비용</p>
+              <p className="mt-1 text-xs text-gray-400">플랫폼 청구액 - 상위업체 비용</p>
             </div>
           </section>
 
-          <section className="overflow-x-auto rounded-xl border border-zinc-800">
+          <section className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-900/60">
+                <tr className="border-b border-gray-200 bg-gray-50">
                   {[
                     "생성시각",
                     "정산기간",
@@ -1149,7 +1149,7 @@ export default function SalesPage() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="px-3 py-2.5 text-left text-[11px] font-medium text-zinc-500 whitespace-nowrap"
+                      className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 whitespace-nowrap"
                     >
                       {h}
                     </th>
@@ -1161,35 +1161,35 @@ export default function SalesPage() {
                   solutionBilling.items.map((row) => (
                     <tr
                       key={row.id}
-                      className="border-b border-zinc-900 hover:bg-zinc-900/40"
+                      className="border-b border-gray-100 hover:bg-gray-50"
                     >
-                      <td className="px-3 py-2 whitespace-nowrap text-zinc-400">
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500">
                         {dt(row.createdAt)}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-zinc-300">
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-700">
                         {new Date(row.periodFrom).toLocaleDateString("ko-KR")} ~{" "}
                         {new Date(row.periodTo).toLocaleDateString("ko-KR")}
                       </td>
-                      <td className="px-3 py-2 font-mono text-zinc-200 whitespace-nowrap">
+                      <td className="px-3 py-2 font-mono text-gray-800 whitespace-nowrap">
                         {krw(row.casinoBaseGgr)}원
                       </td>
-                      <td className="px-3 py-2 font-mono text-zinc-200 whitespace-nowrap">
+                      <td className="px-3 py-2 font-mono text-gray-800 whitespace-nowrap">
                         {krw(row.sportsBaseGgr)}원
                       </td>
                       <td className="px-3 py-2 font-mono text-rose-300 whitespace-nowrap">
                         {krw(row.upstreamCost)}원
                       </td>
-                      <td className="px-3 py-2 font-mono text-zinc-100 whitespace-nowrap">
+                      <td className="px-3 py-2 font-mono text-gray-900 whitespace-nowrap">
                         {krw(row.platformCharge)}원
                       </td>
-                      <td className="px-3 py-2 font-mono text-cyan-300 whitespace-nowrap">
+                      <td className="px-3 py-2 font-mono text-[#3182f6] whitespace-nowrap">
                         {krw(row.solutionMargin)}원
                       </td>
-                      <td className="px-3 py-2 text-zinc-400 whitespace-nowrap">
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
                         {row.settledByLoginId ?? "SYSTEM"}
                       </td>
                       <td
-                        className="px-3 py-2 max-w-[16rem] truncate text-zinc-500"
+                        className="px-3 py-2 max-w-[16rem] truncate text-gray-500"
                         title={row.note ?? ""}
                       >
                         {row.note || "—"}
@@ -1200,7 +1200,7 @@ export default function SalesPage() {
                   <tr>
                     <td
                       colSpan={9}
-                      className="px-3 py-8 text-center text-sm text-zinc-600"
+                      className="px-3 py-8 text-center text-sm text-gray-400"
                     >
                       등록된 솔루션 청구 원장이 없습니다.
                     </td>
@@ -1216,16 +1216,16 @@ export default function SalesPage() {
       {tab === "ledger" && (
         <div>
           {loading ? (
-            <p className="py-6 text-sm text-zinc-500">불러오는 중...</p>
+            <p className="py-6 text-sm text-gray-500">불러오는 중...</p>
           ) : ledger && ledger.length === 0 ? (
-            <p className="py-6 text-sm text-zinc-600">배팅 원장이 없습니다.</p>
+            <p className="py-6 text-sm text-gray-400">배팅 원장이 없습니다.</p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-zinc-800 max-h-[65vh] overflow-y-auto">
+            <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-[65vh] overflow-y-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-zinc-800 bg-zinc-900/60 sticky top-0 z-10">
+                  <tr className="border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
                     {["시각", "유저", "타입", "게임", "카테고리", "금액", "처리후잔액", "라운드ID"].map((h) => (
-                      <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium text-zinc-500 whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1234,22 +1234,22 @@ export default function SalesPage() {
                     const isBet = r.type === "BET";
                     const amt = Number(r.amount);
                     return (
-                      <tr key={r.id} className="border-b border-zinc-900 hover:bg-zinc-900/50 transition">
-                        <td className="px-3 py-2 whitespace-nowrap text-zinc-500">{dt(r.createdAt)}</td>
-                        <td className="px-3 py-2 font-mono text-zinc-200">{r.userLoginId}</td>
+                      <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-500">{dt(r.createdAt)}</td>
+                        <td className="px-3 py-2 font-mono text-gray-800">{r.userLoginId}</td>
                         <td className="px-3 py-2">
                           <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                            isBet ? "bg-red-400/10 text-red-400" : "bg-emerald-400/10 text-emerald-400"
+                            isBet ? "bg-red-400/10 text-red-400" : "bg-emerald-400/10 text-[#3182f6]"
                           }`}>
                             {isBet ? "BET" : "WIN"}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-zinc-400 max-w-[120px] truncate">{r.gameName || "—"}</td>
-                        <td className="px-3 py-2 text-zinc-500">{vertLabel(r.vertical)}</td>
-                        <td className={`px-3 py-2 font-mono font-bold ${isBet ? "text-red-400" : "text-emerald-400"}`}>
+                        <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate">{r.gameName || "—"}</td>
+                        <td className="px-3 py-2 text-gray-500">{vertLabel(r.vertical)}</td>
+                        <td className={`px-3 py-2 font-mono font-bold ${isBet ? "text-red-400" : "text-[#3182f6]"}`}>
                           {isBet ? "" : "+"}{krw(amt)}원
                         </td>
-                        <td className="px-3 py-2 font-mono text-zinc-400">{krw(r.balanceAfter)}원</td>
+                        <td className="px-3 py-2 font-mono text-gray-500">{krw(r.balanceAfter)}원</td>
                         <td className="px-3 py-2 font-mono text-zinc-700 max-w-[100px] truncate" title={r.reference ?? ""}>
                           {r.reference ? r.reference.slice(0, 10) + "…" : "—"}
                         </td>

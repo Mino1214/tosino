@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { MemberDetailModal } from "@/components/MemberDetailModal";
 
 type DownlineRow = {
@@ -35,8 +34,20 @@ function regLabel(s: string) {
   }
 }
 
+function fmtBal(v: string | number | null | undefined) {
+  const n = Number(v ?? 0);
+  if (!Number.isFinite(n)) return "₩0";
+  return `₩${Math.round(n).toLocaleString("ko-KR")}`;
+}
+
+/** 롤링 % → 배율 (0.3% → 3배) */
+function toMult(pct: number | null | undefined): string {
+  if (!pct) return "—";
+  const m = Math.round(pct * 10 * 10) / 10;
+  return `${m}배`;
+}
+
 export default function AgentMembersPage() {
-  const router = useRouter();
   const [rows, setRows] = useState<DownlineRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -54,17 +65,8 @@ export default function AgentMembersPage() {
   }, []);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
-    const u = getStoredUser();
-    if (u?.role !== "MASTER_AGENT") {
-      router.replace("/login");
-      return;
-    }
     void load();
-  }, [load, router]);
+  }, [load]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -78,15 +80,11 @@ export default function AgentMembersPage() {
     );
   }, [rows, q]);
 
-  if (!getAccessToken()) {
-    return null;
-  }
-
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-100">회원 조회</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-xl font-semibold text-gray-900">회원 조회</h1>
+        <p className="mt-1 text-sm text-gray-500">
           추천·상위 총판으로 연결된 직속 하위 회원만 표시됩니다. 아이디·닉네임으로
           검색할 수 있습니다.
         </p>
@@ -98,7 +96,7 @@ export default function AgentMembersPage() {
           placeholder="아이디 / 닉네임 / 식별 메모 검색"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="min-w-[200px] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
+          className="min-w-[200px] flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
         />
       </div>
 
@@ -109,23 +107,23 @@ export default function AgentMembersPage() {
       )}
 
       {!rows ? (
-        <p className="text-zinc-500">불러오는 중…</p>
+        <p className="text-gray-500">불러오는 중…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-zinc-500">
+        <p className="text-gray-500">
           {rows.length === 0
             ? "아직 하위 회원이 없습니다."
             : "검색 결과가 없습니다."}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
           <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-400">
+            <thead className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500">
               <tr>
                 <th className="px-3 py-2">No</th>
                 <th className="px-3 py-2">아이디 · 식별 메모 / 닉네임</th>
                 <th className="px-3 py-2">상위 총판</th>
                 <th className="px-3 py-2">보유머니</th>
-                <th className="px-3 py-2">롤링 %</th>
+                <th className="px-3 py-2">롤링 배율</th>
                 <th className="px-3 py-2">가입일</th>
                 <th className="px-3 py-2">상세</th>
               </tr>
@@ -134,52 +132,56 @@ export default function AgentMembersPage() {
               {filtered.map((r, i) => (
                 <tr
                   key={r.id}
-                  className="border-b border-zinc-800/80 hover:bg-zinc-900/50"
+                  className="border-b border-gray-200 hover:bg-gray-50"
                 >
-                  <td className="px-3 py-2 text-zinc-500">{i + 1}</td>
+                  <td className="px-3 py-2 text-gray-500">{i + 1}</td>
                   <td className="px-3 py-2">
-                    <p className="font-mono text-xs text-zinc-200">
+                    <p className="font-mono text-xs text-gray-800">
                       {r.loginId}
                     </p>
                     {r.uplinePrivateMemo ? (
-                      <p className="mt-0.5 line-clamp-2 text-[11px] text-amber-200/85">
+                      <p className="mt-0.5 line-clamp-2 text-[11px] text-[#3182f6]">
                         {r.uplinePrivateMemo}
                       </p>
                     ) : null}
-                    <p className="text-zinc-500">
+                    <p className="text-gray-500">
                       {r.displayName ?? "—"}
                     </p>
-                    <p className="text-[11px] text-zinc-600">
+                    <p className="text-[11px] text-gray-400">
                       {regLabel(r.registrationStatus)}
                     </p>
                   </td>
                   <td className="px-3 py-2 text-xs text-teal-400/90">
                     본인 소속
                   </td>
-                  <td className="px-3 py-2 font-mono text-zinc-200">
-                    {r.balance}
+                  <td className="px-3 py-2 font-mono font-semibold text-gray-900">
+                    {fmtBal(r.balance)}
                   </td>
-                  <td className="px-3 py-2 text-xs text-zinc-400">
+                  <td className="px-3 py-2 text-xs text-gray-500">
                     {r.rollingEnabled ? (
-                      <span className="text-emerald-400/90">사용</span>
+                      <div className="space-y-0.5">
+                        <div className="font-mono text-[11px] leading-relaxed text-gray-700">
+                          <span className="text-gray-400">국내</span> {toMult(r.rollingSportsDomesticPct)}{" "}
+                          <span className="text-gray-400">해외</span> {toMult(r.rollingSportsOverseasPct)}
+                        </div>
+                        <div className="font-mono text-[11px] leading-relaxed text-gray-700">
+                          <span className="text-gray-400">카지노</span> {toMult(r.rollingCasinoPct)}{" "}
+                          <span className="text-gray-400">슬롯</span> {toMult(r.rollingSlotPct)}{" "}
+                          <span className="text-gray-400">미니</span> {toMult(r.rollingMinigamePct)}
+                        </div>
+                      </div>
                     ) : (
-                      <span className="text-zinc-600">미사용</span>
+                      <span className="text-gray-400">미사용</span>
                     )}
-                    <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-zinc-500">
-                      국{r.rollingSportsDomesticPct ?? 0} 해
-                      {r.rollingSportsOverseasPct ?? 0} · C
-                      {r.rollingCasinoPct ?? 0} Sl{r.rollingSlotPct ?? 0} M
-                      {r.rollingMinigamePct ?? 0}
-                    </div>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs text-zinc-500">
+                  <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-500">
                     {new Date(r.createdAt).toLocaleString()}
                   </td>
                   <td className="px-3 py-2">
                     <button
                       type="button"
                       onClick={() => setDetailId(r.id)}
-                      className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                      className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                     >
                       회원정보
                     </button>

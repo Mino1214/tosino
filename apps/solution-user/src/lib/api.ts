@@ -404,6 +404,146 @@ export async function fetchSportsLive(host: string) {
   }>;
 }
 
+/* ─── odds-api.io WebSocket (live odds feed) — public read endpoints ─── */
+
+export type OddsApiWsStatus = {
+  configured: boolean;
+  connectionState: "idle" | "connecting" | "open" | "closed" | "error";
+  connectedAt: string | null;
+  lastMessageAt: string | null;
+  lastSeq: number;
+  stateCount: number;
+  filters: {
+    sports: string[];
+    markets: string[];
+    status: "live" | "prematch" | null;
+  };
+};
+
+export type OddsApiWsEvent = {
+  sport: string;
+  eventId: string;
+  bookie: string;
+  url?: string;
+  markets: unknown;
+  timestamp: number;
+  seq: number;
+  updatedAt: string;
+  /** REST `/v3/odds` 보강. 들어올 때까지 잠시 null 일 수 있음. */
+  home?: string | null;
+  away?: string | null;
+  league?: string | null;
+  date?: string | null;
+  eventStatus?: string | null;
+  /** 라이브 스코어 (REST 보강에 들어 있을 때) */
+  scores?: {
+    home: number | null;
+    away: number | null;
+    periods: Record<string, { home: number; away: number }>;
+  } | null;
+};
+
+export async function fetchOddsApiWsStatus(): Promise<OddsApiWsStatus> {
+  const res = await fetch(`${getApiBase()}/public/odds-api-ws/status`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`odds-api-ws status (${res.status})`);
+  return res.json() as Promise<OddsApiWsStatus>;
+}
+
+export async function fetchOddsApiWsEvents(opts: {
+  sport?: string;
+  bookie?: string;
+  limit?: number;
+} = {}): Promise<{
+  sport: string | null;
+  bookie: string | null;
+  total: number;
+  events: OddsApiWsEvent[];
+}> {
+  const q = new URLSearchParams();
+  if (opts.sport) q.set("sport", opts.sport);
+  if (opts.bookie) q.set("bookie", opts.bookie);
+  if (opts.limit) q.set("limit", String(opts.limit));
+  const res = await fetch(
+    `${getApiBase()}/public/odds-api-ws/events?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`odds-api-ws events (${res.status})`);
+  return res.json();
+}
+
+/* ─── 집계 응답 (Phase 1+2 — 매치 단위, 한글 보강, 마진 9.95~10.1% 재조정) ─── */
+
+export type AggregatedMatchStatus = "live" | "prematch" | "finished" | "unknown";
+
+export type AggregatedMoneyline = {
+  home: number;
+  draw?: number;
+  away: number;
+  margin: number;
+};
+export type AggregatedHandicap = {
+  line: number;
+  home: number;
+  away: number;
+  margin: number;
+};
+export type AggregatedTotals = {
+  line: number;
+  over: number;
+  under: number;
+  margin: number;
+};
+
+export type AggregatedMatch = {
+  matchId: string;
+  sport: string;
+  status: AggregatedMatchStatus;
+  startTime: string | null;
+  league: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  home: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  away: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  scores: {
+    home: number | null;
+    away: number | null;
+    periods: Record<string, { home: number; away: number }>;
+  } | null;
+  markets: {
+    moneyline?: AggregatedMoneyline;
+    handicap?: AggregatedHandicap;
+    totals?: AggregatedTotals;
+  };
+  bookies: string[];
+  bookieCount: number;
+  url?: string;
+  lastUpdatedMs: number;
+};
+
+export type AggregatedMatchesResponse = {
+  status: AggregatedMatchStatus | "all";
+  sport: string | null;
+  total: number;
+  matches: AggregatedMatch[];
+};
+
+export async function fetchOddsApiMatches(opts: {
+  status?: AggregatedMatchStatus | "all";
+  sport?: string;
+  limit?: number;
+} = {}): Promise<AggregatedMatchesResponse> {
+  const q = new URLSearchParams();
+  if (opts.status) q.set("status", opts.status);
+  if (opts.sport) q.set("sport", opts.sport);
+  if (opts.limit) q.set("limit", String(opts.limit));
+  const res = await fetch(
+    `${getApiBase()}/public/odds-api-ws/matches?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`odds-api-ws matches (${res.status})`);
+  return res.json();
+}
+
 function appendOddsHostSecret(
   q: URLSearchParams,
   oddshostSecret?: string,

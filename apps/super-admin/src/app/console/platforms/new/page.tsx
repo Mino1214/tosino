@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken, getStoredUser } from "@/lib/api";
+import { apiFetch, getStoredUser } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 
 type TemplateRatePolicy = {
@@ -68,10 +68,6 @@ export default function ConsoleNewPlatformPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (getStoredUser()?.role !== "SUPER_ADMIN") {
       router.replace("/console/platforms");
     }

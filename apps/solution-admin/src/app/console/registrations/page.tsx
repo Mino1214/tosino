@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
 import { registrationStatusLabelKo } from "@/lib/labels";
 
@@ -68,7 +67,6 @@ function signupModeLabel(mode: string | null | undefined) {
 }
 
 export default function ConsoleRegistrationsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Pending[] | null>(null);
   const [history, setHistory] = useState<HistoryRow[] | null>(null);
@@ -98,17 +96,13 @@ export default function ConsoleRegistrationsPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) {
       setRows(null);
       setHistory(null);
       return;
     }
     void load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+  }, [load, selectedPlatformId, platformLoading]);
 
   const filterTabs = useMemo(() => {
     if (!rows?.length) {
@@ -200,12 +194,12 @@ export default function ConsoleRegistrationsPage() {
 
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (
-      <p className="text-zinc-500">불러오는 중…</p>
+      <p className="text-gray-500">불러오는 중…</p>
     ) : (
-      <p className="rounded-lg border border-amber-900/40 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+      <p className="rounded-lg border border-[#3182f6]/20 bg-[#3182f6]/5 px-4 py-3 text-sm text-gray-700">
         플랫폼 컨텍스트가 없습니다. 로그아웃 후 다시 로그인하거나 API 연결을
         확인하세요. 시드 데모 계정은{" "}
-        <span className="font-mono text-amber-300">platform@tosino.local</span>{" "}
+        <span className="font-mono text-[#3182f6]">platform@tosino.local</span>{" "}
         입니다.
       </p>
     );
@@ -214,14 +208,14 @@ export default function ConsoleRegistrationsPage() {
     return <p className="text-red-400">{err}</p>;
   }
   if (rows === null || history === null) {
-    return <p className="text-zinc-500">불러오는 중…</p>;
+    return <p className="text-gray-500">불러오는 중…</p>;
   }
 
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">가입 승인</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-2xl font-semibold text-black">가입 승인</h1>
+        <p className="mt-1 text-sm text-gray-500">
           대기 중인 신청을 처리하고, 아래에서 최근 승인·거절 기록을 확인할 수
           있습니다.
         </p>
@@ -229,14 +223,14 @@ export default function ConsoleRegistrationsPage() {
       {err && <p className="text-sm text-red-400">{err}</p>}
 
       <section className="space-y-4">
-        <h2 className="text-lg font-medium text-zinc-200">승인 대기</h2>
-        <p className="text-sm text-zinc-500">
+        <h2 className="text-lg font-medium text-gray-800">승인 대기</h2>
+        <p className="text-sm text-gray-500">
           탭으로 총판(추천인)별로 나눠 볼 수 있습니다. 무소속은 상위 총판 연결이
           없는 신청입니다.
         </p>
 
         {rows.length > 0 && (
-          <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
+          <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
             {filterTabs.map((t) => {
               const active = filterKey === t.key;
               return (
@@ -246,8 +240,8 @@ export default function ConsoleRegistrationsPage() {
                   onClick={() => setFilterKey(t.key)}
                   className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
                     active
-                      ? "bg-amber-600/25 text-amber-200 ring-1 ring-amber-600/50"
-                      : "bg-zinc-800/80 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                      ? "bg-amber-600/25 text-[#3182f6] ring-1 ring-[#3182f6]/50"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
                   }`}
                 >
                   {t.label}
@@ -261,70 +255,70 @@ export default function ConsoleRegistrationsPage() {
         )}
 
         {rows.length === 0 ? (
-          <p className="text-zinc-500">대기 중인 가입 신청이 없습니다.</p>
+          <p className="text-gray-500">대기 중인 가입 신청이 없습니다.</p>
         ) : filteredRows.length === 0 ? (
-          <p className="text-zinc-500">이 탭에 해당하는 신청이 없습니다.</p>
+          <p className="text-gray-500">이 탭에 해당하는 신청이 없습니다.</p>
         ) : (
           <ul className="space-y-3">
             {filteredRows.map((r) => (
               <li
                 key={r.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium text-zinc-100">{loginLabel(r)}</p>
-                    <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">
+                    <p className="font-medium text-black">{loginLabel(r)}</p>
+                    <span className="rounded-full border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700">
                       {signupModeLabel(r.signupMode)}
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-gray-500">
                     {r.displayName ?? "이름 없음"} · 신청{" "}
                     {new Date(r.createdAt).toLocaleString()}
                   </p>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="mt-1 text-xs text-gray-500">
                     가입 입력:{" "}
-                    <span className="font-mono text-zinc-300">
+                    <span className="font-mono text-gray-700">
                       {r.signupReferralInput ?? "—"}
                     </span>
                     {r.referredBy ? (
                       <>
                         <span className="mx-1 text-zinc-700">·</span>
                         추천인{" "}
-                        <span className="text-zinc-300">
+                        <span className="text-gray-700">
                           {r.referredBy.displayName ?? r.referredBy.loginId}
                         </span>
                       </>
                     ) : null}
                   </p>
                   {r.signupMode === "anonymous" && r.usdtWalletAddress ? (
-                    <p className="mt-1 truncate text-xs text-emerald-300/80">
+                    <p className="mt-1 truncate text-xs text-emerald-700/80">
                       테더지갑: {r.usdtWalletAddress}
                     </p>
                   ) : null}
-                  <div className="mt-2 rounded-lg border border-violet-900/40 bg-violet-950/25 px-3 py-2 text-xs">
-                    <p className="font-medium text-violet-200/90">소속 총판</p>
+                  <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs">
+                    <p className="font-medium text-violet-700/90">소속 총판</p>
                     <p className="mt-0.5 text-violet-100/80">
                       {r.parent ? (
                         <>
                           {r.parent.referralCode && (
-                            <span className="font-mono text-amber-200/90">
+                            <span className="font-mono text-[#3182f6]">
                               {r.parent.referralCode}
                             </span>
                           )}
                           {r.parent.referralCode && (
-                            <span className="text-zinc-500"> · </span>
+                            <span className="text-gray-500"> · </span>
                           )}
                           <span>
                             {r.parent.displayName ?? r.parent.loginId}
                           </span>
-                          <span className="text-zinc-500">
+                          <span className="text-gray-500">
                             {" "}
                             ({r.parent.loginId})
                           </span>
                         </>
                       ) : (
-                        <span className="text-amber-200/70">
+                        <span className="text-[#3182f6]/70">
                           무소속 — 추천 코드 없이 가입했거나 상위 연결 없음
                         </span>
                       )}
@@ -344,7 +338,7 @@ export default function ConsoleRegistrationsPage() {
                     type="button"
                     disabled={busy === r.id}
                     onClick={() => reject(r.id)}
-                    className="rounded border border-red-900/60 px-3 py-1.5 text-sm text-red-300 hover:bg-red-950/40 disabled:opacity-50"
+                    className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
                   >
                     거절
                   </button>
@@ -356,17 +350,17 @@ export default function ConsoleRegistrationsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-medium text-zinc-200">승인·거절 내역</h2>
-        <p className="text-sm text-zinc-500">
+        <h2 className="text-lg font-medium text-gray-800">승인·거절 내역</h2>
+        <p className="text-sm text-gray-500">
           최근 처리한 회원만 표시합니다(최대 100건). 처리 시각은 승인·거절을
           누른 시간입니다.
         </p>
         {history.length === 0 ? (
-          <p className="text-zinc-500">아직 기록이 없습니다.</p>
+          <p className="text-gray-500">아직 기록이 없습니다.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-zinc-800">
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs text-zinc-400">
+              <thead className="border-b border-gray-200 bg-white text-xs text-gray-500">
                 <tr>
                   <th className="px-4 py-2">처리 시각</th>
                   <th className="px-4 py-2">결과</th>
@@ -383,9 +377,9 @@ export default function ConsoleRegistrationsPage() {
                 {history.map((h) => (
                   <tr
                     key={h.id}
-                    className="border-b border-zinc-800/80 hover:bg-zinc-900/40"
+                    className="border-b border-gray-200 hover:bg-white"
                   >
-                    <td className="whitespace-nowrap px-4 py-2 text-xs text-zinc-400">
+                    <td className="whitespace-nowrap px-4 py-2 text-xs text-gray-500">
                       {h.registrationResolvedAt
                         ? new Date(h.registrationResolvedAt).toLocaleString()
                         : "—"}
@@ -394,43 +388,43 @@ export default function ConsoleRegistrationsPage() {
                       <span
                         className={
                           h.registrationStatus === "APPROVED"
-                            ? "text-emerald-400"
-                            : "text-red-300/90"
+                            ? "text-emerald-600"
+                            : "text-red-600/90"
                         }
                       >
                         {registrationStatusLabelKo(h.registrationStatus)}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-zinc-200">{loginLabel(h)}</td>
-                    <td className="px-4 py-2 text-zinc-500">
+                    <td className="px-4 py-2 text-gray-800">{loginLabel(h)}</td>
+                    <td className="px-4 py-2 text-gray-500">
                       {h.displayName ?? "—"}
                     </td>
-                    <td className="px-4 py-2 text-zinc-400">
+                    <td className="px-4 py-2 text-gray-500">
                       {signupModeLabel(h.signupMode)}
                     </td>
-                    <td className="px-4 py-2 font-mono text-xs text-zinc-400">
+                    <td className="px-4 py-2 font-mono text-xs text-gray-500">
                       {h.signupReferralInput ?? "—"}
                     </td>
-                    <td className="px-4 py-2 text-xs text-zinc-400">
+                    <td className="px-4 py-2 text-xs text-gray-500">
                       {h.referredBy
                         ? h.referredBy.displayName ?? h.referredBy.loginId
                         : "—"}
                     </td>
-                    <td className="px-4 py-2 text-xs text-zinc-400">
+                    <td className="px-4 py-2 text-xs text-gray-500">
                       {h.parent ? (
                         <>
                           {h.parent.referralCode && (
-                            <span className="font-mono text-amber-200/70">
+                            <span className="font-mono text-[#3182f6]/70">
                               {h.parent.referralCode}{" "}
                             </span>
                           )}
                           {h.parent.displayName ?? h.parent.loginId}
                         </>
                       ) : (
-                        <span className="text-zinc-600">무소속</span>
+                        <span className="text-gray-400">무소속</span>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-xs text-zinc-500">
+                    <td className="whitespace-nowrap px-4 py-2 text-xs text-gray-500">
                       {new Date(h.createdAt).toLocaleString()}
                     </td>
                   </tr>

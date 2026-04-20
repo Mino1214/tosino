@@ -1,219 +1,219 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch, getAccessToken, getApiBase } from "@/lib/api";
+import { getApiBase } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
+import { inferRootHost, inferAdminHost } from "@/lib/platform-hosts";
 
-type SyncRow = {
+type PingStatus = "idle" | "checking" | "ok" | "fail";
+
+type EndpointCheck = {
   id: string;
-  jobType: string;
-  lastRunAt: string | null;
-  lastOkAt: string | null;
-  lastError: string | null;
-};
-
-const JOB_LABEL: Record<string, string> = {
-  ODDS: "스포츠 배당",
-  CASINO: "카지노 연동",
-  AFFILIATE: "총판·정산 연동",
-};
-
-function jobTitle(jobType: string): string {
-  return JOB_LABEL[jobType] ?? jobType;
-}
-
-function statusTone(row: SyncRow): {
   label: string;
-  desc: string;
-  color: string;
-} {
-  if (row.lastError) {
-    return {
-      label: "점검 필요",
-      desc: row.lastError,
-      color: "text-amber-300",
-    };
-  }
-  if (row.lastOkAt) {
-    return {
-      label: "정상",
-      desc: `마지막으로 잘 동작한 시각: ${new Date(row.lastOkAt).toLocaleString()}`,
-      color: "text-emerald-400",
-    };
-  }
-  if (row.lastRunAt) {
-    return {
-      label: "확인 중",
-      desc: "실행 기록은 있으나 성공 시각이 아직 없습니다.",
-      color: "text-zinc-400",
-    };
-  }
-  return {
-    label: "대기",
-    desc: "아직 이 항목으로 자동 작업이 돌지 않았습니다.",
-    color: "text-zinc-500",
-  };
+  url: string | null;
+  description: string;
+  disabled?: boolean;
+  status: PingStatus;
+  ms: number | null;
+  code: number | null;
+};
+
+function StatusBadge({ status, ms }: { status: PingStatus; ms: number | null }) {
+  if (status === "idle") return <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">대기</span>;
+  if (status === "checking") return <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-500 animate-pulse">확인 중…</span>;
+  if (status === "ok") return (
+    <span className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-600">
+      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+      정상 {ms != null ? `(${ms}ms)` : ""}
+    </span>
+  );
+  return <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-500">연결 실패</span>;
 }
 
 export default function ConsoleSyncPage() {
-  const router = useRouter();
-  const { selectedPlatformId, loading: platformLoading } = usePlatform();
-  const [rows, setRows] = useState<SyncRow[] | null>(null);
-  const [apiPing, setApiPing] = useState<"ok" | "fail" | "idle">("idle");
-  const [err, setErr] = useState<string | null>(null);
+  const { platforms, selectedPlatformId, loading: platformLoading } = usePlatform();
+  const [checks, setChecks] = useState<EndpointCheck[]>([]);
+  const [running, setRunning] = useState(false);
 
-  const load = useCallback(() => {
-    if (!selectedPlatformId) return Promise.resolve();
-    return apiFetch<SyncRow[]>(
-      `/platforms/${selectedPlatformId}/sync/status`,
-    )
-      .then(setRows)
-      .catch((e) => setErr(e instanceof Error ? e.message : "오류"));
-  }, [selectedPlatformId]);
+  const selected = platforms.find((p) => p.id === selectedPlatformId) ?? null;
+  const apiBase = getApiBase().replace(/\/$/, "");
+
+
+  const buildChecks = useCallback((): EndpointCheck[] => {
+    const adminHost = selected ? inferAdminHost(selected) : null;
+    const rootHost = selected ? inferRootHost(selected) : null;
+
+    return [
+      {
+        id: "api",
+        label: "Tosino API (본사)",
+        url: apiBase ? `${apiBase}/health` : null,
+        description: "본사 공통 API 서버 — 모든 데이터 처리의 중심",
+        status: "idle",
+        ms: null,
+        code: null,
+      },
+      {
+        id: "tozinosolution",
+        label: "tozinosolution.com (본사 사이트)",
+        url: "https://mod.tozinosolution.com",
+        description: "슈퍼어드민 호스트 접속 여부 확인",
+        status: "idle",
+        ms: null,
+        code: null,
+      },
+      {
+        id: "admin",
+        label: "솔루션 어드민",
+        url: adminHost ? `https://${adminHost}` : null,
+        description: selected ? `선택 솔루션(${selected.name})의 어드민 패널` : "솔루션을 선택하세요",
+        status: "idle",
+        ms: null,
+        code: null,
+      },
+      {
+        id: "user",
+        label: "솔루션 유저 사이트",
+        url: rootHost ? `https://${rootHost}` : null,
+        description: selected ? `선택 솔루션(${selected.name})의 회원 접속 사이트` : "솔루션을 선택하세요",
+        status: "idle",
+        ms: null,
+        code: null,
+      },
+      {
+        id: "casino",
+        label: "카지노 API",
+        url: null,
+        description: "카지노 연동 API (준비 중)",
+        disabled: true,
+        status: "idle",
+        ms: null,
+        code: null,
+      },
+      {
+        id: "sports",
+        label: "스포츠 API",
+        url: null,
+        description: "스포츠 배당 API (준비 중)",
+        disabled: true,
+        status: "idle",
+        ms: null,
+        code: null,
+      },
+    ];
+  }, [selected, apiBase]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
-    if (!selectedPlatformId || platformLoading) {
-      setRows(null);
-      return;
-    }
-    setErr(null);
-    setApiPing("idle");
-    load();
-  }, [load, router, selectedPlatformId, platformLoading]);
+    setChecks(buildChecks());
+  }, [buildChecks]);
 
-  const checkApiReachable = useCallback(async () => {
-    setApiPing("idle");
-    const base = getApiBase().replace(/\/$/, "");
-    if (!base) {
-      setApiPing("fail");
-      return;
-    }
+  async function checkOne(id: string, url: string): Promise<{ code: number; ms: number }> {
+    const start = Date.now();
     try {
-      const res = await fetch(`${base}/health`, { method: "GET" });
-      setApiPing(res.ok ? "ok" : "fail");
+      const res = await fetch(url, { method: "GET", signal: AbortSignal.timeout(8000) });
+      return { code: res.status, ms: Date.now() - start };
     } catch {
-      setApiPing("fail");
+      return { code: 0, ms: Date.now() - start };
     }
-  }, []);
-
-  useEffect(() => {
-    if (!selectedPlatformId || platformLoading) return;
-    void checkApiReachable();
-  }, [selectedPlatformId, platformLoading, checkApiReachable]);
-
-  if (platformLoading || !selectedPlatformId) {
-    return platformLoading ? (
-      <p className="text-zinc-500">불러오는 중…</p>
-    ) : null;
   }
-  if (err && !rows) {
-    return <p className="text-red-400">{err}</p>;
-  }
-  if (!rows) {
-    return <p className="text-zinc-500">불러오는 중…</p>;
+
+  async function runAll() {
+    setRunning(true);
+    const initial = buildChecks();
+    // Set all checking
+    setChecks(initial.map((c) => ({ ...c, status: c.disabled || !c.url ? c.status : "checking" })));
+
+    const results = await Promise.all(
+      initial.map(async (check) => {
+        if (check.disabled || !check.url) return check;
+        const { code, ms } = await checkOne(check.id, check.url);
+        return { ...check, status: (code >= 200 && code < 400) ? "ok" as const : "fail" as const, ms, code };
+      }),
+    );
+    setChecks(results);
+    setRunning(false);
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">서버 상태</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-500">
-          관리 화면과 연결된 서버가 응답하는지, 스포츠·카지노 등 백그라운드
-          작업이 최근에 문제 없이 돌았는지 확인하는 페이지입니다. 용어는
-          쉽게만 표시했습니다.
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-500">System</p>
+          <h1 className="mt-1.5 text-2xl font-bold text-gray-900">헬스체크</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            API 서버, 솔루션 사이트, 연동 API 정상 여부를 한 화면에서 확인합니다.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void runAll()}
+          disabled={running || platformLoading}
+          className="rounded-xl bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50 transition"
+        >
+          {running ? "확인 중…" : "전체 확인"}
+        </button>
       </div>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-        <h2 className="text-base font-medium text-zinc-200">API 연결</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          브라우저에서 게임·관리 API 주소로 직접 손을 대 보는 간단한 확인입니다.
-        </p>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <span
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${
-              apiPing === "ok"
-                ? "bg-emerald-950/60 text-emerald-300 ring-1 ring-emerald-800/50"
-                : apiPing === "fail"
-                  ? "bg-red-950/50 text-red-300 ring-1 ring-red-900/50"
-                  : "bg-zinc-800 text-zinc-400"
+      <div className="grid gap-3 sm:grid-cols-2">
+        {checks.map((check) => (
+          <div
+            key={check.id}
+            className={`rounded-2xl border bg-white p-5 transition ${
+              check.disabled
+                ? "border-gray-100 opacity-40"
+                : check.status === "ok"
+                  ? "border-green-200"
+                  : check.status === "fail"
+                    ? "border-red-200"
+                    : "border-gray-200"
             }`}
           >
-            {apiPing === "ok"
-              ? "연결됨"
-              : apiPing === "fail"
-                ? "연결 실패"
-                : "확인 중…"}
-          </span>
-          <button
-            type="button"
-            onClick={() => checkApiReachable()}
-            className="rounded-lg border border-zinc-600 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800"
-          >
-            다시 확인
-          </button>
-        </div>
-        {apiPing === "fail" && (
-          <p className="mt-3 text-sm text-amber-200/90">
-            API 서버가 꺼져 있거나 주소(NEXT_PUBLIC_API_URL)가 잘못됐을 수
-            있습니다. 개발 중이면 터미널에서 API를 먼저 실행해 주세요.
-          </p>
-        )}
-      </section>
-
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-base font-medium text-zinc-200">
-              백그라운드 작업
-            </h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              서버가 정해진 간격으로 돌리는 데이터 갱신입니다. 여기서는
-              &quot;마지막으로 잘 됐는지&quot;만 보면 됩니다.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => load()}
-            className="rounded-lg border border-zinc-600 px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800"
-          >
-            새로고침
-          </button>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-3">
-          {rows.map((r) => {
-            const tone = statusTone(r);
-            return (
-              <div
-                key={r.id}
-                className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4"
-              >
-                <p className="text-sm font-medium text-zinc-100">
-                  {jobTitle(r.jobType)}
-                </p>
-                <p className={`mt-2 text-lg font-semibold ${tone.color}`}>
-                  {tone.label}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                  {tone.desc}
-                </p>
-                {r.lastRunAt && (
-                  <p className="mt-3 text-[11px] text-zinc-600">
-                    마지막 시도:{" "}
-                    {new Date(r.lastRunAt).toLocaleString()}
-                  </p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-gray-900">{check.label}</p>
+                <p className="mt-0.5 text-xs text-gray-500">{check.description}</p>
+                {check.url && !check.disabled && (
+                  <p className="mt-1 truncate font-mono text-[10px] text-gray-400">{check.url}</p>
                 )}
               </div>
-            );
-          })}
+              <StatusBadge status={check.status} ms={check.ms} />
+            </div>
+
+            {check.disabled ? (
+              <div className="mt-3">
+                <span className="rounded-full border border-gray-200 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">준비중</span>
+              </div>
+            ) : check.url ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  disabled={running}
+                  onClick={async () => {
+                    setChecks((prev) => prev.map((c) => c.id === check.id ? { ...c, status: "checking" } : c));
+                    const { code, ms } = await checkOne(check.id, check.url!);
+                    setChecks((prev) => prev.map((c) => c.id === check.id
+                      ? { ...c, status: (code >= 200 && code < 400) ? "ok" : "fail", ms, code }
+                      : c));
+                  }}
+                  className="text-xs text-blue-500 hover:text-blue-700 transition disabled:opacity-50"
+                >
+                  개별 확인
+                </button>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-gray-400">솔루션 선택 후 확인 가능</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {!selectedPlatformId && (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4">
+          <p className="text-sm text-blue-700">
+            좌측에서 솔루션을 선택하면 해당 솔루션의 어드민·유저 사이트 헬스체크도 확인할 수 있습니다.
+          </p>
         </div>
-      </section>
+      )}
     </div>
   );
 }

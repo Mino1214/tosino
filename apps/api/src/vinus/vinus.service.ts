@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RollingObligationService } from '../rolling/rolling-obligation.service';
 import { PointsService } from '../points/points.service';
+import { ReserveBalanceService } from '../reserve-balance/reserve-balance.service';
 import type { VinusLaunchDto } from './dto/vinus-launch.dto';
 import {
   resolveLedgerVerticalFromVinus,
@@ -500,6 +501,7 @@ export class VinusService {
     private config: ConfigService,
     private rolling: RollingObligationService,
     private points: PointsService,
+    private reserve: ReserveBalanceService,
   ) {}
 
   private assertConfigured() {
@@ -1182,6 +1184,7 @@ export class VinusService {
           }) as Prisma.InputJsonValue,
         },
       });
+      // 스포츠는 알 가상 복구 로직 대상 아님 (카지노 전용)
       await this.rolling.applyBetStake(tx, userRow.id, amount);
       await this.points.maybeCreditReferrerFirstBet(
         tx,
@@ -1671,6 +1674,7 @@ export class VinusService {
           },
         });
       }
+      // 스포츠는 알 가상 복구 로직 대상 아님 (카지노 전용)
       return ok(newBal);
     });
   }
@@ -2257,6 +2261,24 @@ export class VinusService {
               }) as Prisma.InputJsonValue,
             },
           });
+          // 알 가상 차감 — 카지노 계열만 (sports/SPORTS_BET 제외)
+          if (betVertical !== 'sports') {
+            await this.reserve.applyLedgerEvent(
+              platformId,
+              {
+                kind: 'BET',
+                amount,
+                reference: tid,
+                userId: userRow!.id,
+                gameId:
+                  typeof data.game_id === 'string' ? data.game_id : null,
+                betId: tid,
+                vertical: betVertical,
+                note: `vinus-${command}`,
+              },
+              tx,
+            );
+          }
           await this.rolling.applyBetStake(tx, userRow!.id, amount);
           await this.points.maybeCreditReferrerFirstBet(
             tx,
@@ -2344,6 +2366,43 @@ export class VinusService {
               }) as Prisma.InputJsonValue,
             },
           });
+          // 알 가상: bet-win 은 카지노 전용 이벤트 — 스테이크/배당 동시 기록 (sports 는 별도 경로라 제외)
+          if (betWinVertical !== 'sports') {
+            if (bet.gt(0)) {
+              await this.reserve.applyLedgerEvent(
+                platformId,
+                {
+                  kind: 'BET',
+                  amount: bet,
+                  reference: tid,
+                  userId: userRow!.id,
+                  gameId:
+                    typeof data.game_id === 'string' ? data.game_id : null,
+                  betId: tid,
+                  vertical: betWinVertical,
+                  note: 'vinus-bet-win(stake)',
+                },
+                tx,
+              );
+            }
+            if (win.gt(0)) {
+              await this.reserve.applyLedgerEvent(
+                platformId,
+                {
+                  kind: 'WIN',
+                  amount: win,
+                  reference: tid,
+                  userId: userRow!.id,
+                  gameId:
+                    typeof data.game_id === 'string' ? data.game_id : null,
+                  betId: tid,
+                  vertical: betWinVertical,
+                  note: 'vinus-bet-win(payout)',
+                },
+                tx,
+              );
+            }
+          }
           await this.points.maybeCreditLoseBet(
             tx,
             userRow!.id,
@@ -2457,6 +2516,24 @@ export class VinusService {
                 }) as Prisma.InputJsonValue,
               },
             });
+            // 알 가상 복구 — 카지노 계열만
+            if (winVertical !== 'sports') {
+              await this.reserve.applyLedgerEvent(
+                platformId,
+                {
+                  kind: 'WIN',
+                  amount,
+                  reference: tid,
+                  userId: userRow!.id,
+                  gameId:
+                    typeof data.game_id === 'string' ? data.game_id : null,
+                  betId: tid,
+                  vertical: winVertical,
+                  note: `vinus-${command}`,
+                },
+                tx,
+              );
+            }
           }
           return ok(newBal);
         });
@@ -2566,6 +2643,16 @@ export class VinusService {
               }) as Prisma.InputJsonValue,
             },
           });
+          // 알 가상 롤백 — 카지노 계열만. sports-cancel / SPORTS_BET 은 스킵
+          if (
+            command !== 'sports-cancel' &&
+            cur.kind !== 'SPORTS_BET'
+          ) {
+            await this.reserve.rollbackLedgerEvent(
+              cur.externalId,
+              `cancel(${cur.kind})`,
+            );
+          }
           return okCancel(newBal, uid, tid);
         });
       }
@@ -2650,6 +2737,13 @@ export class VinusService {
               }) as Prisma.InputJsonValue,
             },
           });
+          // 알 가상 롤백 — 카지노 계열만. SPORTS_BET 은 스킵
+          if (openBet.kind !== 'SPORTS_BET') {
+            await this.reserve.rollbackLedgerEvent(
+              openBet.externalId,
+              'refund',
+            );
+          }
           return ok(newBal);
         });
       }

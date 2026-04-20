@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   apiFetch,
   apiUploadAnnouncementAsset,
-  getAccessToken,
   getApiBase,
 } from "@/lib/api";
 import { usePlatform } from "@/context/PlatformContext";
@@ -61,7 +59,6 @@ function specDeltaOk(w: number | null, h: number | null): boolean {
 }
 
 export default function ConsoleAnnouncementsPage() {
-  const router = useRouter();
   const { selectedPlatformId, loading: platformLoading } = usePlatform();
   const [rows, setRows] = useState<Row[]>(emptyRows);
   const [selectedSlot, setSelectedSlot] = useState(0);
@@ -104,17 +101,12 @@ export default function ConsoleAnnouncementsPage() {
   }, [selectedPlatformId]);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace("/login");
-      return;
-    }
     if (!selectedPlatformId || platformLoading) return;
     loadAnnouncements();
     loadLibrary();
   }, [
     loadAnnouncements,
     loadLibrary,
-    router,
     selectedPlatformId,
     platformLoading,
   ]);
@@ -207,12 +199,12 @@ export default function ConsoleAnnouncementsPage() {
 
   if (platformLoading || !selectedPlatformId) {
     return platformLoading ? (
-      <p className="text-zinc-500">불러오는 중…</p>
+      <p className="text-gray-500">불러오는 중…</p>
     ) : (
-      <p className="rounded-lg border border-amber-900/40 bg-amber-950/25 px-4 py-3 text-sm text-amber-100">
+      <p className="rounded-lg border border-[#3182f6]/20 bg-[#3182f6]/5 px-4 py-3 text-sm text-gray-700">
         플랫폼 컨텍스트가 없습니다. 로그아웃 후 다시 로그인하거나 API 연결을
         확인하세요. 시드 데모 계정은{" "}
-        <span className="font-mono text-amber-300">platform@tosino.local</span>{" "}
+        <span className="font-mono text-[#3182f6]">platform@tosino.local</span>{" "}
         입니다.
       </p>
     );
@@ -221,41 +213,41 @@ export default function ConsoleAnnouncementsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-100">공지 팝업</h1>
-        <p className="mt-2 max-w-2xl text-sm text-zinc-500">
+        <h1 className="text-2xl font-semibold text-black">공지 팝업</h1>
+        <p className="mt-2 max-w-2xl text-sm text-gray-500">
           모바일 권장 규격{" "}
-          <strong className="text-zinc-300">
+          <strong className="text-gray-700">
             약 {SPEC_W}×{SPEC_H}px
           </strong>
           . 업로드 시 서버에 저장되며, 아래 라이브러리에서 슬롯으로 고를 수
           있습니다. 외부 URL도 슬롯에 직접 입력 가능합니다.
         </p>
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-gray-500">
           솔루션에서는 부트스트랩으로 공지가 내려가며, 기본으로 팝업이 켜져
           있습니다. 끄려면 API 환경변수{" "}
-          <code className="text-zinc-400">ANNOUNCEMENT_MODAL_PUBLISH=false</code>
+          <code className="text-gray-500">ANNOUNCEMENT_MODAL_PUBLISH=false</code>
           . 상대 경로 이미지는{" "}
-          <code className="text-zinc-400">PUBLIC_API_URL</code>이 붙습니다.
-          <strong className="text-zinc-400"> 필수 읽기</strong>를 켜면 로그인
+          <code className="text-gray-500">PUBLIC_API_URL</code>이 붙습니다.
+          <strong className="text-gray-500"> 필수 읽기</strong>를 켜면 로그인
           회원은 확인 전 솔루션 이동이 제한됩니다.
         </p>
       </div>
 
       {err && (
-        <p className="rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {err}
         </p>
       )}
       {msg && (
-        <p className="rounded border border-emerald-900/50 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200">
+        <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           {msg}
         </p>
       )}
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-        <h2 className="text-sm font-semibold text-zinc-200">업로드 · 라이브러리</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          먼저 적용할 <strong className="text-zinc-400">슬롯</strong>을 고른 뒤
+      <section className="rounded-xl border border-gray-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-gray-800">업로드 · 라이브러리</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          먼저 적용할 <strong className="text-gray-500">슬롯</strong>을 고른 뒤
           파일을 올리면 해당 슬롯에 바로 채워집니다. JPEG / PNG / WebP / GIF,
           최대 8MB.
         </p>
@@ -270,19 +262,19 @@ export default function ConsoleAnnouncementsPage() {
           type="button"
           disabled={uploading}
           onClick={() => fileRef.current?.click()}
-          className="mt-3 rounded-lg bg-zinc-800 px-4 py-2 text-sm text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+          className="mt-3 rounded-lg bg-gray-100 px-4 py-2 text-sm text-black hover:bg-gray-200 disabled:opacity-50"
         >
           {uploading ? "업로드 중…" : "이미지 파일 업로드"}
         </button>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {library.length === 0 ? (
-            <p className="text-sm text-zinc-600">아직 업로드된 파일이 없습니다.</p>
+            <p className="text-sm text-gray-400">아직 업로드된 파일이 없습니다.</p>
           ) : (
             library.map((a) => (
               <div
                 key={a.id}
-                className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950"
+                className="overflow-hidden rounded-lg border border-gray-200 bg-white"
               >
                 <div className="aspect-[367/451] bg-black">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -292,25 +284,25 @@ export default function ConsoleAnnouncementsPage() {
                     className="h-full w-full object-contain"
                   />
                 </div>
-                <div className="space-y-1 p-2 text-xs text-zinc-400">
-                  <p className="font-mono text-[11px] text-amber-200/90">
+                <div className="space-y-1 p-2 text-xs text-gray-500">
+                  <p className="font-mono text-[11px] text-[#3182f6]">
                     {a.width}×{a.height}px
                   </p>
-                  <p className="truncate text-zinc-500" title={a.originalName ?? ""}>
+                  <p className="truncate text-gray-500" title={a.originalName ?? ""}>
                     {a.originalName || "—"}
                   </p>
                   <div className="flex flex-wrap gap-1 pt-1">
                     <button
                       type="button"
                       onClick={() => applyAssetToSelectedSlot(a)}
-                      className="rounded bg-amber-600/90 px-2 py-1 text-[11px] font-medium text-zinc-950 hover:bg-amber-500"
+                      className="rounded bg-amber-600/90 px-2 py-1 text-[11px] font-medium text-white hover:bg-blue-600"
                     >
                       슬롯 {selectedSlot + 1}에 적용
                     </button>
                     <button
                       type="button"
                       onClick={() => deleteAsset(a.id)}
-                      className="rounded border border-zinc-600 px-2 py-1 text-[11px] text-zinc-400 hover:bg-zinc-800"
+                      className="rounded border border-gray-300 px-2 py-1 text-[11px] text-gray-500 hover:bg-gray-100"
                     >
                       삭제
                     </button>
@@ -323,7 +315,7 @@ export default function ConsoleAnnouncementsPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-zinc-200">
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">
           공지 슬롯 (최대 {MAX}개)
         </h2>
         <div className="space-y-4">
@@ -341,24 +333,24 @@ export default function ConsoleAnnouncementsPage() {
                 key={i}
                 className={`rounded-xl border p-4 transition ${
                   selectedSlot === i
-                    ? "border-amber-500/70 bg-amber-950/20 ring-1 ring-amber-500/40"
-                    : "border-zinc-800 bg-zinc-900/40"
+                    ? "border-amber-500/70 bg-[#3182f6]/5 ring-1 ring-amber-500/40"
+                    : "border-gray-200 bg-white"
                 }`}
               >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={() => setSelectedSlot(i)}
-                    className="text-left text-sm font-medium text-zinc-300 hover:text-amber-200/90"
+                    className="text-left text-sm font-medium text-gray-700 hover:text-[#3182f6]"
                   >
                     슬롯 {i + 1}
                     {selectedSlot === i && (
-                      <span className="ml-2 text-xs font-normal text-amber-400">
+                      <span className="ml-2 text-xs font-normal text-[#3182f6]">
                         선택됨
                       </span>
                     )}
                   </button>
-                  <label className="flex items-center gap-2 text-xs text-zinc-500">
+                  <label className="flex items-center gap-2 text-xs text-gray-500">
                     <input
                       type="checkbox"
                       checked={row.active}
@@ -368,11 +360,11 @@ export default function ConsoleAnnouncementsPage() {
                         next[i] = { ...next[i], active: e.target.checked };
                         setRows(next);
                       }}
-                      className="rounded border-zinc-600"
+                      className="rounded border-gray-300"
                     />
                     활성
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-amber-200/80">
+                  <label className="flex items-center gap-2 text-xs text-[#3182f6]/80">
                     <input
                       type="checkbox"
                       checked={row.mandatoryRead}
@@ -385,7 +377,7 @@ export default function ConsoleAnnouncementsPage() {
                         };
                         setRows(next);
                       }}
-                      className="rounded border-zinc-600"
+                      className="rounded border-gray-300"
                     />
                     필수 읽기
                   </label>
@@ -405,25 +397,25 @@ export default function ConsoleAnnouncementsPage() {
                     };
                     setRows(next);
                   }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black placeholder:text-gray-400"
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                   {row.imageWidth != null && row.imageHeight != null ? (
                     <span
                       className={
-                        specOk ? "text-emerald-400/90" : "text-amber-300/90"
+                        specOk ? "text-emerald-600/90" : "text-[#3182f6]/90"
                       }
                     >
                       {row.imageWidth}×{row.imageHeight}px
                       {!specOk && " · 권장 규격과 차이 있음"}
                     </span>
                   ) : (
-                    <span className="text-zinc-600">픽셀: URL만 있음 (미확인)</span>
+                    <span className="text-gray-400">픽셀: URL만 있음 (미확인)</span>
                   )}
                 </div>
                 {preview ? (
                   <div
-                    className="relative mt-3 overflow-hidden rounded-lg border border-zinc-800 bg-black"
+                    className="relative mt-3 overflow-hidden rounded-lg border border-gray-200 bg-black"
                     style={{
                       maxWidth: 367,
                       aspectRatio: `${SPEC_W} / ${SPEC_H}`,
@@ -448,7 +440,7 @@ export default function ConsoleAnnouncementsPage() {
           type="button"
           disabled={saving}
           onClick={() => save()}
-          className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 disabled:opacity-50"
+          className="rounded-lg bg-[#3182f6] px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
         >
           {saving ? "저장 중…" : "저장"}
         </button>
@@ -458,7 +450,7 @@ export default function ConsoleAnnouncementsPage() {
             loadAnnouncements();
             loadLibrary();
           }}
-          className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800"
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
         >
           다시 불러오기
         </button>
