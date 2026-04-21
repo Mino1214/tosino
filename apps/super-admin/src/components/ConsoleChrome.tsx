@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiFetch, clearSession, getAccessToken, getStoredUser } from "@/lib/api";
@@ -337,7 +336,7 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
                     }
 
                     return (
-                      <Link
+                      <a
                         key={child.href}
                         href={child.href}
                         className={`block rounded-lg px-2.5 py-2 transition ${
@@ -357,7 +356,7 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
                         <span className={`mt-0.5 block line-clamp-2 text-[11px] leading-tight ${childActive ? "text-[#3182f6]/70" : "text-gray-400"}`}>
                           {child.hint}
                         </span>
-                      </Link>
+                      </a>
                     );
                   })}
                 </div>
