@@ -16,6 +16,7 @@ import {
   OddsApiAggregatorService,
   type MatchStatus,
 } from './odds-api-aggregator.service';
+import { OddsApiRestService } from './odds-api-rest.service';
 import { OddsApiSnapshotService } from './odds-api-snapshot.service';
 
 function parseMatchStatus(v: string | undefined): MatchStatus | 'all' {
@@ -170,6 +171,7 @@ type ApplyConfigBody = {
   apiKey?: string;
   sports?: string[];
   markets?: string[];
+  bookmakers?: string[];
   status?: 'live' | 'prematch' | null;
   autoConnect?: boolean;
 };
@@ -181,6 +183,7 @@ export class OddsApiWsAdminController {
   constructor(
     private readonly svc: OddsApiWsService,
     private readonly aggregator: OddsApiAggregatorService,
+    private readonly rest: OddsApiRestService,
   ) {}
 
   @Get('status')
@@ -215,6 +218,20 @@ export class OddsApiWsAdminController {
     });
   }
 
+  @Get('discovery')
+  async discovery() {
+    const [sports, bookmakers, selectedBookmakers] = await Promise.all([
+      this.rest.listSports().catch(() => []),
+      this.rest.listBookmakers().catch(() => []),
+      this.rest.listSelectedBookmakers().catch(() => []),
+    ]);
+    return {
+      sports,
+      bookmakers,
+      selectedBookmakers,
+    };
+  }
+
   @Post('config')
   applyConfig(@Body() body: ApplyConfigBody) {
     return this.svc.applyConfig(body);
@@ -224,4 +241,94 @@ export class OddsApiWsAdminController {
   reconnect() {
     return this.svc.reconnectNow();
   }
+
+  @Get('category-odds')
+  async categoryOdds(
+    @Query('sport') sport?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('bookmakers') bookmakers?: string,
+  ) {
+    const sp = (sport || '').trim();
+    if (!sp) {
+      return { sport: null, page: 1, pageSize: 10, totalEvents: 0, items: [] };
+    }
+    const p = Math.max(1, parseInt(page || '1', 10) || 1);
+    const ps = Math.min(50, Math.max(1, parseInt(pageSize || '10', 10) || 10));
+    const allEvents = await this.rest.listEventsBySport(sp, { limit: 1000 });
+    const start = (p - 1) * ps;
+    const pageEvents = allEvents.slice(start, start + ps);
+    const bookies = (bookmakers || '')
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const oddsChunks: Awaited<ReturnType<typeof this.rest.getMultiOdds>> = [];
+    for (let i = 0; i < pageEvents.length; i += 10) {
+      const chunk = pageEvents.slice(i, i + 10).map((e) => e.id);
+      const rows = await this.rest.getMultiOdds(chunk, bookies);
+      oddsChunks.push(...rows);
+    }
+    const byId = new Map(oddsChunks.map((o) => [o.id, o]));
+    const items = pageEvents.map((ev) => {
+      const od = byId.get(ev.id);
+      const best = pickBestOdds(od?.bookmakers ?? {});
+      return {
+        ...ev,
+        odds: {
+          home: best.home,
+          draw: best.draw,
+          away: best.away,
+          sourceBookmaker: best.source,
+        },
+      };
+    });
+    return {
+      sport: sp,
+      page: p,
+      pageSize: ps,
+      totalEvents: allEvents.length,
+      items,
+    };
+  }
+}
+
+function pickBestOdds(bookmakers: Record<string, unknown>): {
+  home: number | null;
+  draw: number | null;
+  away: number | null;
+  source: string | null;
+} {
+  let bestHome: number | null = null;
+  let bestDraw: number | null = null;
+  let bestAway: number | null = null;
+  let source: string | null = null;
+  for (const [bookie, raw] of Object.entries(bookmakers)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const rows = (raw as { markets?: unknown }).markets;
+    if (!Array.isArray(rows)) continue;
+    for (const market of rows) {
+      if (!market || typeof market !== 'object') continue;
+      const odds = (market as { odds?: unknown }).odds;
+      if (!Array.isArray(odds)) continue;
+      for (const row of odds) {
+        if (!row || typeof row !== 'object') continue;
+        const h = (row as { home?: unknown }).home;
+        const d = (row as { draw?: unknown }).draw;
+        const a = (row as { away?: unknown }).away;
+        if (typeof h === 'number' && (bestHome === null || h > bestHome)) {
+          bestHome = h;
+          source = bookie;
+        }
+        if (typeof d === 'number' && (bestDraw === null || d > bestDraw)) {
+          bestDraw = d;
+          source = bookie;
+        }
+        if (typeof a === 'number' && (bestAway === null || a > bestAway)) {
+          bestAway = a;
+          source = bookie;
+        }
+      }
+    }
+  }
+  return { home: bestHome, draw: bestDraw, away: bestAway, source };
 }

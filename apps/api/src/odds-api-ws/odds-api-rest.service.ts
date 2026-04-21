@@ -197,6 +197,81 @@ export class OddsApiRestService {
     };
   }
 
+  async listSports(): Promise<OddsApiSportItem[]> {
+    const data = await this.fetchJson('/sports');
+    return parseArrayItems(data).map((x) => ({
+      id: String(x.id ?? ''),
+      name: typeof x.name === 'string' ? x.name : null,
+      slug: typeof x.slug === 'string' ? x.slug : null,
+    }));
+  }
+
+  async listBookmakers(): Promise<OddsApiBookmakerItem[]> {
+    const data = await this.fetchJson('/bookmakers');
+    return parseArrayItems(data).map((x) => ({
+      id: String(x.id ?? ''),
+      name: typeof x.name === 'string' ? x.name : null,
+      slug: typeof x.slug === 'string' ? x.slug : null,
+    }));
+  }
+
+  async listSelectedBookmakers(): Promise<OddsApiBookmakerItem[]> {
+    if (!this.apiKey) return [];
+    const q = new URLSearchParams({ apiKey: this.apiKey });
+    const data = await this.fetchJson(`/bookmakers/selected?${q.toString()}`);
+    return parseArrayItems(data).map((x) => ({
+      id: String(x.id ?? ''),
+      name: typeof x.name === 'string' ? x.name : null,
+      slug: typeof x.slug === 'string' ? x.slug : null,
+    }));
+  }
+
+  async listEventsBySport(
+    sport: string,
+    opts: { limit?: number } = {},
+  ): Promise<OddsApiEventItem[]> {
+    if (!this.apiKey) return [];
+    const q = new URLSearchParams({
+      apiKey: this.apiKey,
+      sport,
+      limit: String(Math.min(Math.max(opts.limit ?? 200, 1), 1000)),
+    });
+    const data = await this.fetchJson(`/events?${q.toString()}`);
+    return parseArrayItems(data).map((x) => ({
+      id: String(x.id ?? ''),
+      home: typeof x.home === 'string' ? x.home : null,
+      away: typeof x.away === 'string' ? x.away : null,
+      league:
+        typeof x.league === 'string'
+          ? x.league
+          : typeof x.tournament === 'string'
+            ? x.tournament
+            : null,
+      date: typeof x.date === 'string' ? x.date : null,
+      status: typeof x.status === 'string' ? x.status : null,
+      sport,
+    }));
+  }
+
+  async getMultiOdds(
+    eventIds: string[],
+    bookmakers: string[],
+  ): Promise<OddsByEvent[]> {
+    if (!this.apiKey || eventIds.length === 0) return [];
+    const ids = eventIds.slice(0, 10).join(',');
+    const q = new URLSearchParams({
+      apiKey: this.apiKey,
+      eventIds: ids,
+    });
+    if (bookmakers.length > 0) {
+      q.set('bookmakers', bookmakers.join(','));
+    }
+    const data = await this.fetchJson(`/odds/multi?${q.toString()}`);
+    return parseArrayItems(data)
+      .map((x) => parseOddsResponse(x))
+      .filter((x): x is OddsByEvent => x !== null);
+  }
+
   /* ─────────────────────────── internal ─────────────────────────── */
 
   private recentCallCount(): number {
@@ -268,6 +343,28 @@ export type OddsByEvent = {
   bookmakers: Record<string, unknown>;
 };
 
+export type OddsApiSportItem = {
+  id: string;
+  name: string | null;
+  slug: string | null;
+};
+
+export type OddsApiBookmakerItem = {
+  id: string;
+  name: string | null;
+  slug: string | null;
+};
+
+export type OddsApiEventItem = {
+  id: string;
+  sport: string;
+  home: string | null;
+  away: string | null;
+  league: string | null;
+  date: string | null;
+  status: string | null;
+};
+
 function parseOddsResponse(d: unknown): OddsByEvent | null {
   if (!d || typeof d !== 'object') return null;
   const o = d as Record<string, unknown>;
@@ -329,6 +426,22 @@ function parseEventsList(d: unknown): string[] {
     if (id !== undefined && id !== null) ids.push(String(id));
   }
   return ids;
+}
+
+function parseArrayItems(d: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(d)) {
+    return d.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object');
+  }
+  if (d && typeof d === 'object') {
+    const o = d as { data?: unknown; items?: unknown };
+    if (Array.isArray(o.data)) {
+      return o.data.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object');
+    }
+    if (Array.isArray(o.items)) {
+      return o.items.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object');
+    }
+  }
+  return [];
 }
 
 function sleep(ms: number): Promise<void> {

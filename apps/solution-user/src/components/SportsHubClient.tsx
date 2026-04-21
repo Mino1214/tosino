@@ -52,7 +52,8 @@ function parseHubSection(tab: string | null): HubSection {
   if (tab === "prematch") return "prematch";
   if (tab === "pmspecial") return "pmspecial";
   if (tab === "ozmarkets") return "ozmarkets";
-  return "live";
+  // 프리매치 우선 정책: 쿼리가 없으면 prematch를 기본 탭으로 사용
+  return "prematch";
 }
 
 function HubSectionNav({
@@ -224,8 +225,11 @@ export function SportsHubClient() {
   /** 마운트 시 라이브·DB 프리매치만 선로드 */
   useEffect(() => {
     if (showOperatorTools && devLiveSource === "demo") return;
-    void loadLive();
-    void loadPrematch();
+    // Odds API 문서 권장(프리매치 캐시/갱신 주기 분리)에 맞춰 prematch를 먼저 로드
+    void (async () => {
+      await loadPrematch();
+      await loadLive();
+    })();
   }, [requestHost, showOperatorTools, devLiveSource, loadLive, loadPrematch]);
 
   useEffect(() => {
@@ -275,6 +279,12 @@ export function SportsHubClient() {
       return [];
     }
   }, [prematchGames]);
+  const prematchFallbackToLive =
+    section === "prematch" &&
+    !loadingPm &&
+    !pmErr &&
+    prematchGames.length === 0 &&
+    liveGames.length > 0;
 
   const pmSpecLeagues = useMemo(() => {
     try {
@@ -301,7 +311,9 @@ export function SportsHubClient() {
     if (section === "prematch") {
       return showOperatorTools && devLiveSource === "demo"
         ? SHARED_LEAGUES
-        : pmLeagues;
+        : prematchFallbackToLive
+          ? liveLeagues
+          : pmLeagues;
     }
     if (section === "pmspecial") {
       if (!useOddsProxy) return [];
@@ -341,7 +353,15 @@ export function SportsHubClient() {
             { id: "today", label: "오늘", count: 58 },
             { id: "tomorrow", label: "내일", count: 76 },
           ]
-        : [{ id: "pm", label: "경기", count: prematchGames.length }];
+        : [
+            {
+              id: "pm",
+              label: prematchFallbackToLive ? "경기(라이브 대체)" : "경기",
+              count: prematchFallbackToLive
+                ? liveGames.length
+                : prematchGames.length,
+            },
+          ];
     }
     if (section === "pmspecial") {
       return [{ id: "spec", label: "스페셜", count: pmSpecialGames.length }];
@@ -387,6 +407,9 @@ export function SportsHubClient() {
     }
     if (section === "prematch") {
       if (pmErr) return `연결 오류: ${pmErr}`;
+      if (prematchFallbackToLive) {
+        return "프리매치 데이터가 비어 있어 라이브 데이터를 대신 표시 중입니다.";
+      }
       if (prematchGames.length > 0 && pmLeagues.length === 0) {
         return "프리매치 payload 에 game[] 또는 games[] 형식이 필요합니다.";
       }
@@ -435,6 +458,7 @@ export function SportsHubClient() {
     prematchGames.length,
     pmSpecialGames.length,
     ozExtractedGames.length,
+    prematchFallbackToLive,
     liveLeagues.length,
     pmLeagues.length,
     pmSpecLeagues.length,

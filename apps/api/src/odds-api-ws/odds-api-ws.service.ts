@@ -34,6 +34,7 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
   private apiKey = '';
   private sports: string[] = [];
   private markets: string[] = [];
+  private bookmakers: string[] = [];
   private statusFilter: 'live' | 'prematch' | null = null;
   private autoConnectEnabled = true;
 
@@ -116,6 +117,7 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
     this.markets =
       parseList(this.config.get<string>('ODDS_API_WS_MARKETS')) || [];
     if (this.markets.length === 0) this.markets = ['ML', 'Spread', 'Totals'];
+    this.bookmakers = parseList(this.config.get<string>('ODDS_API_WS_BOOKMAKERS'));
     const sf = (this.config.get<string>('ODDS_API_WS_STATUS') || '')
       .trim()
       .toLowerCase();
@@ -183,6 +185,7 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
       filters: {
         sports: [...this.sports],
         markets: [...this.markets],
+        bookmakers: [...this.bookmakers],
         status: this.statusFilter,
       },
       counters: { ...this.counters },
@@ -257,6 +260,7 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
     apiKey?: string;
     sports?: string[];
     markets?: string[];
+    bookmakers?: string[];
     status?: 'live' | 'prematch' | null;
     autoConnect?: boolean;
   }) {
@@ -281,6 +285,13 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
         // markets is required by upstream
       } else if (next.join(',') !== this.markets.join(',')) {
         this.markets = next;
+        changed = true;
+      }
+    }
+    if (Array.isArray(input.bookmakers)) {
+      const next = uniqClean(input.bookmakers).slice(0, 30);
+      if (next.join(',') !== this.bookmakers.join(',')) {
+        this.bookmakers = next;
         changed = true;
       }
     }
@@ -342,6 +353,9 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
     const params = new URLSearchParams({ apiKey: this.apiKey });
     params.set('markets', this.markets.join(','));
     if (this.sports.length > 0) params.set('sport', this.sports.join(','));
+    if (this.bookmakers.length > 0) {
+      params.set('bookmakers', this.bookmakers.join(','));
+    }
     if (this.statusFilter) params.set('status', this.statusFilter);
     if (this.lastSeq > 0) params.set('lastSeq', String(this.lastSeq));
     return `${this.endpoint}?${params.toString()}`;
@@ -368,7 +382,7 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
     this.connectionState = 'connecting';
     this.lastError = null;
     this.log.log(
-      `connect → odds-api.io WS sports=[${this.sports.join(',')}] markets=[${this.markets.join(',')}] status=${this.statusFilter ?? '*'} lastSeq=${this.lastSeq}`,
+      `connect → odds-api.io WS sports=[${this.sports.join(',')}] markets=[${this.markets.join(',')}] bookmakers=[${this.bookmakers.join(',') || '*'}] status=${this.statusFilter ?? '*'} lastSeq=${this.lastSeq}`,
     );
 
     let ws: WebSocket;
