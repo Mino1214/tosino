@@ -44,25 +44,7 @@ export class OddsApiAggregatorService {
       limit?: number;
     } = {},
   ): MatchesResponse {
-    const wantStatus = opts.status ?? 'all';
-    const sportsFromList = Array.isArray(opts.sports)
-      ? opts.sports.map((s) => s.trim()).filter(Boolean)
-      : [];
-    const wantSports = [
-      ...(opts.sport?.trim() ? [opts.sport.trim()] : []),
-      ...sportsFromList,
-    ].filter((v, i, arr) => arr.indexOf(v) === i);
-    const wantSport =
-      wantSports.length === 1 ? wantSports[0] : opts.sport?.trim() || undefined;
-    const wantBookmakers = Array.isArray(opts.bookmakers)
-      ? opts.bookmakers.map((b) => b.trim()).filter(Boolean)
-      : [];
-    const bookmakerSet =
-      wantBookmakers.length > 0 ? new Set(wantBookmakers) : null;
-    const limit =
-      typeof opts.limit === 'number' && opts.limit > 0
-        ? Math.min(opts.limit, 500)
-        : 200;
+    const normalized = normalizeListOptions(opts);
 
     // 종목 필터는 raw 단계에서 거름. limit 은 절대 raw 에 그대로 주면 안 됨
     // (raw 는 북메이커 행 단위라 매치 1개당 N개 항목이 들어옴 → 매치 단위 limit 과 다름).
@@ -70,12 +52,20 @@ export class OddsApiAggregatorService {
 
     const map = new Map<string, MatchAccumulator>();
     for (const ev of raw.events) {
-      if (wantSports.length > 0 && !wantSports.includes(ev.sport)) continue;
-      if (bookmakerSet && !bookmakerSet.has(ev.bookie)) continue;
+      if (
+        normalized.wantSports.length > 0 &&
+        !normalized.wantSports.includes(ev.sport)
+      )
+        continue;
+      if (
+        normalized.bookmakerSet &&
+        !normalized.bookmakerSet.has(ev.bookie)
+      )
+        continue;
       const id = ev.eventId;
       let m = map.get(id);
       if (!m) {
-        m = {
+        m = this.createAccumulator({
           eventId: id,
           sport: ev.sport,
           home: ev.home,
@@ -85,24 +75,19 @@ export class OddsApiAggregatorService {
           eventStatus: ev.eventStatus,
           scores: ev.scores,
           url: ev.url,
-          bookies: new Set<string>(),
-          lastUpdatedMs: 0,
-          mlPrices: { home: [], draw: [], away: [] },
-          handicapByLine: new Map<number, { home: number[]; away: number[] }>(),
-          totalsByLine: new Map<number, { over: number[]; under: number[] }>(),
-        };
+        });
         map.set(id, m);
       } else {
-        // 빈 자리 채움 (늦게 보강이 들어오는 경우 대응)
-        m.home ??= ev.home;
-        m.away ??= ev.away;
-        m.league ??= ev.league;
-        m.startTime ??= ev.date;
-        m.eventStatus ??= ev.eventStatus;
-        m.scores ??= ev.scores;
-        if (!m.url && ev.url) m.url = ev.url;
-        if (m.sport === 'unknown' && ev.sport !== 'unknown') m.sport = ev.sport;
-        if (!m.scores && ev.scores) m.scores = ev.scores;
+        this.mergeAccumulatorMeta(m, {
+          sport: ev.sport,
+          home: ev.home,
+          away: ev.away,
+          league: ev.league,
+          startTime: ev.date,
+          eventStatus: ev.eventStatus,
+          scores: ev.scores,
+          url: ev.url,
+        });
       }
       m.bookies.add(ev.bookie);
       const t = Date.parse(ev.updatedAt);
@@ -110,10 +95,153 @@ export class OddsApiAggregatorService {
       this.absorbMarkets(m, ev.markets);
     }
 
+    return this.finalizeMatches(map, normalized);
+  }
+
+  /**
+   * REST `events + odds/multi` 결과처럼 "이벤트 1행 + bookmakers 묶음" 형태의 카탈로그를
+   * 기존 매치 응답 포맷으로 변환한다.
+   */
+  listMatchesFromCatalog(
+    catalog: OddsApiCatalogItem[],
+    opts: {
+      status?: MatchStatus | 'all';
+      sport?: string;
+      sports?: string[];
+      bookmakers?: string[];
+      limit?: number;
+    } = {},
+  ): MatchesResponse {
+    const normalized = normalizeListOptions(opts);
+    const map = new Map<string, MatchAccumulator>();
+
+    for (const item of catalog) {
+      if (!item?.id) continue;
+      if (
+        normalized.wantSports.length > 0 &&
+        !normalized.wantSports.includes(item.sport)
+      )
+        continue;
+
+      let acc = map.get(item.id);
+      if (!acc) {
+        acc = this.createAccumulator({
+          eventId: item.id,
+          sport: item.sport,
+          home: item.home,
+          away: item.away,
+          league: item.league,
+          startTime: item.date,
+          eventStatus: item.status,
+          scores: item.scores,
+          url: item.url ?? undefined,
+        });
+        map.set(item.id, acc);
+      } else {
+        this.mergeAccumulatorMeta(acc, {
+          sport: item.sport,
+          home: item.home,
+          away: item.away,
+          league: item.league,
+          startTime: item.date,
+          eventStatus: item.status,
+          scores: item.scores,
+          url: item.url ?? undefined,
+        });
+      }
+
+      const fetchedAtMs = item.fetchedAt ? Date.parse(item.fetchedAt) : NaN;
+      if (Number.isFinite(fetchedAtMs) && fetchedAtMs > acc.lastUpdatedMs) {
+        acc.lastUpdatedMs = fetchedAtMs;
+      }
+
+      for (const [bookie, raw] of Object.entries(item.bookmakers ?? {})) {
+        if (
+          normalized.bookmakerSet &&
+          !normalized.bookmakerSet.has(bookie)
+        ) {
+          continue;
+        }
+        acc.bookies.add(bookie);
+        const markets =
+          raw && typeof raw === 'object'
+            ? (raw as { markets?: unknown }).markets
+            : undefined;
+        this.absorbMarkets(acc, markets);
+      }
+    }
+
+    return this.finalizeMatches(map, normalized);
+  }
+
+  /* ─────────────────────────── 내부 ─────────────────────────── */
+
+  private createAccumulator(input: {
+    eventId: string;
+    sport: string;
+    home: string | null;
+    away: string | null;
+    league: string | null;
+    startTime: string | null;
+    eventStatus: string | null;
+    scores: AggregatedMatch['scores'];
+    url?: string;
+  }): MatchAccumulator {
+    return {
+      eventId: input.eventId,
+      sport: input.sport,
+      home: input.home,
+      away: input.away,
+      league: input.league,
+      startTime: input.startTime,
+      eventStatus: input.eventStatus,
+      scores: input.scores,
+      url: input.url,
+      bookies: new Set<string>(),
+      lastUpdatedMs: 0,
+      mlPrices: { home: [], draw: [], away: [] },
+      handicapByLine: new Map<number, { home: number[]; away: number[] }>(),
+      totalsByLine: new Map<number, { over: number[]; under: number[] }>(),
+    };
+  }
+
+  private mergeAccumulatorMeta(
+    acc: MatchAccumulator,
+    input: {
+      sport: string;
+      home: string | null;
+      away: string | null;
+      league: string | null;
+      startTime: string | null;
+      eventStatus: string | null;
+      scores: AggregatedMatch['scores'];
+      url?: string;
+    },
+  ): void {
+    acc.home ??= input.home;
+    acc.away ??= input.away;
+    acc.league ??= input.league;
+    acc.startTime ??= input.startTime;
+    acc.eventStatus ??= input.eventStatus;
+    acc.scores ??= input.scores;
+    if (!acc.url && input.url) acc.url = input.url;
+    if (acc.sport === 'unknown' && input.sport !== 'unknown') {
+      acc.sport = input.sport;
+    }
+    if (!acc.scores && input.scores) acc.scores = input.scores;
+  }
+
+  private finalizeMatches(
+    map: Map<string, MatchAccumulator>,
+    normalized: NormalizedListOptions,
+  ): MatchesResponse {
     const all: AggregatedMatch[] = [];
     for (const acc of map.values()) {
+      if (acc.bookies.size === 0) continue;
       const status = classifyStatus(acc);
-      if (wantStatus !== 'all' && status !== wantStatus) continue;
+      if (normalized.wantStatus !== 'all' && status !== normalized.wantStatus) {
+        continue;
+      }
       all.push(this.finalize(acc, status));
     }
 
@@ -129,14 +257,12 @@ export class OddsApiAggregatorService {
     });
 
     return {
-      status: wantStatus,
-      sport: wantSports.length === 1 ? wantSports[0] : null,
+      status: normalized.wantStatus,
+      sport: normalized.wantSport ?? null,
       total: all.length,
-      matches: all.slice(0, limit),
+      matches: all.slice(0, normalized.limit),
     };
   }
-
-  /* ─────────────────────────── 내부 ─────────────────────────── */
 
   /**
    * 한 북메이커가 보낸 markets 배열을 누적기에 흡수.
@@ -376,6 +502,20 @@ export type MatchesResponse = {
   matches: AggregatedMatch[];
 };
 
+export type OddsApiCatalogItem = {
+  id: string;
+  sport: string;
+  home: string | null;
+  away: string | null;
+  league: string | null;
+  date: string | null;
+  status: string | null;
+  scores: AggregatedMatch['scores'];
+  bookmakers: Record<string, unknown>;
+  fetchedAt?: string | null;
+  url?: string | null;
+};
+
 type MatchAccumulator = {
   eventId: string;
   sport: string;
@@ -391,6 +531,14 @@ type MatchAccumulator = {
   mlPrices: { home: number[]; draw: number[]; away: number[] };
   handicapByLine: Map<number, { home: number[]; away: number[] }>;
   totalsByLine: Map<number, { over: number[]; under: number[] }>;
+};
+
+type NormalizedListOptions = {
+  wantStatus: MatchStatus | 'all';
+  wantSport?: string;
+  wantSports: string[];
+  bookmakerSet: Set<string> | null;
+  limit: number;
 };
 
 /* ─────────────────────────── helpers ─────────────────────────── */
@@ -499,8 +647,12 @@ function pickModalLine<T extends { home?: number[]; over?: number[] }>(
   return bestLine;
 }
 
-function classifyStatus(acc: MatchAccumulator): MatchStatus {
-  const s = (acc.eventStatus ?? '').toLowerCase().trim();
+export function classifyOddsApiMatchStatus(input: {
+  eventStatus?: string | null;
+  startTime?: string | null;
+  scores?: AggregatedMatch['scores'];
+}): MatchStatus {
+  const s = (input.eventStatus ?? '').toLowerCase().trim();
   if (s === 'live' || s === 'in_play' || s === 'inplay' || s === 'started') return 'live';
   if (
     s === 'finished' ||
@@ -511,20 +663,66 @@ function classifyStatus(acc: MatchAccumulator): MatchStatus {
     s === 'abandoned'
   )
     return 'finished';
-  if (s === 'prematch' || s === 'pre_match' || s === 'scheduled' || s === 'not_started')
+  if (
+    s === 'prematch' ||
+    s === 'pre_match' ||
+    s === 'scheduled' ||
+    s === 'not_started' ||
+    s === 'pending'
+  )
     return 'prematch';
   // 보강 status 가 없을 때: scores 가 의미있게 들어와 있으면 라이브로 간주
-  if (acc.scores && (acc.scores.home !== null || acc.scores.away !== null)) {
+  if (input.scores && (input.scores.home !== null || input.scores.away !== null)) {
     return 'live';
   }
   // startTime 이 미래면 prematch, 과거면 unknown(=경기 종료 가능성, 다만 보강 전이라 확신 X)
-  if (acc.startTime) {
-    const t = Date.parse(acc.startTime);
+  if (input.startTime) {
+    const t = Date.parse(input.startTime);
     if (Number.isFinite(t)) {
       return t > Date.now() ? 'prematch' : 'unknown';
     }
   }
   return 'unknown';
+}
+
+function classifyStatus(acc: MatchAccumulator): MatchStatus {
+  return classifyOddsApiMatchStatus({
+    eventStatus: acc.eventStatus,
+    startTime: acc.startTime,
+    scores: acc.scores,
+  });
+}
+
+function normalizeListOptions(opts: {
+  status?: MatchStatus | 'all';
+  sport?: string;
+  sports?: string[];
+  bookmakers?: string[];
+  limit?: number;
+}): NormalizedListOptions {
+  const wantStatus = opts.status ?? 'all';
+  const sportsFromList = Array.isArray(opts.sports)
+    ? opts.sports.map((s) => s.trim()).filter(Boolean)
+    : [];
+  const wantSports = [
+    ...(opts.sport?.trim() ? [opts.sport.trim()] : []),
+    ...sportsFromList,
+  ].filter((v, i, arr) => arr.indexOf(v) === i);
+  const wantBookmakers = Array.isArray(opts.bookmakers)
+    ? opts.bookmakers.map((b) => b.trim()).filter(Boolean)
+    : [];
+  return {
+    wantStatus,
+    wantSport:
+      wantSports.length === 1 ? wantSports[0] : opts.sport?.trim() || undefined,
+    wantSports,
+    bookmakerSet:
+      wantBookmakers.length > 0 ? new Set(wantBookmakers) : null,
+    limit:
+      typeof opts.limit === 'number' && opts.limit > 0
+        ? Math.min(opts.limit, 500)
+        : 200,
+  };
 }
 
 function round3(v: number): number {

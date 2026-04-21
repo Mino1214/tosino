@@ -30,6 +30,7 @@ type RefreshResult = {
   enabled: boolean;
   liveCount: number;
   prematchCount: number;
+  catalogCount: number;
   fetchedAt: string;
   filters: {
     sports: string[];
@@ -553,6 +554,7 @@ export default function ConsoleLiveOddsPage() {
             {refreshResult ? (
               <div className="mt-3 space-y-2 text-sm text-gray-700">
                 <p>저장 시각: {new Date(refreshResult.fetchedAt).toLocaleString("ko-KR")}</p>
+                <p>raw catalog: {refreshResult.catalogCount}건</p>
                 <p>live: {refreshResult.liveCount}경기</p>
                 <p>prematch: {refreshResult.prematchCount}경기</p>
                 <p>

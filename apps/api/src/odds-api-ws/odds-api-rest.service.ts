@@ -239,14 +239,9 @@ export class OddsApiRestService {
     const data = await this.fetchJson(`/events?${q.toString()}`);
     return parseArrayItems(data).map((x) => ({
       id: String(x.id ?? ''),
-      home: typeof x.home === 'string' ? x.home : null,
-      away: typeof x.away === 'string' ? x.away : null,
-      league:
-        typeof x.league === 'string'
-          ? x.league
-          : typeof x.tournament === 'string'
-            ? x.tournament
-            : null,
+      home: readNamedText(x.home),
+      away: readNamedText(x.away),
+      league: readNamedText(x.league) ?? readNamedText(x.tournament),
       date: typeof x.date === 'string' ? x.date : null,
       status: typeof x.status === 'string' ? x.status : null,
       sport,
@@ -372,14 +367,9 @@ function parseOddsResponse(d: unknown): OddsByEvent | null {
   if (id === undefined || id === null) return null;
   return {
     id: String(id),
-    home: typeof o.home === 'string' ? o.home : null,
-    away: typeof o.away === 'string' ? o.away : null,
-    league:
-      typeof o.league === 'string'
-        ? o.league
-        : typeof o.tournament === 'string'
-          ? o.tournament
-          : null,
+    home: readNamedText(o.home),
+    away: readNamedText(o.away),
+    league: readNamedText(o.league) ?? readNamedText(o.tournament),
     date: typeof o.date === 'string' ? o.date : null,
     status: typeof o.status === 'string' ? o.status : null,
     scores: parseScores(o.scores),
@@ -442,6 +432,13 @@ function parseArrayItems(d: unknown): Array<Record<string, unknown>> {
     }
   }
   return [];
+}
+
+function readNamedText(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return null;
+  const name = (value as { name?: unknown }).name;
+  return typeof name === 'string' ? name : null;
 }
 
 function sleep(ms: number): Promise<void> {

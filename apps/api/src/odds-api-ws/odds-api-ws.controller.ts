@@ -75,6 +75,7 @@ export class OddsApiWsPublicController {
         snapshot: {
           liveFetchedAt: meta.liveFetchedAt,
           prematchFetchedAt: meta.prematchFetchedAt,
+          catalogFetchedAt: meta.catalogFetchedAt,
           bookmakers: config?.bookmakers ?? [],
           matchLimit: config?.matchLimit ?? null,
           cacheTtlSeconds: config?.cacheTtlSeconds ?? null,
