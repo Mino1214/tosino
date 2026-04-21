@@ -39,11 +39,26 @@ export class OddsApiAggregatorService {
     opts: {
       status?: MatchStatus | 'all';
       sport?: string;
+      sports?: string[];
+      bookmakers?: string[];
       limit?: number;
     } = {},
   ): MatchesResponse {
     const wantStatus = opts.status ?? 'all';
-    const wantSport = opts.sport?.trim() || undefined;
+    const sportsFromList = Array.isArray(opts.sports)
+      ? opts.sports.map((s) => s.trim()).filter(Boolean)
+      : [];
+    const wantSports = [
+      ...(opts.sport?.trim() ? [opts.sport.trim()] : []),
+      ...sportsFromList,
+    ].filter((v, i, arr) => arr.indexOf(v) === i);
+    const wantSport =
+      wantSports.length === 1 ? wantSports[0] : opts.sport?.trim() || undefined;
+    const wantBookmakers = Array.isArray(opts.bookmakers)
+      ? opts.bookmakers.map((b) => b.trim()).filter(Boolean)
+      : [];
+    const bookmakerSet =
+      wantBookmakers.length > 0 ? new Set(wantBookmakers) : null;
     const limit =
       typeof opts.limit === 'number' && opts.limit > 0
         ? Math.min(opts.limit, 500)
@@ -51,10 +66,12 @@ export class OddsApiAggregatorService {
 
     // 종목 필터는 raw 단계에서 거름. limit 은 절대 raw 에 그대로 주면 안 됨
     // (raw 는 북메이커 행 단위라 매치 1개당 N개 항목이 들어옴 → 매치 단위 limit 과 다름).
-    const raw = this.ws.listEvents({ sport: wantSport, limit: 500 });
+    const raw = this.ws.listEvents({ limit: 500 });
 
     const map = new Map<string, MatchAccumulator>();
     for (const ev of raw.events) {
+      if (wantSports.length > 0 && !wantSports.includes(ev.sport)) continue;
+      if (bookmakerSet && !bookmakerSet.has(ev.bookie)) continue;
       const id = ev.eventId;
       let m = map.get(id);
       if (!m) {
@@ -113,7 +130,7 @@ export class OddsApiAggregatorService {
 
     return {
       status: wantStatus,
-      sport: wantSport ?? null,
+      sport: wantSports.length === 1 ? wantSports[0] : null,
       total: all.length,
       matches: all.slice(0, limit),
     };

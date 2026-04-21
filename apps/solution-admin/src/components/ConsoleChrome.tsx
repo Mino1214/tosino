@@ -78,6 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: "✦",
     hint: "공지 · 운영 설정 · 이벤트",
     children: [
+      { href: "/console/live-odds", label: "Live Odds / Slip", hint: "odds-api 필터·슬립 템플릿" },
       { href: "/console/announcements", label: "공지/팝업", hint: "공지사항·팝업 관리" },
       { href: "/console/operational", label: "운영 설정", hint: "포인트·콤프·롤링 설정" },
       { href: "/console/deposit-events", label: "특수이벤트 설정", hint: "추후 토너먼트로 개편 예정" },

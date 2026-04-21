@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../auth/auth.service';
 import { UserRole } from '@prisma/client';
 import { ForbiddenException } from '@nestjs/common';
+import { OddsApiSnapshotService } from '../odds-api-ws/odds-api-snapshot.service';
 import { SyncJobData } from './sync.processor';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class SyncService {
   constructor(
     @InjectQueue('sync') private syncQueue: Queue<SyncJobData>,
     private prisma: PrismaService,
+    private oddsApiSnapshots: OddsApiSnapshotService,
   ) {}
 
   assertPlatform(actor: JwtPayload, platformId: string) {
@@ -37,6 +39,11 @@ export class SyncService {
       { removeOnComplete: 100, removeOnFail: 50 },
     );
     return { queued: true, platformId, jobType };
+  }
+
+  async refreshOddsApiSnapshots(platformId: string, actor: JwtPayload) {
+    this.assertPlatform(actor, platformId);
+    return this.oddsApiSnapshots.refreshPlatform(platformId);
   }
 
   /** 스포츠 실시간 경기 데이터를 SportsOddsSnapshot 에 upsert */

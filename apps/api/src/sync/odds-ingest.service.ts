@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { platformIntegrationsSchema } from '@tosino/shared';
+import { OddsApiSnapshotService } from '../odds-api-ws/odds-api-snapshot.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OddsHostProxyService } from '../public/oddshost-proxy.service';
 
@@ -17,6 +18,7 @@ export class OddsIngestService {
     private prisma: PrismaService,
     private config: ConfigService,
     private oddshost: OddsHostProxyService,
+    private oddsApiSnapshots: OddsApiSnapshotService,
   ) {}
 
   private isOddsHostSportsLiveIngestEnabled(): boolean {
@@ -53,6 +55,12 @@ export class OddsIngestService {
     snapshotsWritten: number;
     feedIds: string[];
     sportsLiveGames?: number;
+    oddsApiSnapshots?: {
+      enabled: boolean;
+      liveCount: number;
+      prematchCount: number;
+      fetchedAt: string;
+    };
   }> {
     const platform = await this.prisma.platform.findUnique({
       where: { id: platformId },
@@ -149,6 +157,35 @@ export class OddsIngestService {
       }
     }
 
-    return { snapshotsWritten: feeds.length, feedIds, sportsLiveGames };
+    let oddsApiSnapshots:
+      | {
+          enabled: boolean;
+          liveCount: number;
+          prematchCount: number;
+          fetchedAt: string;
+        }
+      | undefined;
+    try {
+      const snap = await this.oddsApiSnapshots.refreshPlatform(platformId);
+      oddsApiSnapshots = {
+        enabled: snap.enabled,
+        liveCount: snap.liveCount,
+        prematchCount: snap.prematchCount,
+        fetchedAt: snap.fetchedAt,
+      };
+    } catch (e) {
+      this.log.warn(
+        `odds-api snapshot refresh failed platform=${platformId}: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    }
+
+    return {
+      snapshotsWritten: feeds.length,
+      feedIds,
+      sportsLiveGames,
+      oddsApiSnapshots,
+    };
   }
 }

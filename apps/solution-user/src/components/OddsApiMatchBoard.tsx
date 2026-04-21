@@ -5,11 +5,14 @@ import {
   fetchOddsApiMatches,
   fetchOddsApiWsStatus,
   type AggregatedMatch,
-  type AggregatedMatchStatus,
+  type AggregatedMoneyline,
+  type AggregatedHandicap,
+  type AggregatedTotals,
   type OddsApiWsEvent,
   type OddsApiWsStatus,
 } from "@/lib/api";
-import { useBootstrap } from "./BootstrapProvider";
+import { useBootstrap, useBootstrapHost } from "./BootstrapProvider";
+import { useBettingCart } from "./BettingCartContext";
 import { LiveMatchPanel, useLiveMatchPanelState } from "./LiveMatchPanel";
 
 /**
@@ -27,19 +30,26 @@ export function OddsApiMatchBoard({
   mode: "live" | "prematch";
 }) {
   const b = useBootstrap();
+  const requestHost = useBootstrapHost();
+  const { lines, addLine, removeLine } = useBettingCart();
   const [matches, setMatches] = useState<AggregatedMatch[]>([]);
   const [status, setStatus] = useState<OddsApiWsStatus | null>(null);
   const [activeSport, setActiveSport] = useState<string>("");
-  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const live = useLiveMatchPanelState();
+  const slipTemplate = b?.oddsApi?.betSlipTemplate;
+  const marketPriority =
+    slipTemplate?.marketPriority?.length && slipTemplate.marketPriority.length > 0
+      ? slipTemplate.marketPriority
+      : (["moneyline", "handicap", "totals"] as const);
 
   const load = useCallback(async () => {
     try {
       const [s, m] = await Promise.all([
-        fetchOddsApiWsStatus(),
+        fetchOddsApiWsStatus(requestHost),
         fetchOddsApiMatches({
+          host: requestHost,
           status: mode,
           sport: activeSport || undefined,
           limit: 200,
@@ -53,7 +63,7 @@ export function OddsApiMatchBoard({
     } finally {
       setLoading(false);
     }
-  }, [mode, activeSport]);
+  }, [mode, activeSport, requestHost]);
 
   useEffect(() => {
     void load();
@@ -81,14 +91,40 @@ export function OddsApiMatchBoard({
     return m;
   }, [matches]);
 
-  const togglePick = useCallback((id: string) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const picked = useMemo(() => {
+    const next = new Set<string>();
+    for (const line of lines) {
+      if (line.selectionKey) next.add(line.selectionKey);
+    }
+    return next;
+  }, [lines]);
+
+  const togglePick = useCallback(
+    (pick: OddsPickPayload) => {
+      const existing = lines.find((line) => line.selectionKey === pick.selectionKey);
+      if (existing) {
+        removeLine(existing.id);
+        return;
+      }
+      addLine({
+        matchLabel: `${pick.homeName} vs ${pick.awayName}`,
+        pickLabel: pick.pickLabel,
+        odd: pick.odd.toFixed(2),
+        selectionKey: pick.selectionKey,
+        source: "odds-api",
+        marketType: pick.marketType,
+        outcome: pick.outcome,
+        line: pick.line ?? null,
+        leagueName: pick.leagueName,
+        homeName: pick.homeName,
+        awayName: pick.awayName,
+        startTime: pick.startTime,
+        bookmakerCount: pick.bookmakerCount,
+        sourceBookmaker: null,
+      });
+    },
+    [addLine, lines, removeLine],
+  );
 
   const onOpenTracker = useCallback(
     (match: AggregatedMatch) => {
@@ -157,11 +193,11 @@ export function OddsApiMatchBoard({
 
       {!status?.configured ? (
         <EmptyBox isLight={isLight}>
-          API 서버에 odds-api.io 키가 설정되지 않았습니다.
+          아직 이 플랫폼의 Live Odds가 활성화되지 않았습니다.
         </EmptyBox>
       ) : status.filters.sports.length === 0 ? (
         <EmptyBox isLight={isLight}>
-          슈퍼어드민 콘솔에서 구독 종목을 1~2개 선택해 주세요.
+          HQ 구독 종목 또는 플랫폼 종목 필터를 먼저 설정해 주세요.
         </EmptyBox>
       ) : (
         <>
@@ -204,6 +240,8 @@ export function OddsApiMatchBoard({
                   group={group}
                   isLight={isLight}
                   picked={picked}
+                  marketPriority={marketPriority}
+                  showBookmakerCount={slipTemplate?.showBookmakerCount !== false}
                   onPick={togglePick}
                   onOpenTracker={onOpenTracker}
                 />
@@ -313,6 +351,22 @@ type LeagueGroup = {
   matches: AggregatedMatch[];
 };
 
+type MarketPriorityKey = "moneyline" | "handicap" | "totals";
+
+type OddsPickPayload = {
+  selectionKey: string;
+  marketType: MarketPriorityKey;
+  outcome: "home" | "draw" | "away" | "over" | "under";
+  line?: number | null;
+  odd: number;
+  pickLabel: string;
+  homeName: string;
+  awayName: string;
+  leagueName: string | null;
+  startTime: string | null;
+  bookmakerCount: number;
+};
+
 function groupByLeague(matches: AggregatedMatch[]): LeagueGroup[] {
   const map = new Map<string, LeagueGroup>();
   for (const m of matches) {
@@ -343,13 +397,17 @@ function LeagueBlock({
   group,
   isLight,
   picked,
+  marketPriority,
+  showBookmakerCount,
   onPick,
   onOpenTracker,
 }: {
   group: LeagueGroup;
   isLight: boolean;
   picked: Set<string>;
-  onPick: (id: string) => void;
+  marketPriority: readonly MarketPriorityKey[];
+  showBookmakerCount: boolean;
+  onPick: (pick: OddsPickPayload) => void;
   onOpenTracker: (m: AggregatedMatch) => void;
 }) {
   return (
@@ -393,6 +451,8 @@ function LeagueBlock({
             match={m}
             isLight={isLight}
             picked={picked}
+            marketPriority={marketPriority}
+            showBookmakerCount={showBookmakerCount}
             onPick={onPick}
             onOpenTracker={onOpenTracker}
           />
@@ -406,27 +466,32 @@ function MatchRow({
   match,
   isLight,
   picked,
+  marketPriority,
+  showBookmakerCount,
   onPick,
   onOpenTracker,
 }: {
   match: AggregatedMatch;
   isLight: boolean;
   picked: Set<string>;
-  onPick: (id: string) => void;
+  marketPriority: readonly MarketPriorityKey[];
+  showBookmakerCount: boolean;
+  onPick: (pick: OddsPickPayload) => void;
   onOpenTracker: (m: AggregatedMatch) => void;
 }) {
   const isLive = match.status === "live";
-  const ml = match.markets.moneyline;
-  const totals = match.markets.totals;
-  const hdp = match.markets.handicap;
   const homeName = match.home.nameKr ?? match.home.name;
   const awayName = match.away.nameKr ?? match.away.name;
+  const displayHomeName = homeName ?? "HOME";
+  const displayAwayName = awayName ?? "AWAY";
   const hasNames = !!(homeName && awayName);
+  const leagueName = match.league.nameKr ?? match.league.name;
   const kickoff = formatKickoff(match.startTime, isLive);
   const updatedSec = Math.max(
     0,
     Math.floor((Date.now() - match.lastUpdatedMs) / 1000),
   );
+  const displayMarket = pickDisplayMarket(match, marketPriority);
 
   return (
     <li
@@ -512,75 +577,28 @@ function MatchRow({
           </p>
         )}
         <p className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-zinc-500">
-          <span className="text-zinc-500">북메이커 {match.bookieCount}개</span>
-          <span className="text-zinc-600">·</span>
+          {showBookmakerCount ? (
+            <>
+              <span className="text-zinc-500">북메이커 {match.bookieCount}개</span>
+              <span className="text-zinc-600">·</span>
+            </>
+          ) : null}
           <span className="text-zinc-500">{ago(updatedSec)}</span>
         </p>
       </div>
 
-      {/* 시장: ML 우선, 없으면 핸디캡, 없으면 토탈 */}
+      {/* 시장: 플랫폼 템플릿 우선순위에 따라 1개 시장만 노출 */}
       <div className="grid grid-cols-3 gap-1.5 md:min-w-[280px]">
-        {ml ? (
-          <>
-            <PriceCell
-              id={`${match.matchId}:ML:1`}
-              label="1"
-              price={ml.home}
-              picked={picked}
-              onPick={onPick}
-            />
-            <PriceCell
-              id={`${match.matchId}:ML:X`}
-              label="X"
-              price={ml.draw}
-              picked={picked}
-              onPick={onPick}
-              fallback="—"
-            />
-            <PriceCell
-              id={`${match.matchId}:ML:2`}
-              label="2"
-              price={ml.away}
-              picked={picked}
-              onPick={onPick}
-            />
-          </>
-        ) : hdp ? (
-          <>
-            <PriceCell
-              id={`${match.matchId}:HDP:1`}
-              label={`H ${formatLine(hdp.line, "home")}`}
-              price={hdp.home}
-              picked={picked}
-              onPick={onPick}
-            />
-            <div />
-            <PriceCell
-              id={`${match.matchId}:HDP:2`}
-              label={`A ${formatLine(hdp.line, "away")}`}
-              price={hdp.away}
-              picked={picked}
-              onPick={onPick}
-            />
-          </>
-        ) : totals ? (
-          <>
-            <PriceCell
-              id={`${match.matchId}:OU:O`}
-              label={`O ${totals.line}`}
-              price={totals.over}
-              picked={picked}
-              onPick={onPick}
-            />
-            <div />
-            <PriceCell
-              id={`${match.matchId}:OU:U`}
-              label={`U ${totals.line}`}
-              price={totals.under}
-              picked={picked}
-              onPick={onPick}
-            />
-          </>
+        {displayMarket ? (
+          renderMarketCells({
+            match,
+            picked,
+            onPick,
+            market: displayMarket,
+            homeName: displayHomeName,
+            awayName: displayAwayName,
+            leagueName,
+          })
         ) : (
           <div className="col-span-3 rounded-md border border-white/5 px-2 py-2 text-center text-[11px] text-zinc-600">
             마켓 대기 중
@@ -592,28 +610,30 @@ function MatchRow({
 }
 
 function PriceCell({
-  id,
+  selectionKey,
   label,
   price,
   picked,
   onPick,
+  pick,
   fallback,
 }: {
-  id: string;
+  selectionKey: string;
   label: string;
   price?: number;
   picked: Set<string>;
-  onPick: (id: string) => void;
+  onPick: (pick: OddsPickPayload) => void;
+  pick: OddsPickPayload;
   fallback?: string;
 }) {
-  const isPicked = picked.has(id);
+  const isPicked = picked.has(selectionKey);
   const hasPrice = typeof price === "number" && price > 1;
   const display = hasPrice ? price!.toFixed(2) : fallback ?? "—";
   return (
     <button
       type="button"
       disabled={!hasPrice}
-      onClick={() => hasPrice && onPick(id)}
+      onClick={() => hasPrice && onPick(pick)}
       className={`flex flex-col items-center justify-center rounded-md border px-2 py-1.5 transition ${
         !hasPrice
           ? "cursor-not-allowed border-white/5 bg-white/[0.02] text-zinc-600"
@@ -634,6 +654,270 @@ function PriceCell({
 }
 
 /* ─────────────────────────── helpers ─────────────────────────── */
+
+function pickDisplayMarket(
+  match: AggregatedMatch,
+  marketPriority: readonly MarketPriorityKey[],
+):
+  | {
+      type: "moneyline";
+      market: AggregatedMoneyline;
+    }
+  | {
+      type: "handicap";
+      market: AggregatedHandicap;
+    }
+  | {
+      type: "totals";
+      market: AggregatedTotals;
+    }
+  | null {
+  for (const key of marketPriority) {
+    if (key === "moneyline" && match.markets.moneyline) {
+      return { type: "moneyline", market: match.markets.moneyline };
+    }
+    if (key === "handicap" && match.markets.handicap) {
+      return { type: "handicap", market: match.markets.handicap };
+    }
+    if (key === "totals" && match.markets.totals) {
+      return { type: "totals", market: match.markets.totals };
+    }
+  }
+  return null;
+}
+
+function renderMarketCells({
+  match,
+  picked,
+  onPick,
+  market,
+  homeName,
+  awayName,
+  leagueName,
+}: {
+  match: AggregatedMatch;
+  picked: Set<string>;
+  onPick: (pick: OddsPickPayload) => void;
+  market:
+    | { type: "moneyline"; market: AggregatedMoneyline }
+    | { type: "handicap"; market: AggregatedHandicap }
+    | { type: "totals"; market: AggregatedTotals };
+  homeName: string;
+  awayName: string;
+  leagueName: string | null;
+}) {
+  if (market.type === "moneyline") {
+    return (
+      <>
+        <PriceCell
+          selectionKey={buildSelectionKey(match.matchId, "moneyline", "home")}
+          label="1"
+          price={market.market.home}
+          picked={picked}
+          onPick={onPick}
+          pick={buildPickPayload({
+            match,
+            marketType: "moneyline",
+            outcome: "home",
+            odd: market.market.home,
+            pickLabel: `${homeName} 승`,
+            homeName,
+            awayName,
+            leagueName,
+          })}
+        />
+        <PriceCell
+          selectionKey={buildSelectionKey(match.matchId, "moneyline", "draw")}
+          label="X"
+          price={market.market.draw}
+          picked={picked}
+          onPick={onPick}
+          pick={buildPickPayload({
+            match,
+            marketType: "moneyline",
+            outcome: "draw",
+            odd: market.market.draw ?? 0,
+            pickLabel: "무승부",
+            homeName,
+            awayName,
+            leagueName,
+          })}
+          fallback="—"
+        />
+        <PriceCell
+          selectionKey={buildSelectionKey(match.matchId, "moneyline", "away")}
+          label="2"
+          price={market.market.away}
+          picked={picked}
+          onPick={onPick}
+          pick={buildPickPayload({
+            match,
+            marketType: "moneyline",
+            outcome: "away",
+            odd: market.market.away,
+            pickLabel: `${awayName} 승`,
+            homeName,
+            awayName,
+            leagueName,
+          })}
+        />
+      </>
+    );
+  }
+
+  if (market.type === "handicap") {
+    return (
+      <>
+        <PriceCell
+          selectionKey={buildSelectionKey(
+            match.matchId,
+            "handicap",
+            "home",
+            market.market.line,
+          )}
+          label={`H ${formatLine(market.market.line, "home")}`}
+          price={market.market.home}
+          picked={picked}
+          onPick={onPick}
+          pick={buildPickPayload({
+            match,
+            marketType: "handicap",
+            outcome: "home",
+            odd: market.market.home,
+            line: market.market.line,
+            pickLabel: `${homeName} 핸디캡 ${formatLine(market.market.line, "home")}`,
+            homeName,
+            awayName,
+            leagueName,
+          })}
+        />
+        <div />
+        <PriceCell
+          selectionKey={buildSelectionKey(
+            match.matchId,
+            "handicap",
+            "away",
+            market.market.line,
+          )}
+          label={`A ${formatLine(market.market.line, "away")}`}
+          price={market.market.away}
+          picked={picked}
+          onPick={onPick}
+          pick={buildPickPayload({
+            match,
+            marketType: "handicap",
+            outcome: "away",
+            odd: market.market.away,
+            line: market.market.line,
+            pickLabel: `${awayName} 핸디캡 ${formatLine(market.market.line, "away")}`,
+            homeName,
+            awayName,
+            leagueName,
+          })}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PriceCell
+        selectionKey={buildSelectionKey(
+          match.matchId,
+          "totals",
+          "over",
+          market.market.line,
+        )}
+        label={`O ${market.market.line}`}
+        price={market.market.over}
+        picked={picked}
+        onPick={onPick}
+        pick={buildPickPayload({
+          match,
+          marketType: "totals",
+          outcome: "over",
+          odd: market.market.over,
+          line: market.market.line,
+          pickLabel: `오버 ${market.market.line}`,
+          homeName,
+          awayName,
+          leagueName,
+        })}
+      />
+      <div />
+      <PriceCell
+        selectionKey={buildSelectionKey(
+          match.matchId,
+          "totals",
+          "under",
+          market.market.line,
+        )}
+        label={`U ${market.market.line}`}
+        price={market.market.under}
+        picked={picked}
+        onPick={onPick}
+        pick={buildPickPayload({
+          match,
+          marketType: "totals",
+          outcome: "under",
+          odd: market.market.under,
+          line: market.market.line,
+          pickLabel: `언더 ${market.market.line}`,
+          homeName,
+          awayName,
+          leagueName,
+        })}
+      />
+    </>
+  );
+}
+
+function buildSelectionKey(
+  matchId: string,
+  marketType: MarketPriorityKey,
+  outcome: OddsPickPayload["outcome"],
+  line?: number,
+) {
+  return line == null
+    ? `${matchId}:${marketType}:${outcome}`
+    : `${matchId}:${marketType}:${outcome}:${line}`;
+}
+
+function buildPickPayload({
+  match,
+  marketType,
+  outcome,
+  odd,
+  pickLabel,
+  homeName,
+  awayName,
+  leagueName,
+  line,
+}: {
+  match: AggregatedMatch;
+  marketType: MarketPriorityKey;
+  outcome: OddsPickPayload["outcome"];
+  odd: number;
+  pickLabel: string;
+  homeName: string;
+  awayName: string;
+  leagueName: string | null;
+  line?: number;
+}): OddsPickPayload {
+  return {
+    selectionKey: buildSelectionKey(match.matchId, marketType, outcome, line),
+    marketType,
+    outcome,
+    line,
+    odd,
+    pickLabel,
+    homeName,
+    awayName,
+    leagueName,
+    startTime: match.startTime,
+    bookmakerCount: match.bookieCount,
+  };
+}
 
 function formatLine(line: number, side: "home" | "away"): string {
   // 핸디캡 라인은 home 기준. away 는 부호 반전.

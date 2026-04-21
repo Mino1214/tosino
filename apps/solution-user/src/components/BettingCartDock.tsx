@@ -15,14 +15,38 @@
 */
 
 import { useCallback, useEffect, useState } from "react";
+import { useBootstrap } from "./BootstrapProvider";
 import { useBettingCart } from "./BettingCartContext";
 import { lockScroll, unlockScroll } from "@/lib/scroll-lock";
 
-const QUICK_AMOUNTS = [10_000, 50_000, 100_000, 300_000, 500_000, 1_000_000];
+const DEFAULT_QUICK_AMOUNTS = [
+  10_000,
+  50_000,
+  100_000,
+  300_000,
+  500_000,
+  1_000_000,
+];
+
+function formatQuickAmount(v: number) {
+  if (v >= 1_000_000) return `${v / 1_000_000}백만`;
+  if (v >= 10_000) return `${v / 10_000}만`;
+  return `${v / 1_000}천`;
+}
 
 function CartPanel() {
   const { lines, removeLine, clear } = useBettingCart();
+  const bootstrap = useBootstrap();
   const [amount, setAmount] = useState(0);
+  const slipTemplate = bootstrap?.oddsApi?.betSlipTemplate;
+  const title = slipTemplate?.title?.trim() || "배팅카트";
+  const subtitle = slipTemplate?.subtitle?.trim() || "실시간 배당 기준";
+  const quickAmounts =
+    slipTemplate?.quickAmounts && slipTemplate.quickAmounts.length > 0
+      ? slipTemplate.quickAmounts
+      : DEFAULT_QUICK_AMOUNTS;
+  const showBookmakerCount = slipTemplate?.showBookmakerCount !== false;
+  const showSourceBookmaker = slipTemplate?.showSourceBookmaker !== false;
 
   const totalOdds = lines.reduce((a, l) => a * parseFloat(l.odd || "1"), 1);
   const expected  = Math.floor(amount * totalOdds);
@@ -30,18 +54,21 @@ function CartPanel() {
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
       {/* 헤더 */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/8 px-4">
-        <span className="text-sm font-semibold">
-          배팅카트
+      <div className="shrink-0 border-b border-white/8 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold">
+            {title}
+            {lines.length > 0 && (
+              <span className="ml-2 rounded-full bg-gold-gradient px-1.5 py-0.5 text-[10px] font-bold text-black">
+                {lines.length}
+              </span>
+            )}
+          </span>
           {lines.length > 0 && (
-            <span className="ml-2 rounded-full bg-gold-gradient px-1.5 py-0.5 text-[10px] font-bold text-black">
-              {lines.length}
-            </span>
+            <button type="button" onClick={clear} className="text-xs text-zinc-500">비우기</button>
           )}
-        </span>
-        {lines.length > 0 && (
-          <button type="button" onClick={clear} className="text-xs text-zinc-500">비우기</button>
-        )}
+        </div>
+        <p className="mt-1 text-[11px] text-zinc-500">{subtitle}</p>
       </div>
 
       {/* 목록 (스크롤) — overscroll-contain으로 배경 스크롤 전파 차단 */}
@@ -55,6 +82,15 @@ function CartPanel() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[11px] text-zinc-500">{l.matchLabel}</p>
                   <p className="mt-0.5 text-sm font-medium">{l.pickLabel}</p>
+                  {showSourceBookmaker && l.sourceBookmaker ? (
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      출처 {l.sourceBookmaker}
+                    </p>
+                  ) : showBookmakerCount && l.bookmakerCount ? (
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      북메이커 {l.bookmakerCount}곳 비교
+                    </p>
+                  ) : null}
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="font-mono text-sm text-main-gold">{l.odd}</p>
@@ -71,14 +107,14 @@ function CartPanel() {
         <div className="shrink-0 border-t border-white/8 px-3 py-3 space-y-2">
           {/* 빠른 금액 */}
           <div className="grid grid-cols-3 gap-1">
-            {QUICK_AMOUNTS.map((v) => (
+            {quickAmounts.map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setAmount((p) => p + v)}
                 className="rounded border border-white/10 py-1.5 text-[11px] text-zinc-300"
               >
-                {v >= 1_000_000 ? `${v / 1_000_000}백만` : v >= 10_000 ? `${v / 10_000}만` : `${v / 1_000}천`}
+                {formatQuickAmount(v)}
               </button>
             ))}
           </div>

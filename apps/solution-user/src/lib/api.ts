@@ -330,6 +330,22 @@ export async function fetchBootstrap(host: string) {
       european: { id: string; sportLabel: string }[];
       unset: { id: string; sportLabel: string }[];
     };
+    oddsApi?: {
+      enabled: boolean;
+      sports: string[];
+      bookmakers: string[];
+      status: "all" | "live" | "prematch";
+      cacheTtlSeconds: number;
+      matchLimit: number;
+      betSlipTemplate: {
+        title: string;
+        subtitle: string;
+        quickAmounts: number[];
+        marketPriority: Array<"moneyline" | "handicap" | "totals">;
+        showBookmakerCount: boolean;
+        showSourceBookmaker: boolean;
+      };
+    } | null;
     walletRules: {
       minDepositKrw: string | null;
       minDepositUsdt: string | null;
@@ -465,6 +481,13 @@ export type OddsApiWsStatus = {
     markets: string[];
     status: "live" | "prematch" | null;
   };
+  snapshot?: {
+    liveFetchedAt: string | null;
+    prematchFetchedAt: string | null;
+    bookmakers: string[];
+    matchLimit: number | null;
+    cacheTtlSeconds: number | null;
+  };
 };
 
 export type OddsApiWsEvent = {
@@ -490,8 +513,11 @@ export type OddsApiWsEvent = {
   } | null;
 };
 
-export async function fetchOddsApiWsStatus(): Promise<OddsApiWsStatus> {
-  const res = await fetch(`${getApiBase()}/public/odds-api-ws/status`, {
+export async function fetchOddsApiWsStatus(
+  host?: string,
+): Promise<OddsApiWsStatus> {
+  const q = host ? buildPublicApiQuery(host) : new URLSearchParams();
+  const res = await fetch(`${getApiBase()}/public/odds-api-ws/status?${q}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`odds-api-ws status (${res.status})`);
@@ -572,14 +598,22 @@ export type AggregatedMatchesResponse = {
   sport: string | null;
   total: number;
   matches: AggregatedMatch[];
+  fetchedAt?: string;
+  filters?: {
+    sports: string[];
+    bookmakers: string[];
+    matchLimit: number;
+    cacheTtlSeconds: number;
+  };
 };
 
 export async function fetchOddsApiMatches(opts: {
+  host?: string;
   status?: AggregatedMatchStatus | "all";
   sport?: string;
   limit?: number;
 } = {}): Promise<AggregatedMatchesResponse> {
-  const q = new URLSearchParams();
+  const q = opts.host ? buildPublicApiQuery(opts.host) : new URLSearchParams();
   if (opts.status) q.set("status", opts.status);
   if (opts.sport) q.set("sport", opts.sport);
   if (opts.limit) q.set("limit", String(opts.limit));

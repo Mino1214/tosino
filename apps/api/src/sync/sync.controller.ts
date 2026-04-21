@@ -33,6 +33,15 @@ export class SyncController {
     return this.sync.triggerStub(platformId, dto.jobType, user);
   }
 
+  @Post('odds-api-snapshots')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.PLATFORM_ADMIN)
+  refreshOddsApiSnapshots(
+    @Param('platformId') platformId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.sync.refreshOddsApiSnapshots(platformId, user);
+  }
+
   /**
    * 스포츠 실시간 경기 데이터 업로드.
    * body: { success, total, game: SportsLiveGame[] }

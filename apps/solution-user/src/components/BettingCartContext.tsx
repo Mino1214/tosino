@@ -13,6 +13,17 @@ export type BettingCartLine = {
   matchLabel: string;
   pickLabel: string;
   odd: string;
+  selectionKey?: string;
+  source?: "odds-api" | "manual";
+  marketType?: "moneyline" | "handicap" | "totals";
+  outcome?: "home" | "draw" | "away" | "over" | "under";
+  line?: number | null;
+  leagueName?: string | null;
+  homeName?: string | null;
+  awayName?: string | null;
+  startTime?: string | null;
+  bookmakerCount?: number | null;
+  sourceBookmaker?: string | null;
 };
 
 type BettingCartContextValue = {

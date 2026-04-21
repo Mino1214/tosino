@@ -59,8 +59,61 @@ export const sportsFeedConfigSchema = z.object({
   notes: z.string().optional(),
 });
 
+export const oddsApiStatusFilterSchema = z.enum(["all", "live", "prematch"]);
+export type OddsApiStatusFilter = z.infer<typeof oddsApiStatusFilterSchema>;
+
+export const oddsApiMarketKeySchema = z.enum([
+  "moneyline",
+  "handicap",
+  "totals",
+]);
+export type OddsApiMarketKey = z.infer<typeof oddsApiMarketKeySchema>;
+
+const DEFAULT_ODDS_API_BET_SLIP_TEMPLATE = {
+  title: "배팅카트",
+  subtitle: "실시간 배당 기준",
+  quickAmounts: [10000, 50000, 100000, 300000, 500000, 1000000],
+  marketPriority: ["moneyline", "handicap", "totals"] as OddsApiMarketKey[],
+  showBookmakerCount: true,
+  showSourceBookmaker: true,
+};
+
+export const oddsApiBetSlipTemplateSchema = z.object({
+  title: z.string().default(DEFAULT_ODDS_API_BET_SLIP_TEMPLATE.title),
+  subtitle: z.string().default(DEFAULT_ODDS_API_BET_SLIP_TEMPLATE.subtitle),
+  quickAmounts: z
+    .array(z.number().int().positive())
+    .default(DEFAULT_ODDS_API_BET_SLIP_TEMPLATE.quickAmounts),
+  marketPriority: z
+    .array(oddsApiMarketKeySchema)
+    .default(DEFAULT_ODDS_API_BET_SLIP_TEMPLATE.marketPriority),
+  showBookmakerCount: z
+    .boolean()
+    .default(DEFAULT_ODDS_API_BET_SLIP_TEMPLATE.showBookmakerCount),
+  showSourceBookmaker: z
+    .boolean()
+    .default(DEFAULT_ODDS_API_BET_SLIP_TEMPLATE.showSourceBookmaker),
+});
+export type OddsApiBetSlipTemplate = z.infer<
+  typeof oddsApiBetSlipTemplateSchema
+>;
+
+export const oddsApiConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  sports: z.array(z.string()).default([]),
+  bookmakers: z.array(z.string()).default([]),
+  status: oddsApiStatusFilterSchema.default("all"),
+  cacheTtlSeconds: z.number().int().positive().default(30),
+  matchLimit: z.number().int().positive().max(500).default(120),
+  betSlipTemplate: oddsApiBetSlipTemplateSchema.default(
+    DEFAULT_ODDS_API_BET_SLIP_TEMPLATE,
+  ),
+});
+export type OddsApiConfig = z.infer<typeof oddsApiConfigSchema>;
+
 export const platformIntegrationsSchema = z.object({
   sportsFeeds: z.array(sportsFeedConfigSchema).optional(),
+  oddsApi: oddsApiConfigSchema.optional(),
 });
 
 export type PlatformIntegrations = z.infer<typeof platformIntegrationsSchema>;
@@ -120,6 +173,35 @@ export {
   ODDSHOST_SPORT_IDS_WITH_KO_LABEL,
   oddshostSportNameKr,
 } from "./oddshost-sport-id-ko";
+
+export function readOddsApiConfig(
+  integrations: unknown,
+): OddsApiConfig | null {
+  if (!integrations || typeof integrations !== "object") {
+    return null;
+  }
+  const raw = (integrations as { oddsApi?: unknown }).oddsApi;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const merged = {
+    ...DEFAULT_ODDS_API_BET_SLIP_TEMPLATE,
+    ...(raw as Record<string, unknown>),
+  };
+  const templateRaw =
+    (raw as { betSlipTemplate?: unknown }).betSlipTemplate ?? {};
+  const normalized = {
+    ...merged,
+    betSlipTemplate: {
+      ...DEFAULT_ODDS_API_BET_SLIP_TEMPLATE,
+      ...(templateRaw && typeof templateRaw === "object"
+        ? (templateRaw as Record<string, unknown>)
+        : {}),
+    },
+  };
+  const parsed = oddsApiConfigSchema.safeParse(normalized);
+  return parsed.success ? parsed.data : null;
+}
 
 /** 솔루션 UI에서 국내/유럽 탭으로 나눌 때 사용 */
 export function partitionSportsFeedsByMarket(

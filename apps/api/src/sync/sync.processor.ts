@@ -86,6 +86,13 @@ export class SyncProcessor extends WorkerHost {
     let oddsIngestResult: {
       snapshotsWritten: number;
       feedIds: string[];
+      sportsLiveGames?: number;
+      oddsApiSnapshots?: {
+        enabled: boolean;
+        liveCount: number;
+        prematchCount: number;
+        fetchedAt: string;
+      };
     } | null = null;
     if (jobType === SyncJobType.ODDS) {
       oddsIngestResult = await this.oddsIngest.ingestPlatformOdds(platformId);

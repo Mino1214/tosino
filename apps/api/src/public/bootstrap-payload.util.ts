@@ -1,3 +1,4 @@
+import { readOddsApiConfig } from '@tosino/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { publicSportsSectionsFromIntegrations } from './sports-sections.util';
 import {
@@ -71,6 +72,7 @@ export async function buildBootstrapPayload(
   const decStr = (v: { toString(): string } | null | undefined) =>
     v != null ? v.toString() : null;
   const theme = (p.themeJson as Record<string, unknown>) || {};
+  const oddsApi = readOddsApiConfig(p.integrationsJson);
   const uiRaw = theme.ui;
   const ui =
     uiRaw && typeof uiRaw === 'object' && !Array.isArray(uiRaw)
@@ -116,6 +118,17 @@ export async function buildBootstrapPayload(
     },
     flags: (p.flagsJson as Record<string, unknown>) || {},
     sportsSections: publicSportsSectionsFromIntegrations(p.integrationsJson),
+    oddsApi: oddsApi
+      ? {
+          enabled: oddsApi.enabled,
+          sports: oddsApi.sports,
+          bookmakers: oddsApi.bookmakers,
+          status: oddsApi.status,
+          cacheTtlSeconds: oddsApi.cacheTtlSeconds,
+          matchLimit: oddsApi.matchLimit,
+          betSlipTemplate: oddsApi.betSlipTemplate,
+        }
+      : null,
     walletRules: {
       minDepositKrw: decStr(plimits?.minDepositKrw ?? null),
       minDepositUsdt: decStr(plimits?.minDepositUsdt ?? null),
