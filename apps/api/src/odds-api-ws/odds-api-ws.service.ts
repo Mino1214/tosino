@@ -284,11 +284,13 @@ export class OddsApiWsService implements OnModuleInit, OnModuleDestroy {
         changed = true;
       }
     }
-    if (input.status === null || input.status === undefined) {
-      // no-op (don't clobber unintentionally)
-    } else if (input.status === 'live' || input.status === 'prematch') {
-      if (this.statusFilter !== input.status) {
-        this.statusFilter = input.status;
+    if ('status' in input) {
+      const nextStatus =
+        input.status === 'live' || input.status === 'prematch'
+          ? input.status
+          : null;
+      if (this.statusFilter !== nextStatus) {
+        this.statusFilter = nextStatus;
         changed = true;
       }
     }

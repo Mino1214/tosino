@@ -2,282 +2,386 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { usePlatform } from "@/context/PlatformContext";
 
-type IntegrationsResponse = {
-  platformId: string;
-  slug: string;
-  name: string;
-  integrationsJson: Record<string, unknown>;
-};
+type ConnectionState = "idle" | "connecting" | "open" | "closed" | "error";
+type MatchStatus = "live" | "prematch" | "finished" | "unknown";
+type MatchStatusFilter = MatchStatus | "all";
+type WsStatusFilter = "live" | "prematch" | "all";
 
-type OddsApiForm = {
-  enabled: boolean;
-  sportsCsv: string;
-  bookmakersCsv: string;
-  status: "all" | "live" | "prematch";
-  cacheTtlSeconds: string;
-  matchLimit: string;
-  title: string;
-  subtitle: string;
-  quickAmountsCsv: string;
-  marketPriorityCsv: string;
-  showBookmakerCount: boolean;
-  showSourceBookmaker: boolean;
-};
-
-type RefreshResult = {
-  enabled: boolean;
-  liveCount: number;
-  prematchCount: number;
-  fetchedAt: string;
+type OddsApiAdminStatus = {
+  configured: boolean;
+  autoConnectEnabled: boolean;
+  connectionState: ConnectionState;
+  connectedAt: string | null;
+  disconnectedAt: string | null;
+  lastMessageAt: string | null;
+  reconnectAttempts: number;
+  lastSeq: number;
+  lastError: string | null;
+  welcome: Record<string, unknown> | null;
   filters: {
     sports: string[];
-    bookmakers: string[];
-    matchLimit: number;
-    cacheTtlSeconds: number;
+    markets: string[];
+    status: "live" | "prematch" | null;
+  };
+  counters: Record<string, number>;
+  stateCount: number;
+  sportCounts: Record<string, number>;
+  bookieCounts: Record<string, number>;
+  endpoint: string;
+  enrichmentCount: number;
+  sportLookup: Record<string, { count: number; fetchedAt: string | null }>;
+  restCache?: {
+    eventCacheSize?: number;
+    listCacheSize?: number;
+    bySportCacheSize?: number;
+  };
+};
+
+type OddsApiRawEvent = {
+  sport: string;
+  eventId: string;
+  bookie: string;
+  url?: string;
+  markets: unknown;
+  timestamp: number;
+  seq: number;
+  updatedAt: string;
+  home: string | null;
+  away: string | null;
+  league: string | null;
+  date: string | null;
+  eventStatus: string | null;
+  scores: {
+    home: number | null;
+    away: number | null;
+    periods: Record<string, { home: number; away: number }>;
   } | null;
 };
 
-const DEFAULT_FORM: OddsApiForm = {
-  enabled: false,
-  sportsCsv: "football,basketball",
-  bookmakersCsv: "Bet365,Betfair Exchange,1xBet,SBOBET,BetMGM",
-  status: "all",
-  cacheTtlSeconds: "30",
-  matchLimit: "120",
-  title: "배팅카트",
-  subtitle: "실시간 배당 기준",
-  quickAmountsCsv: "10000,50000,100000,300000,500000,1000000",
-  marketPriorityCsv: "moneyline,handicap,totals",
-  showBookmakerCount: true,
-  showSourceBookmaker: true,
+type OddsApiRawResponse = {
+  sport: string | null;
+  bookie: string | null;
+  total: number;
+  events: OddsApiRawEvent[];
 };
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
+type AggregatedMoneyline = {
+  home: number;
+  draw?: number;
+  away: number;
+  margin: number;
+};
 
-function stringArrayToCsv(value: unknown): string {
-  if (!Array.isArray(value)) return "";
-  return value
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(Boolean)
-    .join(",");
-}
+type AggregatedHandicap = {
+  line: number;
+  home: number;
+  away: number;
+  margin: number;
+};
 
-function parseCsvList(value: string) {
+type AggregatedTotals = {
+  line: number;
+  over: number;
+  under: number;
+  margin: number;
+};
+
+type AggregatedMatch = {
+  matchId: string;
+  sport: string;
+  status: MatchStatus;
+  startTime: string | null;
+  league: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  home: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  away: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  scores: {
+    home: number | null;
+    away: number | null;
+    periods: Record<string, { home: number; away: number }>;
+  } | null;
+  markets: {
+    moneyline?: AggregatedMoneyline;
+    handicap?: AggregatedHandicap;
+    totals?: AggregatedTotals;
+  };
+  bookies: string[];
+  bookieCount: number;
+  url?: string;
+  lastUpdatedMs: number;
+};
+
+type AggregatedMatchesResponse = {
+  status: MatchStatusFilter;
+  sport: string | null;
+  total: number;
+  matches: AggregatedMatch[];
+};
+
+type ConfigForm = {
+  apiKey: string;
+  sportsCsv: string;
+  marketsCsv: string;
+  status: WsStatusFilter;
+  autoConnect: boolean;
+};
+
+const DEFAULT_FORM: ConfigForm = {
+  apiKey: "",
+  sportsCsv: "football,basketball",
+  marketsCsv: "ML,Spread,Totals",
+  status: "all",
+  autoConnect: true,
+};
+
+function parseCsv(value: string) {
   return value
     .split(",")
-    .map((item) => item.trim())
+    .map((part) => part.trim())
     .filter(Boolean);
 }
 
-function toPositiveInt(value: string, fallback: number) {
-  const n = Math.trunc(Number(value));
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-function loadForm(integrationsJson: Record<string, unknown>): OddsApiForm {
-  const oddsApi = asRecord(integrationsJson.oddsApi);
-  const template = asRecord(oddsApi.betSlipTemplate);
-  return {
-    enabled: oddsApi.enabled === true,
-    sportsCsv: stringArrayToCsv(oddsApi.sports) || DEFAULT_FORM.sportsCsv,
-    bookmakersCsv:
-      stringArrayToCsv(oddsApi.bookmakers) || DEFAULT_FORM.bookmakersCsv,
-    status:
-      oddsApi.status === "live" || oddsApi.status === "prematch"
-        ? oddsApi.status
-        : "all",
-    cacheTtlSeconds:
-      typeof oddsApi.cacheTtlSeconds === "number"
-        ? String(oddsApi.cacheTtlSeconds)
-        : DEFAULT_FORM.cacheTtlSeconds,
-    matchLimit:
-      typeof oddsApi.matchLimit === "number"
-        ? String(oddsApi.matchLimit)
-        : DEFAULT_FORM.matchLimit,
-    title:
-      typeof template.title === "string" ? template.title : DEFAULT_FORM.title,
-    subtitle:
-      typeof template.subtitle === "string"
-        ? template.subtitle
-        : DEFAULT_FORM.subtitle,
-    quickAmountsCsv:
-      Array.isArray(template.quickAmounts) && template.quickAmounts.length > 0
-        ? template.quickAmounts.join(",")
-        : DEFAULT_FORM.quickAmountsCsv,
-    marketPriorityCsv:
-      stringArrayToCsv(template.marketPriority) ||
-      DEFAULT_FORM.marketPriorityCsv,
-    showBookmakerCount: template.showBookmakerCount !== false,
-    showSourceBookmaker: template.showSourceBookmaker !== false,
-  };
-}
-
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return "아직 없음";
+  if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("ko-KR");
 }
 
+function formatRelativeTime(value: string | null | undefined) {
+  if (!value) return "—";
+  const ms = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(ms)) return "—";
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec}초 전`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}시간 전`;
+  return `${Math.floor(hour / 24)}일 전`;
+}
+
+function formatStatusLabel(state: ConnectionState) {
+  switch (state) {
+    case "open":
+      return "연결됨";
+    case "connecting":
+      return "연결 중";
+    case "closed":
+      return "연결 종료";
+    case "error":
+      return "에러";
+    default:
+      return "대기";
+  }
+}
+
+function badgeClass(ok: boolean) {
+  return ok
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+    : "border-red-500/30 bg-red-500/10 text-red-300";
+}
+
+function valueClass(state: ConnectionState) {
+  if (state === "open") return "text-emerald-300";
+  if (state === "connecting") return "text-blue-300";
+  if (state === "error") return "text-red-300";
+  if (state === "closed") return "text-amber-300";
+  return "text-zinc-200";
+}
+
+function marketSummary(match: AggregatedMatch) {
+  const chunks: string[] = [];
+  if (match.markets.moneyline) {
+    const ml = match.markets.moneyline;
+    chunks.push(
+      `ML ${ml.home.toFixed(2)}${
+        ml.draw ? ` / ${ml.draw.toFixed(2)}` : ""
+      } / ${ml.away.toFixed(2)}`,
+    );
+  }
+  if (match.markets.handicap) {
+    const hd = match.markets.handicap;
+    chunks.push(
+      `HCP ${hd.line > 0 ? "+" : ""}${hd.line} (${hd.home.toFixed(
+        2,
+      )} / ${hd.away.toFixed(2)})`,
+    );
+  }
+  if (match.markets.totals) {
+    const tt = match.markets.totals;
+    chunks.push(
+      `O/U ${tt.line} (${tt.over.toFixed(2)} / ${tt.under.toFixed(2)})`,
+    );
+  }
+  return chunks.join(" · ") || "가공 시장 없음";
+}
+
+function rawMarketCount(markets: unknown) {
+  return Array.isArray(markets) ? markets.length : 0;
+}
+
+function scoreText(match: AggregatedMatch) {
+  if (!match.scores) return "—";
+  return `${match.scores.home ?? 0} : ${match.scores.away ?? 0}`;
+}
+
+function scoreTextRaw(event: OddsApiRawEvent) {
+  if (!event.scores) return "—";
+  return `${event.scores.home ?? 0} : ${event.scores.away ?? 0}`;
+}
+
 export default function OddsApiWsPage() {
-  const { selectedPlatformId, platforms, loading: platformLoading } =
-    usePlatform();
-  const selectedPlatform =
-    platforms.find((platform) => platform.id === selectedPlatformId) ?? null;
-  const [integrationRes, setIntegrationRes] =
-    useState<IntegrationsResponse | null>(null);
-  const [form, setForm] = useState<OddsApiForm>(DEFAULT_FORM);
-  const [loading, setLoading] = useState(false);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [status, setStatus] = useState<OddsApiAdminStatus | null>(null);
+  const [raw, setRaw] = useState<OddsApiRawResponse | null>(null);
+  const [matches, setMatches] = useState<AggregatedMatchesResponse | null>(null);
+  const [form, setForm] = useState<ConfigForm>(DEFAULT_FORM);
+  const [rawSport, setRawSport] = useState("");
+  const [rawBookie, setRawBookie] = useState("");
+  const [rawLimit, setRawLimit] = useState("40");
+  const [matchStatus, setMatchStatus] = useState<MatchStatusFilter>("all");
+  const [matchSport, setMatchSport] = useState("");
+  const [matchLimit, setMatchLimit] = useState("24");
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshResult, setRefreshResult] = useState<RefreshResult | null>(
-    null,
+  const [reconnecting, setReconnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    const next = await apiFetch<OddsApiAdminStatus>("/hq/odds-api-ws/status");
+    setStatus(next);
+    setForm((prev) => ({
+      ...prev,
+      sportsCsv:
+        prev.sportsCsv === DEFAULT_FORM.sportsCsv && next.filters.sports.length > 0
+          ? next.filters.sports.join(",")
+          : prev.sportsCsv,
+      marketsCsv:
+        prev.marketsCsv === DEFAULT_FORM.marketsCsv && next.filters.markets.length > 0
+          ? next.filters.markets.join(",")
+          : prev.marketsCsv,
+      status: next.filters.status ?? "all",
+      autoConnect: next.autoConnectEnabled,
+    }));
+    return next;
+  }, []);
+
+  const loadRaw = useCallback(
+    async (nextStatus?: OddsApiAdminStatus | null) => {
+      const q = new URLSearchParams();
+      const sport = rawSport.trim();
+      const bookie = rawBookie.trim();
+      if (sport) q.set("sport", sport);
+      if (bookie) q.set("bookie", bookie);
+      if (rawLimit.trim()) q.set("limit", rawLimit.trim());
+      const next = await apiFetch<OddsApiRawResponse>(
+        `/hq/odds-api-ws/events?${q}`,
+      );
+      setRaw(next);
+      const source = nextStatus ?? status;
+      if (!rawSport && source?.filters.sports?.length && next.total > 0) {
+        setRawSport(source.filters.sports[0]);
+      }
+    },
+    [rawBookie, rawLimit, rawSport, status],
   );
 
-  const load = useCallback(async () => {
-    if (!selectedPlatformId) return;
-    setLoading(true);
-    setLoadErr(null);
+  const loadMatches = useCallback(async () => {
+    const q = new URLSearchParams();
+    if (matchStatus !== "all") q.set("status", matchStatus);
+    if (matchSport.trim()) q.set("sport", matchSport.trim());
+    if (matchLimit.trim()) q.set("limit", matchLimit.trim());
+    const next = await apiFetch<AggregatedMatchesResponse>(
+      `/hq/odds-api-ws/matches?${q}`,
+    );
+    setMatches(next);
+  }, [matchLimit, matchSport, matchStatus]);
+
+  const loadAll = useCallback(async () => {
+    setError(null);
     try {
-      const res = await apiFetch<IntegrationsResponse>(
-        `/platforms/${selectedPlatformId}/integrations`,
-      );
-      setIntegrationRes(res);
-      setForm(loadForm(res.integrationsJson ?? {}));
+      const nextStatus = await loadStatus();
+      await Promise.all([loadRaw(nextStatus), loadMatches()]);
     } catch (e) {
-      setLoadErr(e instanceof Error ? e.message : "불러오기 실패");
-      setIntegrationRes(null);
+      setError(e instanceof Error ? e.message : "불러오기 실패");
     } finally {
       setLoading(false);
     }
-  }, [selectedPlatformId]);
+  }, [loadMatches, loadRaw, loadStatus]);
 
   useEffect(() => {
-    if (!selectedPlatformId || platformLoading) {
-      setIntegrationRes(null);
-      setRefreshResult(null);
-      return;
-    }
-    void load();
-  }, [selectedPlatformId, platformLoading, load]);
+    void loadAll();
+  }, [loadAll]);
 
-  const normalizedPreview = useMemo(() => {
-    const sports = parseCsvList(form.sportsCsv);
-    const bookmakers = parseCsvList(form.bookmakersCsv);
-    const quickAmounts = parseCsvList(form.quickAmountsCsv)
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    const marketPriority = parseCsvList(form.marketPriorityCsv).filter(
-      (value) => ["moneyline", "handicap", "totals"].includes(value),
-    );
-    return {
-      sports,
-      bookmakers,
-      quickAmounts,
-      marketPriority,
-      cacheTtlSeconds: toPositiveInt(form.cacheTtlSeconds, 30),
-      matchLimit: toPositiveInt(form.matchLimit, 120),
-    };
-  }, [form]);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadAll();
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [loadAll]);
 
-  async function save() {
-    if (!selectedPlatformId || !integrationRes) return;
+  const currentSports = useMemo(
+    () => Object.keys(status?.sportCounts ?? {}).sort(),
+    [status],
+  );
+  const currentBookies = useMemo(
+    () =>
+      Object.entries(status?.bookieCounts ?? {})
+        .sort((a, b) => b[1] - a[1])
+        .map(([name]) => name),
+    [status],
+  );
+
+  async function saveConfig() {
     setSaving(true);
-    setSaveMsg(null);
+    setMessage(null);
+    setError(null);
     try {
-      const nextIntegrations = {
-        ...(integrationRes.integrationsJson ?? {}),
-        oddsApi: {
-          enabled: form.enabled,
-          sports: normalizedPreview.sports,
-          bookmakers: normalizedPreview.bookmakers,
-          status: form.status,
-          cacheTtlSeconds: normalizedPreview.cacheTtlSeconds,
-          matchLimit: normalizedPreview.matchLimit,
-          betSlipTemplate: {
-            title: form.title.trim() || DEFAULT_FORM.title,
-            subtitle: form.subtitle.trim() || DEFAULT_FORM.subtitle,
-            quickAmounts:
-              normalizedPreview.quickAmounts.length > 0
-                ? normalizedPreview.quickAmounts
-                : parseCsvList(DEFAULT_FORM.quickAmountsCsv).map(Number),
-            marketPriority:
-              normalizedPreview.marketPriority.length > 0
-                ? normalizedPreview.marketPriority
-                : ["moneyline", "handicap", "totals"],
-            showBookmakerCount: form.showBookmakerCount,
-            showSourceBookmaker: form.showSourceBookmaker,
-          },
-        },
+      const body: {
+        apiKey?: string;
+        sports: string[];
+        markets: string[];
+        status: "live" | "prematch" | null;
+        autoConnect: boolean;
+      } = {
+        sports: parseCsv(form.sportsCsv),
+        markets: parseCsv(form.marketsCsv),
+        status: form.status === "all" ? null : form.status,
+        autoConnect: form.autoConnect,
       };
-      const patched = await apiFetch<{
-        id: string;
-        integrationsJson: Record<string, unknown>;
-      }>(`/platforms/${selectedPlatformId}/integrations`, {
-        method: "PATCH",
-        body: JSON.stringify({ integrationsJson: nextIntegrations }),
+      if (form.apiKey.trim()) {
+        body.apiKey = form.apiKey.trim();
+      }
+      await apiFetch("/hq/odds-api-ws/config", {
+        method: "POST",
+        body: JSON.stringify(body),
       });
-      const nextRes = {
-        ...integrationRes,
-        integrationsJson: patched.integrationsJson,
-      };
-      setIntegrationRes(nextRes);
-      setForm(loadForm(patched.integrationsJson));
-      setSaveMsg("마스터 콘솔에서도 같은 설정으로 저장했습니다.");
+      setMessage("전역 odds-api 런타임 설정을 저장했습니다.");
+      setForm((prev) => ({ ...prev, apiKey: "" }));
+      await loadAll();
     } catch (e) {
-      setSaveMsg(e instanceof Error ? e.message : "저장 실패");
+      setError(e instanceof Error ? e.message : "저장 실패");
     } finally {
       setSaving(false);
     }
   }
 
-  async function refreshSnapshots() {
-    if (!selectedPlatformId) return;
-    setRefreshing(true);
-    setSaveMsg(null);
+  async function reconnectNow() {
+    setReconnecting(true);
+    setMessage(null);
+    setError(null);
     try {
-      const res = await apiFetch<RefreshResult>(
-        `/platforms/${selectedPlatformId}/sync/odds-api-snapshots`,
-        {
-          method: "POST",
-        },
-      );
-      setRefreshResult(res);
-      setSaveMsg("선택한 플랫폼의 odds-api 스냅샷을 다시 저장했습니다.");
+      await apiFetch("/hq/odds-api-ws/reconnect", {
+        method: "POST",
+      });
+      setMessage("전역 WS 재연결을 요청했습니다.");
+      await loadAll();
     } catch (e) {
-      setSaveMsg(e instanceof Error ? e.message : "스냅샷 저장 실패");
+      setError(e instanceof Error ? e.message : "재연결 실패");
     } finally {
-      setRefreshing(false);
+      setReconnecting(false);
     }
-  }
-
-  if (platformLoading) {
-    return <p className="text-sm text-zinc-500">불러오는 중…</p>;
-  }
-
-  if (!selectedPlatformId) {
-    return (
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 px-5 py-4">
-        <p className="text-sm text-zinc-400">
-          상단에서 플랫폼을 먼저 선택해 주세요. 이 화면은 선택한 플랫폼별
-          `odds-api.io → 서버 스냅샷 → 클라이언트 API` 구성을 편집합니다.
-        </p>
-      </div>
-    );
-  }
-
-  if (loading && !integrationRes) {
-    return (
-      <p className="text-sm text-zinc-500">연동 설정을 불러오는 중…</p>
-    );
   }
 
   return (
@@ -285,343 +389,525 @@ export default function OddsApiWsPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
-            Odds API
+            HQ Control
           </p>
           <h1 className="mt-1 text-2xl font-semibold text-zinc-100">
-            Live Odds / Betting Slip
+            Live Odds Control Room
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-zinc-400">
-            현재 선택된 플랫폼
-            <span className="mx-1 font-semibold text-zinc-200">
-              {selectedPlatform?.name ?? integrationRes?.name ?? "미선택"}
-            </span>
-            기준으로 노출 종목, 북메이커 subset, 베팅 슬립 템플릿을 관리합니다.
-            HQ의 실제 WebSocket 구독 설정은 그대로 두고, 여기서는 플랫폼별
-            저장/노출 정책만 조정합니다.
+            플랫폼별 분기 없이 HQ에서 `odds-api.io` 전체 피드를 제어하고,
+            서버 가공 결과까지 한 번에 검수하는 화면입니다. 나중에 솔루션
+            연결을 붙이더라도, upstream 제어와 가공 검수는 여기서 계속 할 수
+            있게 구성했습니다.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => void loadAll()}
             className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
           >
-            다시 불러오기
+            새로고침
           </button>
           <button
             type="button"
-            onClick={() => void refreshSnapshots()}
-            disabled={refreshing}
-            className="rounded-lg border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/20 disabled:opacity-50"
+            onClick={() => void reconnectNow()}
+            disabled={reconnecting}
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
           >
-            {refreshing ? "저장 중…" : "스냅샷 저장"}
+            {reconnecting ? "재연결 중…" : "WS 재연결"}
           </button>
           <button
             type="button"
-            onClick={() => void save()}
-            disabled={saving || loading}
+            onClick={() => void saveConfig()}
+            disabled={saving}
             className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
           >
-            {saving ? "저장 중…" : "설정 저장"}
+            {saving ? "저장 중…" : "전역 설정 저장"}
           </button>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-        마스터 콘솔의 이 화면은
-        <span className="mx-1 font-semibold">플랫폼별 표시 정책</span>을 다룹니다.
-        upstream 구독 종목과 시장은 여전히 API 서버의 `ODDS_API_KEY`,
-        `ODDSHOST_BASE_URL`, HQ WS 설정을 따릅니다.
+      {error ? (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {error}
+        </div>
+      ) : null}
+
+      {message ? (
+        <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
+          {message}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-4">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Connection
+          </p>
+          <p className={`mt-2 text-2xl font-semibold ${valueClass(status?.connectionState ?? "idle")}`}>
+            {formatStatusLabel(status?.connectionState ?? "idle")}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            {status?.configured ? "API 키 설정됨" : "API 키 미설정"}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            State Rows
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-zinc-100">
+            {(status?.stateCount ?? 0).toLocaleString("ko-KR")}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            seq {status?.lastSeq?.toLocaleString("ko-KR") ?? 0}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Enrichment
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-zinc-100">
+            {(status?.enrichmentCount ?? 0).toLocaleString("ko-KR")}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            REST 캐시 이벤트 {status?.restCache?.eventCacheSize ?? 0}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Last Message
+          </p>
+          <p className="mt-2 text-lg font-semibold text-zinc-100">
+            {formatRelativeTime(status?.lastMessageAt)}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            {formatDateTime(status?.lastMessageAt)}
+          </p>
+        </div>
       </div>
 
-      {loadErr ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {loadErr}
-        </div>
-      ) : null}
-
-      {saveMsg ? (
-        <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
-          {saveMsg}
-        </div>
-      ) : null}
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="space-y-6 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-4">
-            <div>
-              <h2 className="text-base font-semibold text-zinc-100">
-                플랫폼 필터
-              </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                스냅샷으로 저장할 종목, 상태, 북메이커 범위를 정합니다.
-              </p>
-            </div>
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-zinc-300">
-              <input
-                type="checkbox"
-                checked={form.enabled}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                }
-              />
-              odds-api 사용
-            </label>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block text-sm text-zinc-400">
-              종목 슬러그 (쉼표)
-              <input
-                value={form.sportsCsv}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, sportsCsv: e.target.value }))
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                placeholder="football,basketball"
-              />
-            </label>
-            <label className="block text-sm text-zinc-400">
-              상태 필터
-              <select
-                value={form.status}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    status: e.target.value as OddsApiForm["status"],
-                  }))
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-              >
-                <option value="all">live + prematch</option>
-                <option value="live">live only</option>
-                <option value="prematch">prematch only</option>
-              </select>
-            </label>
-            <label className="block text-sm text-zinc-400 md:col-span-2">
-              북메이커 (쉼표)
-              <input
-                value={form.bookmakersCsv}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    bookmakersCsv: e.target.value,
-                  }))
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                placeholder="Bet365,Betfair Exchange,1xBet,SBOBET,BetMGM"
-              />
-            </label>
-            <label className="block text-sm text-zinc-400">
-              스냅샷 TTL (초)
-              <input
-                type="number"
-                min={1}
-                value={form.cacheTtlSeconds}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    cacheTtlSeconds: e.target.value,
-                  }))
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-              />
-            </label>
-            <label className="block text-sm text-zinc-400">
-              최대 경기 수
-              <input
-                type="number"
-                min={1}
-                value={form.matchLimit}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    matchLimit: e.target.value,
-                  }))
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-              />
-            </label>
-          </div>
-
-          <div className="border-t border-zinc-800 pt-5">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+        <section className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <div className="border-b border-zinc-800 pb-4">
             <h2 className="text-base font-semibold text-zinc-100">
-              배팅 슬립 템플릿
+              upstream 제어
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              회원 페이지의 배팅카트 제목, 빠른 금액, 시장 우선순위를 미리
-              지정합니다.
+              여기서 `odds-api.io` WebSocket 구독 종목, 시장, 상태 필터를
+              런타임 변경합니다.
             </p>
+          </div>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="block text-sm text-zinc-400">
-                슬립 제목
-                <input
-                  value={form.title}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, title: e.target.value }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                />
-              </label>
-              <label className="block text-sm text-zinc-400">
-                슬립 부제
-                <input
-                  value={form.subtitle}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, subtitle: e.target.value }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                />
-              </label>
-              <label className="block text-sm text-zinc-400">
-                빠른 금액 (쉼표)
-                <input
-                  value={form.quickAmountsCsv}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      quickAmountsCsv: e.target.value,
-                    }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                  placeholder="10000,50000,100000"
-                />
-              </label>
-              <label className="block text-sm text-zinc-400">
-                시장 우선순위 (쉼표)
-                <input
-                  value={form.marketPriorityCsv}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      marketPriorityCsv: e.target.value,
-                    }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                  placeholder="moneyline,handicap,totals"
-                />
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={form.showBookmakerCount}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      showBookmakerCount: e.target.checked,
-                    }))
-                  }
-                />
-                비교한 북메이커 수 표시
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={form.showSourceBookmaker}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      showSourceBookmaker: e.target.checked,
-                    }))
-                  }
-                />
-                원본 북메이커 표시
-              </label>
+          <label className="block text-sm text-zinc-400">
+            새 API Key
+            <input
+              type="password"
+              value={form.apiKey}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, apiKey: e.target.value }))
+              }
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              placeholder="바꾸지 않으려면 비워두세요"
+            />
+          </label>
+
+          <label className="block text-sm text-zinc-400">
+            종목 (쉼표)
+            <input
+              value={form.sportsCsv}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, sportsCsv: e.target.value }))
+              }
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              placeholder="football,basketball"
+            />
+          </label>
+
+          <label className="block text-sm text-zinc-400">
+            시장 (쉼표)
+            <input
+              value={form.marketsCsv}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, marketsCsv: e.target.value }))
+              }
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              placeholder="ML,Spread,Totals"
+            />
+          </label>
+
+          <label className="block text-sm text-zinc-400">
+            상태 필터
+            <select
+              value={form.status}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  status: e.target.value as WsStatusFilter,
+                }))
+              }
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+            >
+              <option value="all">all</option>
+              <option value="live">live only</option>
+              <option value="prematch">prematch only</option>
+            </select>
+          </label>
+
+          <label className="inline-flex items-center gap-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              checked={form.autoConnect}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  autoConnect: e.target.checked,
+                }))
+              }
+            />
+            자동 재연결 사용
+          </label>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-sm text-zinc-400">
+            <p className="font-semibold text-zinc-100">현재 적용값</p>
+            <p className="mt-2">
+              sports:{" "}
+              <span className="text-zinc-200">
+                {status?.filters.sports.join(", ") || "없음"}
+              </span>
+            </p>
+            <p className="mt-1">
+              markets:{" "}
+              <span className="text-zinc-200">
+                {status?.filters.markets.join(", ") || "없음"}
+              </span>
+            </p>
+            <p className="mt-1">
+              status:{" "}
+              <span className="text-zinc-200">
+                {status?.filters.status ?? "all"}
+              </span>
+            </p>
+            <p className="mt-1">
+              endpoint:{" "}
+              <span className="break-all text-zinc-200">
+                {status?.endpoint ?? "—"}
+              </span>
+            </p>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <div className="border-b border-zinc-800 pb-4">
+            <h2 className="text-base font-semibold text-zinc-100">
+              실시간 상태
+            </h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              연결 상태, 북메이커 분포, 수신 카운터, REST 보강 캐시 현황입니다.
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <InfoBox label="마지막 연결" value={formatDateTime(status?.connectedAt)} />
+            <InfoBox label="마지막 종료" value={formatDateTime(status?.disconnectedAt)} />
+            <InfoBox label="재연결 시도" value={`${status?.reconnectAttempts ?? 0}회`} />
+            <InfoBox label="welcome" value={`${status?.counters?.welcome ?? 0}`} />
+            <InfoBox label="created / updated" value={`${status?.counters?.created ?? 0} / ${status?.counters?.updated ?? 0}`} />
+            <InfoBox label="deleted / no_markets" value={`${status?.counters?.deleted ?? 0} / ${status?.counters?.no_markets ?? 0}`} />
+          </div>
+
+          {status?.lastError ? (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              최근 에러: {status.lastError}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              <p className="text-sm font-semibold text-zinc-100">Sport Count</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Object.entries(status?.sportCounts ?? {}).map(([sport, count]) => (
+                  <span
+                    key={sport}
+                    className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300"
+                  >
+                    {sport} {count}
+                  </span>
+                ))}
+                {Object.keys(status?.sportCounts ?? {}).length === 0 ? (
+                  <span className="text-xs text-zinc-500">아직 수신 없음</span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              <p className="text-sm font-semibold text-zinc-100">
+                Top Bookmakers
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Object.entries(status?.bookieCounts ?? {})
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 12)
+                  .map(([name, count]) => (
+                    <span
+                      key={name}
+                      className="rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-xs text-zinc-300"
+                    >
+                      {name} {count}
+                    </span>
+                  ))}
+                {Object.keys(status?.bookieCounts ?? {}).length === 0 ? (
+                  <span className="text-xs text-zinc-500">아직 수신 없음</span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-zinc-800 pb-4">
+            <div>
+              <h2 className="text-base font-semibold text-zinc-100">
+                원본 WS 이벤트
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                upstream 메시지를 보강 후 메모리에 적재한 상태입니다.
+              </p>
+            </div>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs ${badgeClass(
+                !!raw?.events?.length,
+              )}`}
+            >
+              {raw?.total ?? 0} rows
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="block text-sm text-zinc-400">
+              sport
+              <input
+                list="odds-sports"
+                value={rawSport}
+                onChange={(e) => setRawSport(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                placeholder="football"
+              />
+            </label>
+            <label className="block text-sm text-zinc-400">
+              bookmaker
+              <input
+                list="odds-bookies"
+                value={rawBookie}
+                onChange={(e) => setRawBookie(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                placeholder="Bet365"
+              />
+            </label>
+            <label className="block text-sm text-zinc-400">
+              limit
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={rawLimit}
+                onChange={(e) => setRawLimit(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              />
+            </label>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-zinc-800">
+            <div className="max-h-[480px] overflow-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="sticky top-0 bg-zinc-900 text-zinc-400">
+                  <tr>
+                    <th className="px-3 py-2">경기</th>
+                    <th className="px-3 py-2">북메이커</th>
+                    <th className="px-3 py-2">상태</th>
+                    <th className="px-3 py-2">시장수</th>
+                    <th className="px-3 py-2">업데이트</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {raw?.events.map((event) => (
+                    <tr key={`${event.eventId}:${event.bookie}:${event.seq}`}>
+                      <td className="px-3 py-2 align-top">
+                        <p className="font-medium text-zinc-100">
+                          {event.home ?? "?"} vs {event.away ?? "?"}
+                        </p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {event.league ?? event.sport} · {scoreTextRaw(event)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-zinc-600">
+                          {event.eventId}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 align-top text-zinc-300">
+                        {event.bookie}
+                      </td>
+                      <td className="px-3 py-2 align-top text-zinc-300">
+                        {event.eventStatus ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 align-top text-zinc-300">
+                        {rawMarketCount(event.markets)}
+                      </td>
+                      <td className="px-3 py-2 align-top text-zinc-400">
+                        <p>{formatRelativeTime(event.updatedAt)}</p>
+                        <p className="mt-1 text-[11px] text-zinc-600">
+                          seq {event.seq}
+                        </p>
+                      </td>
+                    </tr>
+                  ))}
+                  {raw && raw.events.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-zinc-500">
+                        조건에 맞는 원본 이벤트가 없습니다.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
 
-        <aside className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-          <div>
-            <h2 className="text-base font-semibold text-zinc-100">
-              현재 미리보기
-            </h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              저장 전에도 현재 입력값 기준으로 회원 화면 구성을 빠르게 볼 수
-              있습니다.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-            <p className="text-sm font-semibold text-zinc-100">
-              {form.title || DEFAULT_FORM.title}
-            </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              {form.subtitle || DEFAULT_FORM.subtitle}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(normalizedPreview.quickAmounts.length > 0
-                ? normalizedPreview.quickAmounts
-                : parseCsvList(DEFAULT_FORM.quickAmountsCsv).map(Number)
-              ).map((amount) => (
-                <span
-                  key={amount}
-                  className="rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300"
-                >
-                  {amount.toLocaleString("ko-KR")}
-                </span>
-              ))}
-            </div>
-            <div className="mt-4 space-y-2 text-xs text-zinc-400">
-              <p>
-                종목:{" "}
-                <span className="text-zinc-200">
-                  {normalizedPreview.sports.join(", ") || "미설정"}
-                </span>
-              </p>
-              <p>
-                북메이커:{" "}
-                <span className="text-zinc-200">
-                  {normalizedPreview.bookmakers.join(", ") || "미설정"}
-                </span>
-              </p>
-              <p>
-                시장 우선순위:{" "}
-                <span className="text-zinc-200">
-                  {normalizedPreview.marketPriority.join(" → ") || "기본값"}
-                </span>
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-zinc-800 pb-4">
+            <div>
+              <h2 className="text-base font-semibold text-zinc-100">
+                서버 가공 매치
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                그룹핑, best odds, 마진 보정이 끝난 결과입니다.
               </p>
             </div>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs ${badgeClass(
+                !!matches?.matches?.length,
+              )}`}
+            >
+              {matches?.total ?? 0} matches
+            </span>
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-sm">
-            <h3 className="font-semibold text-zinc-100">최근 스냅샷 결과</h3>
-            {refreshResult ? (
-              <div className="mt-3 space-y-2 text-zinc-400">
-                <p>
-                  저장 시각:{" "}
-                  <span className="text-zinc-200">
-                    {formatDateTime(refreshResult.fetchedAt)}
-                  </span>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="block text-sm text-zinc-400">
+              status
+              <select
+                value={matchStatus}
+                onChange={(e) =>
+                  setMatchStatus(e.target.value as MatchStatusFilter)
+                }
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              >
+                <option value="all">all</option>
+                <option value="live">live</option>
+                <option value="prematch">prematch</option>
+                <option value="finished">finished</option>
+                <option value="unknown">unknown</option>
+              </select>
+            </label>
+            <label className="block text-sm text-zinc-400">
+              sport
+              <input
+                list="odds-sports"
+                value={matchSport}
+                onChange={(e) => setMatchSport(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                placeholder="football"
+              />
+            </label>
+            <label className="block text-sm text-zinc-400">
+              limit
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={matchLimit}
+                onChange={(e) => setMatchLimit(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              />
+            </label>
+          </div>
+
+          <div className="space-y-3">
+            {matches?.matches.map((match) => (
+              <article
+                key={match.matchId}
+                className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-zinc-100">
+                      {match.home.nameKr ?? match.home.name} vs{" "}
+                      {match.away.nameKr ?? match.away.name}
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      {match.league.nameKr ?? match.league.name ?? match.sport} ·{" "}
+                      {match.status} · 점수 {scoreText(match)}
+                    </p>
+                    <p className="mt-1 text-[11px] text-zinc-600">
+                      {formatDateTime(match.startTime)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-zinc-200">
+                      {match.bookieCount} bookmakers
+                    </p>
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      {formatRelativeTime(new Date(match.lastUpdatedMs).toISOString())}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-zinc-300">
+                  {marketSummary(match)}
                 </p>
-                <p>
-                  라이브 경기 수:{" "}
-                  <span className="text-zinc-200">
-                    {refreshResult.liveCount}
-                  </span>
-                </p>
-                <p>
-                  프리매치 수:{" "}
-                  <span className="text-zinc-200">
-                    {refreshResult.prematchCount}
-                  </span>
-                </p>
-                <p>
-                  적용 북메이커:{" "}
-                  <span className="text-zinc-200">
-                    {refreshResult.filters?.bookmakers.join(", ") || "없음"}
-                  </span>
-                </p>
+              </article>
+            ))}
+            {matches && matches.matches.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">
+                조건에 맞는 가공 매치가 없습니다.
               </div>
-            ) : (
-              <p className="mt-3 text-zinc-500">
-                아직 이 세션에서 수동 저장을 실행하지 않았습니다.
-              </p>
-            )}
+            ) : null}
           </div>
-        </aside>
+        </section>
       </div>
+
+      <datalist id="odds-sports">
+        {currentSports.map((sport) => (
+          <option key={sport} value={sport} />
+        ))}
+      </datalist>
+      <datalist id="odds-bookies">
+        {currentBookies.map((bookie) => (
+          <option key={bookie} value={bookie} />
+        ))}
+      </datalist>
+
+      {loading ? (
+        <p className="text-sm text-zinc-500">전역 odds-api 상태를 불러오는 중…</p>
+      ) : null}
+    </div>
+  );
+}
+
+function InfoBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-medium text-zinc-100">{value}</p>
     </div>
   );
 }
