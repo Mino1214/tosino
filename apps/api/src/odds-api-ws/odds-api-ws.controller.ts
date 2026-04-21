@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -24,6 +25,12 @@ function parseMatchStatus(v: string | undefined): MatchStatus | 'all' {
   if (s === 'live' || s === 'prematch' || s === 'finished' || s === 'unknown')
     return s;
   return 'all';
+}
+
+function parseSnapshotType(v: string | undefined): 'live' | 'prematch' | undefined {
+  const s = (v ?? '').trim().toLowerCase();
+  if (s === 'live' || s === 'prematch') return s;
+  return undefined;
 }
 
 /**
@@ -177,6 +184,10 @@ type ApplyConfigBody = {
   autoConnect?: boolean;
 };
 
+type RefreshPlatformBody = {
+  platformId?: string;
+};
+
 @Controller('hq/odds-api-ws')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles(UserRole.SUPER_ADMIN)
@@ -185,6 +196,7 @@ export class OddsApiWsAdminController {
     private readonly svc: OddsApiWsService,
     private readonly aggregator: OddsApiAggregatorService,
     private readonly rest: OddsApiRestService,
+    private readonly snapshots: OddsApiSnapshotService,
   ) {}
 
   @Get('status')
@@ -207,16 +219,113 @@ export class OddsApiWsAdminController {
 
   /** 어드민 콘솔 디버그용 — public/matches 와 동일 로직 */
   @Get('matches')
-  matches(
+  async matches(
     @Query('status') status?: string,
     @Query('sport') sport?: string,
     @Query('limit') limit?: string,
+    @Query('platformId') platformId?: string,
   ) {
+    const parsedStatus = parseMatchStatus(status);
+    const max =
+      limit && Number.isFinite(parseInt(limit, 10))
+        ? Math.min(parseInt(limit, 10), 500)
+        : 200;
+    if ((platformId || '').trim()) {
+      const snap = await this.snapshots.getMatches(platformId!.trim(), parsedStatus);
+      const wantSport = sport?.trim() || undefined;
+      const filtered = wantSport
+        ? snap.matches.filter((m) => m.sport === wantSport)
+        : snap.matches;
+      return {
+        status: parsedStatus,
+        sport: wantSport ?? snap.sport,
+        total: filtered.length,
+        matches: filtered.slice(0, max),
+        fetchedAt: snap.fetchedAt,
+        filters: snap.filters,
+      };
+    }
     return this.aggregator.listMatches({
-      status: parseMatchStatus(status),
+      status: parsedStatus,
       sport: sport?.trim() || undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      limit: max,
     });
+  }
+
+  @Get('platform-overview')
+  async platformOverview(@Query('platformId') platformId?: string) {
+    const id = (platformId || '').trim();
+    if (!id) {
+      throw new BadRequestException('platformId is required');
+    }
+    const cronRaw = (process.env.ODDS_SYNC_CRON || '').trim();
+    const schedulerEnabled =
+      !!cronRaw &&
+      !['false', 'off', '0', 'disabled'].includes(cronRaw.toLowerCase());
+    return {
+      ...(await this.snapshots.getAdminOverview(id)),
+      scheduler: {
+        enabled: schedulerEnabled,
+        cron: schedulerEnabled ? cronRaw : null,
+      },
+    };
+  }
+
+  @Get('catalog-history')
+  async catalogHistory(
+    @Query('platformId') platformId?: string,
+    @Query('take') take?: string,
+  ) {
+    const id = (platformId || '').trim();
+    if (!id) {
+      throw new BadRequestException('platformId is required');
+    }
+    const size = Math.min(Math.max(parseInt(take || '10', 10) || 10, 1), 50);
+    return {
+      platformId: id,
+      rows: await this.snapshots.getCatalogHistory(id, size),
+    };
+  }
+
+  @Get('catalog-items')
+  async catalogItems(
+    @Query('platformId') platformId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const id = (platformId || '').trim();
+    if (!id) {
+      throw new BadRequestException('platformId is required');
+    }
+    const size = Math.min(Math.max(parseInt(limit || '20', 10) || 20, 1), 200);
+    const payload = await this.snapshots.getLatestCatalog(id);
+    return {
+      platformId: id,
+      fetchedAt: payload?.fetchedAt ?? null,
+      totalItems: payload?.totalItems ?? 0,
+      filters: payload?.filters ?? null,
+      items: payload?.items.slice(0, size) ?? [],
+    };
+  }
+
+  @Get('processed-history')
+  async processedHistory(
+    @Query('platformId') platformId?: string,
+    @Query('snapshotType') snapshotType?: string,
+    @Query('take') take?: string,
+  ) {
+    const id = (platformId || '').trim();
+    if (!id) {
+      throw new BadRequestException('platformId is required');
+    }
+    const size = Math.min(Math.max(parseInt(take || '20', 10) || 20, 1), 100);
+    return {
+      platformId: id,
+      rows: await this.snapshots.getProcessedHistory(
+        id,
+        parseSnapshotType(snapshotType),
+        size,
+      ),
+    };
   }
 
   @Get('discovery')
@@ -241,6 +350,15 @@ export class OddsApiWsAdminController {
   @Post('reconnect')
   reconnect() {
     return this.svc.reconnectNow();
+  }
+
+  @Post('platform-refresh')
+  refreshPlatform(@Body() body: RefreshPlatformBody) {
+    const id = (body.platformId || '').trim();
+    if (!id) {
+      throw new BadRequestException('platformId is required');
+    }
+    return this.snapshots.refreshPlatform(id);
   }
 
   @Get('category-odds')

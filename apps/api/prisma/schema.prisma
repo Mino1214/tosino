@@ -197,6 +197,8 @@ model Platform {
   syncStates           SyncState[]
   walletRequests       WalletRequest[]
   sportsOddsSnapshots  SportsOddsSnapshot[]
+  oddsApiCatalogSnapshots OddsApiCatalogSnapshot[]
+  oddsApiProcessedSnapshots OddsApiProcessedSnapshot[]
   announcements        PlatformAnnouncement[]
   announcementAssets   PlatformAnnouncementAsset[]
   bankSmsIngests       BankSmsIngest[]
@@ -535,6 +537,39 @@ model SportsOddsSnapshot {
 
   @@unique([platformId, sourceFeedId])
   @@index([platformId, updatedAt])
+}
+
+/// odds-api 원본 카탈로그 저장소. events + odds/multi 결과를 실행 시점별로 보존한다.
+model OddsApiCatalogSnapshot {
+  id            String   @id @default(cuid())
+  platformId    String
+  platform      Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  filtersJson   Json     @default("{}")
+  totalItems    Int      @default(0)
+  payloadJson   Json     @default("{}")
+  fetchedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+  processedSnapshots OddsApiProcessedSnapshot[] @relation("OddsApiCatalogProcessed")
+
+  @@index([platformId, fetchedAt])
+}
+
+/// odds-api 가공 결과 저장소. 라이브/프리매치 클라이언트용 payload 를 실행 시점별로 보존한다.
+model OddsApiProcessedSnapshot {
+  id                String   @id @default(cuid())
+  platformId        String
+  platform          Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  catalogSnapshotId String?
+  catalogSnapshot   OddsApiCatalogSnapshot? @relation("OddsApiCatalogProcessed", fields: [catalogSnapshotId], references: [id], onDelete: SetNull)
+  snapshotType      String
+  filtersJson       Json     @default("{}")
+  totalMatches      Int      @default(0)
+  payloadJson       Json     @default("{}")
+  fetchedAt         DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@index([platformId, snapshotType, fetchedAt])
+  @@index([catalogSnapshotId])
 }
 
 model PlatformDomain {

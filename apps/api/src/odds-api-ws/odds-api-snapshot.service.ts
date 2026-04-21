@@ -17,6 +17,8 @@ export const ODDS_API_LIVE_SNAPSHOT_FEED_ID = 'odds-api-live';
 export const ODDS_API_PREMATCH_SNAPSHOT_FEED_ID = 'odds-api-prematch';
 export const ODDS_API_REST_CATALOG_FEED_ID = 'odds-api-rest-catalog';
 
+type SnapshotType = 'live' | 'prematch';
+
 type SnapshotFilters = {
   sports: string[];
   bookmakers: string[];
@@ -36,6 +38,28 @@ type CatalogPayload = {
   items: OddsApiCatalogItem[];
 };
 
+type CatalogSnapshotSummary = {
+  id: string;
+  fetchedAt: string;
+  totalItems: number;
+  sports: string[];
+  bookmakers: string[];
+  matchLimit: number;
+  cacheTtlSeconds: number;
+};
+
+type ProcessedSnapshotSummary = {
+  id: string;
+  snapshotType: SnapshotType;
+  catalogSnapshotId: string | null;
+  fetchedAt: string;
+  totalMatches: number;
+  sports: string[];
+  bookmakers: string[];
+  matchLimit: number;
+  cacheTtlSeconds: number;
+};
+
 @Injectable()
 export class OddsApiSnapshotService {
   private readonly log = new Logger(OddsApiSnapshotService.name);
@@ -53,28 +77,32 @@ export class OddsApiSnapshotService {
     catalogCount: number;
     fetchedAt: string;
     filters: SnapshotFilters | null;
+    catalogSnapshotId: string | null;
+    liveSnapshotId: string | null;
+    prematchSnapshotId: string | null;
   }> {
     const config = await this.getPlatformConfig(platformId);
     const now = new Date();
 
     if (!config?.enabled) {
-      await Promise.all([
-        this.saveSnapshot(
+      const emptyCatalog = this.buildEmptyCatalogPayload(config, now);
+      const livePayload = this.buildEmptyPayload('live', config, now);
+      const prematchPayload = this.buildEmptyPayload('prematch', config, now);
+      const [catalogRow, liveRow, prematchRow] = await Promise.all([
+        this.insertCatalogSnapshot(platformId, emptyCatalog, now),
+        this.insertProcessedSnapshot(
           platformId,
-          ODDS_API_LIVE_SNAPSHOT_FEED_ID,
-          this.buildEmptyPayload('live', config, now),
+          'live',
+          livePayload,
           now,
+          null,
         ),
-        this.saveSnapshot(
+        this.insertProcessedSnapshot(
           platformId,
-          ODDS_API_PREMATCH_SNAPSHOT_FEED_ID,
-          this.buildEmptyPayload('prematch', config, now),
+          'prematch',
+          prematchPayload,
           now,
-        ),
-        this.saveCatalogSnapshot(
-          platformId,
-          this.buildEmptyCatalogPayload(config, now),
-          now,
+          null,
         ),
       ]);
 
@@ -85,6 +113,9 @@ export class OddsApiSnapshotService {
         catalogCount: 0,
         fetchedAt: now.toISOString(),
         filters: null,
+        catalogSnapshotId: catalogRow.id,
+        liveSnapshotId: liveRow.id,
+        prematchSnapshotId: prematchRow.id,
       };
     }
 
@@ -129,20 +160,21 @@ export class OddsApiSnapshotService {
 
     const livePayload = this.attachMeta(live, config, now);
     const prematchPayload = this.attachMeta(prematch, config, now);
-
-    await Promise.all([
-      this.saveCatalogSnapshot(platformId, catalog, now),
-      this.saveSnapshot(
+    const catalogRow = await this.insertCatalogSnapshot(platformId, catalog, now);
+    const [liveRow, prematchRow] = await Promise.all([
+      this.insertProcessedSnapshot(
         platformId,
-        ODDS_API_LIVE_SNAPSHOT_FEED_ID,
+        'live',
         livePayload,
         now,
+        catalogRow.id,
       ),
-      this.saveSnapshot(
+      this.insertProcessedSnapshot(
         platformId,
-        ODDS_API_PREMATCH_SNAPSHOT_FEED_ID,
+        'prematch',
         prematchPayload,
         now,
+        catalogRow.id,
       ),
     ]);
 
@@ -153,6 +185,9 @@ export class OddsApiSnapshotService {
       catalogCount: catalog.items.length,
       fetchedAt: now.toISOString(),
       filters: livePayload.filters,
+      catalogSnapshotId: catalogRow.id,
+      liveSnapshotId: liveRow.id,
+      prematchSnapshotId: prematchRow.id,
     };
   }
 
@@ -173,10 +208,13 @@ export class OddsApiSnapshotService {
     if (!config?.enabled) {
       return this.buildEmptyPayload(status, config, new Date());
     }
+    if (status === 'finished' || status === 'unknown') {
+      return this.buildEmptyPayload(status, config, new Date());
+    }
     if (status === 'all') {
       const [live, prematch] = await Promise.all([
-        this.readSnapshot(platformId, ODDS_API_LIVE_SNAPSHOT_FEED_ID),
-        this.readSnapshot(platformId, ODDS_API_PREMATCH_SNAPSHOT_FEED_ID),
+        this.readProcessedSnapshot(platformId, 'live'),
+        this.readProcessedSnapshot(platformId, 'prematch'),
       ]);
       const mergedMatches = [
         ...(live?.matches ?? []),
@@ -192,44 +230,142 @@ export class OddsApiSnapshotService {
         filters: this.filtersFromConfig(config),
       };
     }
-    const ref =
-      status === 'prematch'
-        ? ODDS_API_PREMATCH_SNAPSHOT_FEED_ID
-        : ODDS_API_LIVE_SNAPSHOT_FEED_ID;
+    const snapshotType: SnapshotType = status === 'prematch' ? 'prematch' : 'live';
     return (
-      (await this.readSnapshot(platformId, ref)) ??
+      (await this.readProcessedSnapshot(platformId, snapshotType)) ??
       this.buildEmptyPayload(status, config, new Date())
     );
+  }
+
+  async getLatestCatalog(platformId: string): Promise<CatalogPayload | null> {
+    const row = await this.prisma.oddsApiCatalogSnapshot.findFirst({
+      where: { platformId },
+      orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { payloadJson: true, fetchedAt: true },
+    });
+    if (row) return this.parseCatalogPayload(row.payloadJson, row.fetchedAt);
+    return this.readLegacyCatalogSnapshot(platformId);
+  }
+
+  async getCatalogHistory(
+    platformId: string,
+    take = 10,
+  ): Promise<CatalogSnapshotSummary[]> {
+    const rows = await this.prisma.oddsApiCatalogSnapshot.findMany({
+      where: { platformId },
+      orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
+      take: Math.min(Math.max(take, 1), 50),
+      select: {
+        id: true,
+        fetchedAt: true,
+        totalItems: true,
+        filtersJson: true,
+      },
+    });
+    return rows.map((row) => this.catalogSummaryFromRow(row));
+  }
+
+  async getProcessedHistory(
+    platformId: string,
+    snapshotType?: SnapshotType,
+    take = 20,
+  ): Promise<ProcessedSnapshotSummary[]> {
+    const rows = await this.prisma.oddsApiProcessedSnapshot.findMany({
+      where: {
+        platformId,
+        ...(snapshotType ? { snapshotType } : {}),
+      },
+      orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
+      take: Math.min(Math.max(take, 1), 100),
+      select: {
+        id: true,
+        snapshotType: true,
+        catalogSnapshotId: true,
+        fetchedAt: true,
+        totalMatches: true,
+        filtersJson: true,
+      },
+    });
+    return rows.map((row) => this.processedSummaryFromRow(row));
+  }
+
+  async getAdminOverview(platformId: string) {
+    const [config, latestCatalog, latestLive, latestPrematch, catalogCount, processedCount] =
+      await Promise.all([
+        this.getPlatformConfig(platformId),
+        this.prisma.oddsApiCatalogSnapshot.findFirst({
+          where: { platformId },
+          orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
+          select: {
+            id: true,
+            fetchedAt: true,
+            totalItems: true,
+            filtersJson: true,
+          },
+        }),
+        this.prisma.oddsApiProcessedSnapshot.findFirst({
+          where: { platformId, snapshotType: 'live' },
+          orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
+          select: {
+            id: true,
+            snapshotType: true,
+            catalogSnapshotId: true,
+            fetchedAt: true,
+            totalMatches: true,
+            filtersJson: true,
+          },
+        }),
+        this.prisma.oddsApiProcessedSnapshot.findFirst({
+          where: { platformId, snapshotType: 'prematch' },
+          orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
+          select: {
+            id: true,
+            snapshotType: true,
+            catalogSnapshotId: true,
+            fetchedAt: true,
+            totalMatches: true,
+            filtersJson: true,
+          },
+        }),
+        this.prisma.oddsApiCatalogSnapshot.count({ where: { platformId } }),
+        this.prisma.oddsApiProcessedSnapshot.count({ where: { platformId } }),
+      ]);
+
+    return {
+      platformId,
+      config,
+      latestCatalog: latestCatalog
+        ? this.catalogSummaryFromRow(latestCatalog)
+        : null,
+      latestProcessed: {
+        live: latestLive ? this.processedSummaryFromRow(latestLive) : null,
+        prematch: latestPrematch
+          ? this.processedSummaryFromRow(latestPrematch)
+          : null,
+      },
+      historyCounts: {
+        catalog: catalogCount,
+        processed: processedCount,
+      },
+    };
   }
 
   async getSnapshotMeta(platformId: string) {
     const [config, live, prematch, catalog] = await Promise.all([
       this.getPlatformConfig(platformId),
-      this.prisma.sportsOddsSnapshot.findUnique({
-        where: {
-          platformId_sourceFeedId: {
-            platformId,
-            sourceFeedId: ODDS_API_LIVE_SNAPSHOT_FEED_ID,
-          },
-        },
+      this.prisma.oddsApiProcessedSnapshot.findFirst({
+        where: { platformId, snapshotType: 'live' },
+        orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
         select: { fetchedAt: true },
       }),
-      this.prisma.sportsOddsSnapshot.findUnique({
-        where: {
-          platformId_sourceFeedId: {
-            platformId,
-            sourceFeedId: ODDS_API_PREMATCH_SNAPSHOT_FEED_ID,
-          },
-        },
+      this.prisma.oddsApiProcessedSnapshot.findFirst({
+        where: { platformId, snapshotType: 'prematch' },
+        orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
         select: { fetchedAt: true },
       }),
-      this.prisma.sportsOddsSnapshot.findUnique({
-        where: {
-          platformId_sourceFeedId: {
-            platformId,
-            sourceFeedId: ODDS_API_REST_CATALOG_FEED_ID,
-          },
-        },
+      this.prisma.oddsApiCatalogSnapshot.findFirst({
+        where: { platformId },
+        orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
         select: { fetchedAt: true },
       }),
     ]);
@@ -343,7 +479,54 @@ export class OddsApiSnapshotService {
     };
   }
 
-  private async saveCatalogSnapshot(
+  private async insertCatalogSnapshot(
+    platformId: string,
+    payload: CatalogPayload,
+    fetchedAt: Date,
+  ) {
+    const row = await this.prisma.oddsApiCatalogSnapshot.create({
+      data: {
+        platformId,
+        filtersJson: payload.filters as object,
+        totalItems: payload.totalItems,
+        payloadJson: payload as object,
+        fetchedAt,
+      },
+      select: { id: true },
+    });
+    await this.saveLegacyCatalogSnapshot(platformId, payload, fetchedAt);
+    return row;
+  }
+
+  private async insertProcessedSnapshot(
+    platformId: string,
+    snapshotType: SnapshotType,
+    payload: SnapshotPayload,
+    fetchedAt: Date,
+    catalogSnapshotId: string | null,
+  ) {
+    const row = await this.prisma.oddsApiProcessedSnapshot.create({
+      data: {
+        platformId,
+        catalogSnapshotId,
+        snapshotType,
+        filtersJson: payload.filters as object,
+        totalMatches: payload.total,
+        payloadJson: payload as object,
+        fetchedAt,
+      },
+      select: { id: true },
+    });
+    await this.saveLegacyProcessedSnapshot(
+      platformId,
+      snapshotType,
+      payload,
+      fetchedAt,
+    );
+    return row;
+  }
+
+  private async saveLegacyCatalogSnapshot(
     platformId: string,
     payload: CatalogPayload,
     fetchedAt: Date,
@@ -372,12 +555,16 @@ export class OddsApiSnapshotService {
     });
   }
 
-  private async saveSnapshot(
+  private async saveLegacyProcessedSnapshot(
     platformId: string,
-    sourceFeedId: string,
+    snapshotType: SnapshotType,
     payload: SnapshotPayload,
     fetchedAt: Date,
   ) {
+    const sourceFeedId =
+      snapshotType === 'prematch'
+        ? ODDS_API_PREMATCH_SNAPSHOT_FEED_ID
+        : ODDS_API_LIVE_SNAPSHOT_FEED_ID;
     await this.prisma.sportsOddsSnapshot.upsert({
       where: {
         platformId_sourceFeedId: { platformId, sourceFeedId },
@@ -399,9 +586,45 @@ export class OddsApiSnapshotService {
     });
   }
 
-  private async readSnapshot(
+  private async readProcessedSnapshot(
+    platformId: string,
+    snapshotType: SnapshotType,
+  ): Promise<SnapshotPayload | null> {
+    const row = await this.prisma.oddsApiProcessedSnapshot.findFirst({
+      where: { platformId, snapshotType },
+      orderBy: [{ fetchedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { payloadJson: true, fetchedAt: true },
+    });
+    if (row) {
+      return this.parseSnapshotPayload(row.payloadJson, row.fetchedAt, snapshotType);
+    }
+    const legacyFeedId =
+      snapshotType === 'prematch'
+        ? ODDS_API_PREMATCH_SNAPSHOT_FEED_ID
+        : ODDS_API_LIVE_SNAPSHOT_FEED_ID;
+    return this.readLegacySnapshot(platformId, legacyFeedId, snapshotType);
+  }
+
+  private async readLegacyCatalogSnapshot(
+    platformId: string,
+  ): Promise<CatalogPayload | null> {
+    const row = await this.prisma.sportsOddsSnapshot.findUnique({
+      where: {
+        platformId_sourceFeedId: {
+          platformId,
+          sourceFeedId: ODDS_API_REST_CATALOG_FEED_ID,
+        },
+      },
+      select: { payloadJson: true, fetchedAt: true },
+    });
+    if (!row) return null;
+    return this.parseCatalogPayload(row.payloadJson, row.fetchedAt);
+  }
+
+  private async readLegacySnapshot(
     platformId: string,
     sourceFeedId: string,
+    fallbackStatus: MatchStatus | 'all',
   ): Promise<SnapshotPayload | null> {
     const row = await this.prisma.sportsOddsSnapshot.findUnique({
       where: {
@@ -409,35 +632,109 @@ export class OddsApiSnapshotService {
       },
       select: { payloadJson: true, fetchedAt: true },
     });
-    if (!row || !row.payloadJson || typeof row.payloadJson !== 'object') {
-      return null;
-    }
-    const payload = row.payloadJson as Partial<SnapshotPayload>;
+    if (!row) return null;
+    return this.parseSnapshotPayload(row.payloadJson, row.fetchedAt, fallbackStatus);
+  }
+
+  private parseCatalogPayload(
+    raw: unknown,
+    fetchedAt: Date,
+  ): CatalogPayload | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const payload = raw as Partial<CatalogPayload>;
     return {
-      status: payload.status ?? 'all',
+      fetchedAt: fetchedAt.toISOString(),
+      filters: this.normalizeFilters(payload.filters),
+      totalItems:
+        typeof payload.totalItems === 'number'
+          ? payload.totalItems
+          : Array.isArray(payload.items)
+            ? payload.items.length
+            : 0,
+      items: Array.isArray(payload.items)
+        ? (payload.items as OddsApiCatalogItem[])
+        : [],
+    };
+  }
+
+  private parseSnapshotPayload(
+    raw: unknown,
+    fetchedAt: Date,
+    fallbackStatus: MatchStatus | 'all',
+  ): SnapshotPayload | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const payload = raw as Partial<SnapshotPayload>;
+    const matches = Array.isArray(payload.matches) ? payload.matches : [];
+    return {
+      status: payload.status ?? fallbackStatus,
       sport: payload.sport ?? null,
-      total: Array.isArray(payload.matches) ? payload.matches.length : 0,
-      matches: Array.isArray(payload.matches) ? payload.matches : [],
+      total: matches.length,
+      matches,
+      fetchedAt: fetchedAt.toISOString(),
+      filters: this.normalizeFilters(payload.filters),
+    };
+  }
+
+  private normalizeFilters(raw: unknown): SnapshotFilters {
+    if (!raw || typeof raw !== 'object') {
+      return {
+        sports: [],
+        bookmakers: [],
+        matchLimit: 120,
+        cacheTtlSeconds: 30,
+      };
+    }
+    const filters = raw as Partial<SnapshotFilters>;
+    return {
+      sports: Array.isArray(filters.sports) ? filters.sports : [],
+      bookmakers: Array.isArray(filters.bookmakers) ? filters.bookmakers : [],
+      matchLimit:
+        typeof filters.matchLimit === 'number' ? filters.matchLimit : 120,
+      cacheTtlSeconds:
+        typeof filters.cacheTtlSeconds === 'number'
+          ? filters.cacheTtlSeconds
+          : 30,
+    };
+  }
+
+  private catalogSummaryFromRow(row: {
+    id: string;
+    fetchedAt: Date;
+    totalItems: number;
+    filtersJson: unknown;
+  }): CatalogSnapshotSummary {
+    const filters = this.normalizeFilters(row.filtersJson);
+    return {
+      id: row.id,
       fetchedAt: row.fetchedAt.toISOString(),
-      filters:
-        payload.filters && typeof payload.filters === 'object'
-          ? {
-              sports: Array.isArray(payload.filters.sports)
-                ? payload.filters.sports
-                : [],
-              bookmakers: Array.isArray(payload.filters.bookmakers)
-                ? payload.filters.bookmakers
-                : [],
-              matchLimit:
-                typeof payload.filters.matchLimit === 'number'
-                  ? payload.filters.matchLimit
-                  : 120,
-              cacheTtlSeconds:
-                typeof payload.filters.cacheTtlSeconds === 'number'
-                  ? payload.filters.cacheTtlSeconds
-                  : 30,
-            }
-          : { sports: [], bookmakers: [], matchLimit: 120, cacheTtlSeconds: 30 },
+      totalItems: row.totalItems,
+      sports: filters.sports,
+      bookmakers: filters.bookmakers,
+      matchLimit: filters.matchLimit,
+      cacheTtlSeconds: filters.cacheTtlSeconds,
+    };
+  }
+
+  private processedSummaryFromRow(row: {
+    id: string;
+    snapshotType: string;
+    catalogSnapshotId: string | null;
+    fetchedAt: Date;
+    totalMatches: number;
+    filtersJson: unknown;
+  }): ProcessedSnapshotSummary {
+    const filters = this.normalizeFilters(row.filtersJson);
+    return {
+      id: row.id,
+      snapshotType:
+        row.snapshotType === 'prematch' ? 'prematch' : 'live',
+      catalogSnapshotId: row.catalogSnapshotId,
+      fetchedAt: row.fetchedAt.toISOString(),
+      totalMatches: row.totalMatches,
+      sports: filters.sports,
+      bookmakers: filters.bookmakers,
+      matchLimit: filters.matchLimit,
+      cacheTtlSeconds: filters.cacheTtlSeconds,
     };
   }
 
