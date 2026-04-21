@@ -53,4 +53,7 @@ if [ ! -f "$SERVE_CLI" ]; then
 fi
 
 cd "$ROOT"
-exec node "$SERVE_CLI" "$DIR" -l "tcp://127.0.0.1:$PORT" -s --no-clipboard
+# `-s`/`--single`(SPA) 금지: Next `output: export` 는 `route.html` / 중첩 경로를 쓰는데,
+# not-found 를 전부 루트 index.html 로 보내면 `/console/...` 가 홈 리다이렉트·깨진 화면으로 보인다.
+# serve-handler 기본 `cleanUrls` 로 `.../page.html` 은 확장자 없는 URL 과 매칭된다.
+exec node "$SERVE_CLI" "$DIR" -l "tcp://127.0.0.1:$PORT" --no-clipboard
