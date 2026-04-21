@@ -106,34 +106,53 @@ export default function HqDashboardPage() {
   const [credits, setCredits] = useState<CreditSummary | null>(null);
   const [health, setHealth] = useState<ServiceHealth | null>(null);
   const [loading, setLoading] = useState(true);
+  const [healthLoading, setHealthLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [healthErr, setHealthErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
     const q = `from=${from}T00:00:00.000Z&to=${to}T23:59:59.999Z&includeRows=false`;
     try {
-      const [p, c, h] = await Promise.all([
+      const [p, c] = await Promise.all([
         apiFetch<PortfolioSummary>(`/platforms/hq/portfolio-summary?${q}`),
         apiFetch<CreditSummary>("/hq/credits/summary"),
-        apiFetch<ServiceHealth>("/hq/service-health"),
       ]);
       setData(p);
       setCredits(c);
-      setHealth(h);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "불러오지 못했습니다");
       setData(null);
       setCredits(null);
-      setHealth(null);
     } finally {
       setLoading(false);
     }
   }, [from, to]);
 
+  const loadHealth = useCallback(async () => {
+    setHealthLoading(true);
+    setHealthErr(null);
+    try {
+      const next = await apiFetch<ServiceHealth>("/hq/service-health");
+      setHealth(next);
+    } catch (e) {
+      setHealth(null);
+      setHealthErr(
+        e instanceof Error ? e.message : "연동 상태를 불러오지 못했습니다",
+      );
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadHealth();
+  }, [loadHealth]);
 
   const t = data?.totals;
 
@@ -344,35 +363,73 @@ export default function HqDashboardPage() {
         </div>
       </section>
 
-      {health ? (
-        <section aria-labelledby="health-heading">
-          <h2 id="health-heading" className="mb-4 text-sm font-semibold text-gray-800 dark:text-zinc-200">
+      <section aria-labelledby="health-heading">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2
+            id="health-heading"
+            className="text-sm font-semibold text-gray-800 dark:text-zinc-200"
+          >
             연동 상태
           </h2>
-          <div className="flex flex-wrap gap-3">
-            {health.checks.map((c) => (
-              <div
-                key={c.id}
-                className={`min-w-[10rem] flex-1 rounded-2xl border px-4 py-3 shadow-sm ${
-                  c.ok
-                    ? "border-emerald-200/80 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-950/30"
-                    : "border-red-200/80 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/30"
-                }`}
-              >
-                <p className="text-xs font-medium text-gray-700 dark:text-zinc-300">{c.label}</p>
-                <p className={`mt-1 text-sm font-semibold ${c.ok ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {c.ok ? "정상" : "점검"}
-                  {typeof c.ms === "number" ? ` · ${c.ms}ms` : ""}
-                </p>
-                {c.detail ? <p className="mt-1 text-[10px] text-gray-500 dark:text-zinc-500">{c.detail}</p> : null}
-              </div>
-            ))}
+          <button
+            type="button"
+            onClick={() => void loadHealth()}
+            disabled={healthLoading}
+            className="text-xs font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400"
+          >
+            {healthLoading ? "확인 중…" : "새로 확인"}
+          </button>
+        </div>
+
+        {healthErr ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/50 dark:text-red-300">
+            {healthErr}
           </div>
-          <p className="mt-2 text-[10px] text-gray-400 dark:text-zinc-600">
-            확인 시각 {new Date(health.checkedAt).toLocaleString("ko-KR")}
+        ) : null}
+
+        {health ? (
+          <>
+            <div className="flex flex-wrap gap-3">
+              {health.checks.map((c) => (
+                <div
+                  key={c.id}
+                  className={`min-w-[10rem] flex-1 rounded-2xl border px-4 py-3 shadow-sm ${
+                    c.ok
+                      ? "border-emerald-200/80 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-950/30"
+                      : "border-red-200/80 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/30"
+                  }`}
+                >
+                  <p className="text-xs font-medium text-gray-700 dark:text-zinc-300">
+                    {c.label}
+                  </p>
+                  <p
+                    className={`mt-1 text-sm font-semibold ${
+                      c.ok
+                        ? "text-emerald-700 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {c.ok ? "정상" : "점검"}
+                    {typeof c.ms === "number" ? ` · ${c.ms}ms` : ""}
+                  </p>
+                  {c.detail ? (
+                    <p className="mt-1 text-[10px] text-gray-500 dark:text-zinc-500">
+                      {c.detail}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] text-gray-400 dark:text-zinc-600">
+              확인 시각 {new Date(health.checkedAt).toLocaleString("ko-KR")}
+            </p>
+          </>
+        ) : healthLoading ? (
+          <p className="text-sm text-gray-500 dark:text-zinc-400">
+            연동 상태를 확인하는 중…
           </p>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
     </div>
   );
 }

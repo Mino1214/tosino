@@ -15,22 +15,45 @@ export type HqServiceHealthItem = {
   detail?: string;
 };
 
+type HqServiceHealthPayload = {
+  checkedAt: string;
+  checks: HqServiceHealthItem[];
+};
+
 @Controller('hq')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles(UserRole.SUPER_ADMIN)
 export class HqHealthController {
+  private static readonly SERVICE_HEALTH_CACHE_TTL_MS = 60_000;
+  private serviceHealthCache:
+    | { expiresAt: number; payload: HqServiceHealthPayload }
+    | null = null;
+  private serviceHealthInflight: Promise<HqServiceHealthPayload> | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
 
   @Get('service-health')
-  async serviceHealth(): Promise<{
-    checkedAt: string;
-    checks: HqServiceHealthItem[];
-  }> {
+  async serviceHealth(): Promise<HqServiceHealthPayload> {
+    const now = Date.now();
+    if (this.serviceHealthCache && this.serviceHealthCache.expiresAt > now) {
+      return this.serviceHealthCache.payload;
+    }
+    if (this.serviceHealthInflight) {
+      return this.serviceHealthInflight;
+    }
+    this.serviceHealthInflight = this.buildServiceHealth().finally(() => {
+      this.serviceHealthInflight = null;
+    });
+    return this.serviceHealthInflight;
+  }
+
+  private async buildServiceHealth(): Promise<HqServiceHealthPayload> {
     const checks: HqServiceHealthItem[] = [];
-    const timeoutMs = 4500;
+    // HQ 대시보드 보조 위젯이라 과도한 대기보다 빠른 실패가 낫다.
+    const timeoutMs = 2500;
 
     const tDb = Date.now();
     try {
@@ -177,6 +200,12 @@ export class HqHealthController {
     checks.push(vinusR, oddsR);
     if (publicR) checks.push(publicR);
 
-    return { checkedAt: new Date().toISOString(), checks };
+    const payload = { checkedAt: new Date().toISOString(), checks };
+    this.serviceHealthCache = {
+      expiresAt:
+        Date.now() + HqHealthController.SERVICE_HEALTH_CACHE_TTL_MS,
+      payload,
+    };
+    return payload;
   }
 }
