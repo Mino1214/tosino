@@ -232,14 +232,34 @@ _AISCORE_DOM_ROWS_JS = r"""
     const rawNodes = Array.from(document.querySelectorAll(
         'a[itemtype*="SportsEvent"], a.match-container[href*="/match-"], a.match-container[data-id]'
     ));
+    // baseball 등 비축구 영어 페이지 href 는 `/baseball/match-<slug>/<id>` 또는
+    // `/baseball/match-<slug>/<id>/h2h` 식으로 끝 segment 가 "h2h|stats|..." 일 수 있어
+    // 단순히 마지막 segment 를 matchId 로 쓰면 모두 "h2h" 로 collapse 되어 dedup 때문에 1개만 남는다.
+    // → `match-...` segment 바로 뒤의 id-like 를 우선 사용.
+    const extractMatchId = (href) => {
+        if (!href) return null;
+        const parts = href.split('/').filter(Boolean);
+        if (parts.length === 0) return null;
+        const mi = parts.findIndex((p) => p && p.startsWith('match-'));
+        if (mi >= 0 && mi + 1 < parts.length) {
+            const candidate = parts[mi + 1];
+            if (candidate) return candidate;
+        }
+        // fallback: 뒤에서부터 h2h/stats/lineup 등 suffix 를 제거
+        const SUFFIX = new Set(['h2h', 'stats', 'stat', 'lineup', 'lineups', 'odds', 'info', 'standings', 'events', 'events-h2h']);
+        for (let i = parts.length - 1; i >= 0; i--) {
+            const v = (parts[i] || '').toLowerCase();
+            if (!v) continue;
+            if (SUFFIX.has(v)) continue;
+            return parts[i];
+        }
+        return parts[parts.length - 1] || null;
+    };
     const byMatchId = new Map();
     for (const m of rawNodes) {
         const href0 = m.getAttribute('href') || '';
         let mid = m.getAttribute('data-id');
-        if (!mid && href0) {
-            const parts = href0.split('/').filter(Boolean);
-            mid = parts[parts.length - 1] || null;
-        }
+        if (!mid && href0) mid = extractMatchId(href0);
         if (!mid) continue;
         if (!byMatchId.has(mid)) byMatchId.set(mid, m);
     }
@@ -291,8 +311,7 @@ _AISCORE_DOM_ROWS_JS = r"""
         const href = m.getAttribute('href');
         let matchId = m.getAttribute('data-id');
         if (!matchId && href) {
-            const parts = href.split('/').filter(Boolean);
-            matchId = parts[parts.length - 1] || null;
+            matchId = extractMatchId(href);
         }
 
         const startDate = getMetaContent(m, 'startDate');
@@ -578,8 +597,9 @@ class AiscoreParser:
             locale=loc,
             timezone_id="Asia/Seoul",
             user_agent=(
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.6367.155 Safari/537.36"
             ),
             viewport={"width": 1440, "height": 2400},
         )
@@ -587,6 +607,25 @@ class AiscoreParser:
         self._ctx.set_default_timeout(self.nav_timeout_ms)
         self._page = self._ctx.new_page()
         self._active_page_locale = pl
+
+        # Cloudflare "Just a moment..." interstitial 을 통과시키기 위한 warmup.
+        # 새 context 는 쿠키가 비어 있어 sport 페이지로 바로 가면 challenge 에 걸려
+        # 부분 렌더(상단 live 몇 경기만)만 얻는 문제가 있다.
+        #   1) 홈(/ 또는 /ko) 에 먼저 접속해 Cloudflare JS challenge 통과를 기다리고
+        #   2) SportsEvent row 가 실제로 나타날 때까지 wait_for_selector
+        try:
+            warm_url = f"{AISCORE_BASE}/" if pl == "en" else f"{AISCORE_BASE}/ko"
+            self._page.goto(warm_url, wait_until="domcontentloaded")
+            try:
+                self._page.wait_for_selector(
+                    'a[itemtype*="SportsEvent"], a.match-container, .comp-container',
+                    timeout=self.nav_timeout_ms,
+                )
+            except PWTimeoutError:
+                pass
+            self._page.wait_for_timeout(1500)
+        except Exception as e:  # pragma: no cover
+            log.warning("aiscore warmup failed for locale=%s: %s", pl, e)
 
     def __exit__(self, exc_type, exc, tb):
         try:
@@ -637,7 +676,12 @@ class AiscoreParser:
 
     # ── 탭 전환 ───────────────────────────────────────────────────────────
     def _switch_tab_group(self, candidates: Sequence[str]) -> dict:
-        """상단 탭을 후보 라벨 중 하나로 전환. 반환: {clicked, alreadyActive, text}."""
+        """상단 탭을 후보 라벨 중 하나로 전환. 반환: {clicked, alreadyActive, text}.
+
+        aiscore 영어 페이지는 virtual list 가 탭 전환 후 비동기로 다시 렌더되어
+        900ms 로는 DOM row 가 0 인 상태에서 수집이 시작되는 경우가 있다.
+        → 클릭 성공 시 가상 리스트 row 가 다시 나타날 때까지 명시적으로 wait.
+        """
         assert self._page
         c = [x for x in candidates if x]
         if not c:
@@ -647,7 +691,15 @@ class AiscoreParser:
         except Exception as e:
             return {"clicked": False, "alreadyActive": False, "text": None, "error": str(e)}
         if info.get("clicked"):
-            self._page.wait_for_timeout(900)
+            self._page.wait_for_timeout(1500)
+            try:
+                self._page.wait_for_selector(
+                    '.match-container, a[itemtype*="SportsEvent"], a[href*="/match-"]',
+                    timeout=self.nav_timeout_ms / 3,
+                )
+            except PWTimeoutError:
+                pass
+            self._page.wait_for_timeout(600)
         return info
 
     # ── 한 탭에서 DOM 스크롤·수집 루프 ─────────────────────────────────────
@@ -673,12 +725,13 @@ class AiscoreParser:
         # 탭 전환 후에는 맨 위로 올려 처음부터 수집.
         try:
             page.evaluate(_AISCORE_SCROLL_TOP_JS)
-            page.wait_for_timeout(250)
+            page.wait_for_timeout(800)
         except Exception:
             pass
 
         added_before = len(merged)
         stagnant = 0
+        STAGNANT_LIMIT = 15  # virtual list 초반 빈 라운드를 허용
 
         for _ in range(self.scroll_collect_max_rounds):
             batch = page.evaluate(_AISCORE_DOM_ROWS_JS, -1)
@@ -713,9 +766,9 @@ class AiscoreParser:
                 at_bottom = bool(page.evaluate(_AISCORE_AT_BOTTOM_JS))
             except Exception:
                 at_bottom = False
-            if at_bottom and stagnant >= 3:
+            if at_bottom and stagnant >= 5:
                 break
-            if stagnant >= 10:
+            if stagnant >= STAGNANT_LIMIT:
                 break
 
         return len(merged) - added_before

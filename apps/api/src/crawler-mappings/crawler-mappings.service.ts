@@ -395,7 +395,7 @@ export class CrawlerMappingsService {
     const site = opts?.sourceSite?.trim();
     const orphans = await this.prisma.crawlerRawMatch.findMany({
       where: {
-        mapping: null,
+        mapping: { is: null },
         ...(site ? { sourceSite: site } : {}),
         NOT: {
           AND: [
@@ -432,7 +432,11 @@ export class CrawlerMappingsService {
     let invalid = 0;
     let newlyAdded = 0;
     let updated = 0;
-    let touchEnFootball = false;
+    /**
+     * aiscore 의 en raw 가 하나라도 upsert 되면 로케일 페어링을 트리거한다.
+     * (과거엔 football 전용이었으나 baseball/basketball 등 전 스포츠에서 필요)
+     */
+    let touchEnForPair = false;
     for (const raw of list) {
       const sourceMatchId = (raw?.sourceMatchId || '').trim();
       const sourceSportSlug = (raw?.sourceSportSlug || '').trim();
@@ -442,15 +446,8 @@ export class CrawlerMappingsService {
         invalid++;
         continue;
       }
-      const intSp = ((raw?.internalSportSlug ?? '') as string).trim().toLowerCase();
-      if (
-        site === 'aiscore' &&
-        sourceLocale === 'en' &&
-        (intSp === 'football' ||
-          sourceSportSlug.toLowerCase() === 'football' ||
-          sourceSportSlug.toLowerCase() === 'soccer')
-      ) {
-        touchEnFootball = true;
+      if (site === 'aiscore' && sourceLocale === 'en') {
+        touchEnForPair = true;
       }
       const existing = await this.prisma.crawlerRawMatch.findUnique({
         where: {
@@ -508,7 +505,7 @@ export class CrawlerMappingsService {
       );
     }
     let linkedPairs: number | undefined;
-    if (site === 'aiscore' && touchEnFootball) {
+    if (site === 'aiscore' && touchEnForPair) {
       const r = await this.linkAiscoreFootballLocalePairs();
       linkedPairs = r.linkedPairs;
     }
@@ -523,15 +520,20 @@ export class CrawlerMappingsService {
   }
 
   /**
-   * aiscore 축구(football) ko/en raw 를 sourceMatchId 기준으로 양방향 페어링한다.
-   * ingest 후 HQ·배치에서 호출해 [한국어]↔[영어] 브릿지를 만든다.
+   * aiscore 의 ko/en raw 를 sourceMatchId(+ 같은 sport) 기준으로 양방향 페어링한다.
+   *
+   * 처음엔 football 전용이었으나, 매처의 tryMatchByTeamPair 가 pairedRawMatch 의
+   * 영어 팀명을 후보로 써서 한글 raw 를 catalog 와 연결하기 때문에
+   * baseball/basketball/tennis/volleyball/ice-hockey/esports 등 모든 sport 에
+   * 브릿지가 필요하다 → 필터 제거.
+   *
+   * 함수명은 호환을 위해 유지(컨트롤러/ingest 호출부 변경 없이 동작 확대).
    */
   async linkAiscoreFootballLocalePairs(): Promise<{ linkedPairs: number }> {
     const enRows = await this.prisma.crawlerRawMatch.findMany({
       where: {
         sourceSite: 'aiscore',
         sourceLocale: 'en',
-        OR: [{ internalSportSlug: 'football' }, { sourceSportSlug: 'football' }],
       },
       select: { id: true, sourceSportSlug: true, sourceMatchId: true },
     });
@@ -543,7 +545,6 @@ export class CrawlerMappingsService {
           sourceLocale: 'ko',
           sourceSportSlug: en.sourceSportSlug,
           sourceMatchId: en.sourceMatchId,
-          OR: [{ internalSportSlug: 'football' }, { sourceSportSlug: 'football' }],
         },
         select: { id: true },
       });
@@ -561,7 +562,9 @@ export class CrawlerMappingsService {
       linkedPairs++;
     }
     if (linkedPairs > 0) {
-      this.logger.log(`[crawler-mappings] linkAiscoreFootballLocalePairs linked=${linkedPairs}`);
+      this.logger.log(
+        `[crawler-mappings] linkAiscoreLocalePairs linked=${linkedPairs}`,
+      );
     }
     return { linkedPairs };
   }

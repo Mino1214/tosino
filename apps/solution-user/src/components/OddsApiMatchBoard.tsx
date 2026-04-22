@@ -127,12 +127,17 @@ export function OddsApiMatchBoard({
   const isLight = (b?.theme.ui?.background ?? "dark") === "light";
 
   /**
-   * kickoff 이 지난 prematch 는 숨긴다 (서버도 필터링하지만 클라이언트에서도 한 번 더).
-   * 라이브는 status === 'live' 인 동안 유지.
+   * 사용자가 "현재 2:45 KST인데 2:30 경기가 아직 보이고 배당도 눌린다"고 보고 —
+   * 서버가 아직 prematch 로 남겨두거나 stale 한 live 로 남겨둔 경기를 모두 걸러낸다.
+   *
+   * 정책:
+   *  - kickoff <= now 면 status 상관없이 숨김 (프리매치 배당 잠금 시점과 일치).
+   *  - startTime 이 없거나 파싱 실패면 그대로 노출 (서버에 원인 있음).
+   *  - 30초 주기로 nowMs 갱신(초단위 정합 부담 없이 바로 사라지게).
    */
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNowMs(Date.now()), 15_000);
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
 
@@ -153,10 +158,10 @@ export function OddsApiMatchBoard({
         : matches;
     }
     return bySport.filter((m) => {
-      if (m.status === 'live') return true;
       if (!m.startTime) return true;
       const t = Date.parse(m.startTime);
       if (!Number.isFinite(t)) return true;
+      // kickoff 지난 건 전부 숨김 — 프리매치/라이브/알수없음 모두 동일 규칙
       return t > nowMs;
     });
   }, [matches, activeSport, nowMs, mode]);
@@ -423,7 +428,7 @@ function ConnectionBadge({
 }: {
   status: OddsApiWsStatus | null;
   loading: boolean;
-  mode: "live" | "prematch";
+  mode: BoardMode;
 }) {
   if (loading && !status) {
     return (
@@ -438,6 +443,15 @@ function ConnectionBadge({
       <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-[11px] font-semibold text-blue-300">
         <span className="h-2 w-2 rounded-full bg-blue-400" />
         프리매치
+      </span>
+    );
+  }
+  if (mode === "all") {
+    // live + prematch 가 섞인 통합 뷰 — 연결 상태는 내부적으로만 체크.
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-200">
+        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+        실시간 + 프리매치
       </span>
     );
   }
@@ -536,6 +550,83 @@ function groupByLeague(matches: AggregatedMatch[]): LeagueGroup[] {
   });
 }
 
+/**
+ * mode=all 전용 — 같은 리그라도 kickoff 의 KST 날짜가 다르면
+ * 별도 블록으로 분리(복제)해서 시간 순으로 정렬한다.
+ * ex) 4/23 00:00 한국 리그 / 4/24 00:00 한국 리그 → 두 블록.
+ */
+function groupByLeagueAndDate(matches: AggregatedMatch[]): LeagueGroup[] {
+  const map = new Map<string, LeagueGroup & { sortKey: number }>();
+  for (const m of matches) {
+    const display = m.league.nameKr ?? m.league.name ?? "기타 리그";
+    const { dateKey, dateLabel, bucketMs } = kstDateInfo(m.startTime, m.status);
+    const key = `${m.sport}::${display}::${dateKey}`;
+    let g = map.get(key);
+    if (!g) {
+      g = {
+        key,
+        sport: m.sport,
+        leagueDisplay: display,
+        leagueLogo: m.league.logoUrl,
+        dateLabel,
+        sortKey: bucketMs,
+        matches: [],
+      };
+      map.set(key, g);
+    }
+    g.matches.push(m);
+    // 그룹 정렬 키는 내부 경기의 가장 이른 kickoff 으로
+    const t = matchSortMs(m);
+    if (t < g.sortKey) g.sortKey = t;
+  }
+  const groups = [...map.values()];
+  for (const g of groups) {
+    g.matches.sort((a, b) => matchSortMs(a) - matchSortMs(b));
+  }
+  return groups.sort((a, b) => {
+    const aw = a.sport === "unknown" ? 1 : 0;
+    const bw = b.sport === "unknown" ? 1 : 0;
+    if (aw !== bw) return aw - bw;
+    if (a.sortKey !== b.sortKey) return a.sortKey - b.sortKey;
+    return a.leagueDisplay.localeCompare(b.leagueDisplay);
+  });
+}
+
+/** 경기 정렬용 ms — live 는 무조건 앞(0), 그 외는 startTime 기준 */
+function matchSortMs(m: AggregatedMatch): number {
+  if (m.status === "live") {
+    // 라이브는 최상단, 여러 개면 lastUpdatedMs 최신 순 유지
+    return -1e15 + (m.lastUpdatedMs ? -m.lastUpdatedMs / 1e6 : 0);
+  }
+  if (!m.startTime) return Number.MAX_SAFE_INTEGER - 1;
+  const t = Date.parse(m.startTime);
+  return Number.isFinite(t) ? t : Number.MAX_SAFE_INTEGER - 1;
+}
+
+/** KST(UTC+9) 기준 날짜 키·라벨·버킷 정렬 ms */
+function kstDateInfo(
+  startIso: string | null,
+  status: AggregatedMatch["status"],
+): { dateKey: string; dateLabel: string; bucketMs: number } {
+  const fallbackMs = Date.now();
+  const src = startIso ? Date.parse(startIso) : NaN;
+  const ms = Number.isFinite(src) ? src : fallbackMs;
+  // KST 환산 — 서버/로컬과 무관하게 +9h 오프셋으로 일자 계산
+  const kst = new Date(ms + 9 * 60 * 60 * 1000);
+  const y = kst.getUTCFullYear();
+  const mo = kst.getUTCMonth() + 1;
+  const d = kst.getUTCDate();
+  const dow = "일월화수목금토"[kst.getUTCDay()];
+  const dateKey = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  let dateLabel = `${mo}월 ${d}일 (${dow})`;
+  if (status === "live" && !startIso) {
+    dateLabel = "진행 중";
+  }
+  // 날짜 버킷 시작(KST 00:00)을 epoch ms 로
+  const bucketMs = Date.UTC(y, mo - 1, d) - 9 * 60 * 60 * 1000;
+  return { dateKey, dateLabel, bucketMs };
+}
+
 function LeagueBlock({
   group,
   isLight,
@@ -582,6 +673,11 @@ function LeagueBlock({
           <span className="text-base leading-none">{sportEmoji(group.sport)}</span>
         )}
         <span className="truncate">{group.leagueDisplay}</span>
+        {group.dateLabel ? (
+          <span className="shrink-0 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400">
+            {group.dateLabel}
+          </span>
+        ) : null}
         <span className="ml-auto text-[10px] font-normal text-zinc-500">
           {group.matches.length}경기
         </span>

@@ -289,19 +289,20 @@ export class CrawlerMatcherService {
     const where: Record<string, unknown> = {};
     if (sourceSite) where.sourceSite = sourceSite;
     if (onlyUnhinted) {
-      where.AND = [
+      /**
+       * Prisma 는 nullable JSON 필드를 리터럴 `null` 로 필터할 수 없다.
+       * `candidatesJson: { equals: Prisma.DbNull }` 로 명시해 준다.
+       * (리터럴 null 은 "Argument candidatesJson is missing" 예외로 매처 전체가 stuck 됐음.)
+       */
+      where.OR = [
+        { mapping: { is: null } },
         {
-          OR: [
-            { mapping: null },
-            {
-              mapping: {
-                is: {
-                  status: { in: onlyStatuses },
-                  candidatesJson: null,
-                },
-              },
+          mapping: {
+            is: {
+              status: { in: onlyStatuses },
+              candidatesJson: { equals: Prisma.DbNull },
             },
-          ],
+          },
         },
       ];
       this.logger.log(
@@ -309,7 +310,7 @@ export class CrawlerMatcherService {
       );
     } else {
       where.OR = [
-        { mapping: null },
+        { mapping: { is: null } },
         { mapping: { is: { status: { in: onlyStatuses } } } },
       ];
     }

@@ -755,6 +755,26 @@ export function SportsHubClient() {
     .filter(Boolean)
     .join(" ");
 
+  /**
+   * 일반 사용자 뷰는 단순화 — 구분(실시간/프리매치/크롤매칭/스페셜/오즈마켓) 탭을 없애고,
+   * 상단에 고정 종목 필터바(축구·야구·농구·배구·아이스하키·미식축구·테니스·LOL)만 둔다.
+   * 기본 종목은 축구이며, 데이터 소스는 크롤러 결과(/public/crawler/match-overlays,
+   * status=matched, kickoffScope=upcoming) — odds-api.io 가공 스냅샷이 아니라
+   * 실제로 크롤러가 매칭 확정한 경기만 노출된다.
+   */
+  if (!showOperatorTools) {
+    return (
+      <div className="min-h-screen bg-zinc-950">
+        <div className="border-b border-[rgba(218,174,87,0.2)] bg-black px-4 py-2.5 md:px-6 lg:px-10">
+          <h1 className="text-base font-bold text-main-gold sm:text-lg md:text-xl">
+            스포츠
+          </h1>
+        </div>
+        <CrawlerMatchOverlaysPanel />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950">
       <div className="border-b border-[rgba(218,174,87,0.2)] bg-black px-4 py-2.5 md:px-6 lg:px-10">
@@ -775,42 +795,27 @@ export function SportsHubClient() {
       {section === "crawlmap" ? <CrawlerMatchOverlaysPanel /> : null}
 
       {/* 운영자 모드에서는 기존 OddsHost/DB 스냅샷 도구도 함께 노출 */}
-      {showOperatorTools ? (
-        <>
-          <div className="border-y border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
-            <OddsApiLivePanel />
-          </div>
+      <div className="border-y border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
+        <OddsApiLivePanel />
+      </div>
 
-          {statusStrip}
+      {statusStrip}
 
-          <div className="border-b border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
-            {operatorPanel}
-          </div>
+      <div className="border-b border-white/5 bg-zinc-950 px-2 py-3 md:px-6 lg:px-10">
+        {operatorPanel}
+      </div>
 
-          <SportsLobbyLayout
-            title={title}
-            betTabs={betTabs}
-            leagues={leagues}
-            bannerText={`${title} — 개발 모드`}
-            hideBanner={false}
-            betTabsNotice={combinedBetNotice}
-            layoutChrome="full"
-            emptyStateMessage={emptyStateMessage}
-            feedAppend={feedAppend}
-          />
-        </>
-      ) : (
-        <>
-          {/* pmspecial / ozmarkets 는 운영용 — 일반 사용자에게 빈 자리 대신 안내 */}
-          {section === "pmspecial" || section === "ozmarkets" ? (
-            <div className="px-2 py-6 md:px-6 lg:px-10">
-              <div className="rounded-2xl border border-dashed border-white/15 bg-zinc-950/60 px-4 py-8 text-center text-sm text-zinc-500">
-                준비 중인 탭입니다.
-              </div>
-            </div>
-          ) : null}
-        </>
-      )}
+      <SportsLobbyLayout
+        title={title}
+        betTabs={betTabs}
+        leagues={leagues}
+        bannerText={`${title} — 개발 모드`}
+        hideBanner={false}
+        betTabsNotice={combinedBetNotice}
+        layoutChrome="full"
+        emptyStateMessage={emptyStateMessage}
+        feedAppend={feedAppend}
+      />
     </div>
   );
 }

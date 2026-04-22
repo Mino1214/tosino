@@ -53,11 +53,19 @@ type MatchingRow = {
   status: string;
   rawMatch?: {
     id: string;
+    sourceLocale?: string | null;
     rawLeagueLabel: string | null;
     rawLeagueSlug: string | null;
     rawCountryLabel: string | null;
     rawHomeName: string | null;
     rawAwayName: string | null;
+    pairedRawMatch?: {
+      sourceLocale?: string | null;
+      rawHomeName: string | null;
+      rawAwayName: string | null;
+      rawLeagueLabel: string | null;
+      rawCountryLabel: string | null;
+    } | null;
   };
   // enrichMappingsWithLogos 가 넣어주는 필드
   sourceHomeLogo: string | null;
@@ -66,6 +74,8 @@ type MatchingRow = {
   sourceCountryFlag: string | null;
   providerHomeLogo: string | null;
   providerAwayLogo: string | null;
+  providerHomeKoreanName: string | null;
+  providerAwayKoreanName: string | null;
   providerCountryKo: string | null;
   displayLeagueName: string | null;
 };
@@ -114,6 +124,79 @@ function CountryCell({
       ) : null}
       <span className="truncate text-xs text-gray-700">{label ?? "—"}</span>
     </div>
+  );
+}
+
+/**
+ * 같은 providerExternalEventId 로 ko/en 두 행이 내려오면 한 묶음으로 병합.
+ * en 쪽을 "primary" 로 유지(매처가 en 기준이라 provider 필드가 채워진 쪽일 가능성 ↑).
+ * 이미 pairedRawMatch 가 내재된 경우는 중복 없이 그대로 통과.
+ */
+function mergeLocalePairs(rows: MatchingRow[]): MatchingRow[] {
+  const byEvent = new Map<string, MatchingRow>();
+  const out: MatchingRow[] = [];
+  for (const r of rows) {
+    const key = r.providerExternalEventId;
+    if (!key) {
+      out.push(r);
+      continue;
+    }
+    const prev = byEvent.get(key);
+    if (!prev) {
+      byEvent.set(key, r);
+      out.push(r);
+      continue;
+    }
+    const prevLocale = (prev.rawMatch?.sourceLocale ?? "").toLowerCase();
+    const curLocale = (r.rawMatch?.sourceLocale ?? "").toLowerCase();
+    if (curLocale === "en" && prevLocale !== "en") {
+      const idx = out.indexOf(prev);
+      if (idx >= 0) out[idx] = r;
+      byEvent.set(key, r);
+    }
+  }
+  return out;
+}
+
+/**
+ * row 에서 ko/en 한 쌍을 뽑는다.
+ * - 본 row 의 sourceLocale 가 en 이면 self=en, pair=ko
+ * - 반대면 self=ko, pair=en
+ */
+function extractLocalePair(r: MatchingRow): {
+  en: { home: string | null; away: string | null; league: string | null } | null;
+  ko: { home: string | null; away: string | null; league: string | null } | null;
+} {
+  const selfLocale = (r.rawMatch?.sourceLocale ?? "").toLowerCase();
+  const self = {
+    home: r.rawHomeName,
+    away: r.rawAwayName,
+    league: r.rawMatch?.rawLeagueLabel ?? null,
+  };
+  const paired = r.rawMatch?.pairedRawMatch;
+  const pair = paired
+    ? {
+        home: paired.rawHomeName,
+        away: paired.rawAwayName,
+        league: paired.rawLeagueLabel,
+      }
+    : null;
+  if (selfLocale === "en") return { en: self, ko: pair };
+  if (selfLocale === "ko") return { ko: self, en: pair };
+  // locale 불명: self 를 en 으로 간주(매처 기준이 en)
+  return { en: self, ko: pair };
+}
+
+function LocaleBadge({ locale }: { locale: "en" | "ko" }) {
+  const isEn = locale === "en";
+  return (
+    <span
+      className={`inline-flex h-4 flex-none items-center rounded px-1 text-[9px] font-bold ${
+        isEn ? "bg-gray-200 text-gray-600" : "bg-blue-100 text-blue-700"
+      }`}
+    >
+      {isEn ? "EN" : "KR"}
+    </span>
   );
 }
 
@@ -246,13 +329,19 @@ export default function CrawlerConsolePage() {
   >({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
+  /**
+   * "클라이언트에 실제로 보여지는 값" 을 편집 초기값으로.
+   * - 리그명: OddsApiLeagueAlias.koreanName(=displayLeagueName 우선) > raw 라벨
+   * - 팀명:   OddsApiTeamAlias.koreanName(=providerXxxKoreanName) > raw
+   * - 국가:   OddsApiLeagueAlias.country → resolver(providerCountryKo) > raw
+   */
   function startEdit(row: MatchingRow) {
     setEditing((prev) => ({
       ...prev,
       [row.id]: {
-        league: row.rawMatch?.rawLeagueLabel ?? "",
-        home: row.rawHomeName ?? "",
-        away: row.rawAwayName ?? "",
+        league: row.displayLeagueName ?? row.rawMatch?.rawLeagueLabel ?? "",
+        home: row.providerHomeKoreanName ?? row.rawHomeName ?? "",
+        away: row.providerAwayKoreanName ?? row.rawAwayName ?? "",
         country:
           row.providerCountryKo ?? row.rawMatch?.rawCountryLabel ?? "",
       },
@@ -273,7 +362,16 @@ export default function CrawlerConsolePage() {
     try {
       setSaving((s) => ({ ...s, [row.id]: true }));
       const tasks: Promise<unknown>[] = [];
-      if (draft.league.trim() !== (row.rawMatch?.rawLeagueLabel ?? "").trim()) {
+      /**
+       * raw/:id PATCH 는 서버가 raw + (매칭돼있으면) OddsApi*Alias.koreanName 까지 함께 upsert.
+       * 즉 "솔루션 클라이언트가 실제로 보는 한글명" 이 저장됨.
+       * 변경 여부는 "현재 보여지는 값"(alias 우선) 과 비교.
+       */
+      const curLeague =
+        (row.displayLeagueName ?? row.rawMatch?.rawLeagueLabel ?? "").trim();
+      const curHome = (row.providerHomeKoreanName ?? row.rawHomeName ?? "").trim();
+      const curAway = (row.providerAwayKoreanName ?? row.rawAwayName ?? "").trim();
+      if (draft.league.trim() !== curLeague) {
         tasks.push(
           apiFetch(`/hq/crawler/matches/raw/${rawMatchId}`, {
             method: "PATCH",
@@ -281,7 +379,7 @@ export default function CrawlerConsolePage() {
           }),
         );
       }
-      if (draft.home.trim() !== (row.rawHomeName ?? "").trim()) {
+      if (draft.home.trim() !== curHome) {
         tasks.push(
           apiFetch(`/hq/crawler/matches/raw/${rawMatchId}`, {
             method: "PATCH",
@@ -289,7 +387,7 @@ export default function CrawlerConsolePage() {
           }),
         );
       }
-      if (draft.away.trim() !== (row.rawAwayName ?? "").trim()) {
+      if (draft.away.trim() !== curAway) {
         tasks.push(
           apiFetch(`/hq/crawler/matches/raw/${rawMatchId}`, {
             method: "PATCH",
@@ -552,8 +650,17 @@ export default function CrawlerConsolePage() {
                   </td>
                 </tr>
               ) : (
-                rows.map((r) => {
+                mergeLocalePairs(rows).map((r) => {
                   const ed = editing[r.id];
+                  const pair = extractLocalePair(r);
+                  const koHome =
+                    pair.ko?.home ?? r.providerHomeKoreanName ?? null;
+                  const koAway =
+                    pair.ko?.away ?? r.providerAwayKoreanName ?? null;
+                  const koLeague = pair.ko?.league ?? r.displayLeagueName ?? null;
+                  const enHome = pair.en?.home ?? r.providerHomeName ?? null;
+                  const enAway = pair.en?.away ?? r.providerAwayName ?? null;
+                  const enLeague = pair.en?.league ?? r.providerLeagueSlug ?? null;
                   const countryLabel =
                     r.providerCountryKo ??
                     r.rawMatch?.rawCountryLabel ??
@@ -599,66 +706,90 @@ export default function CrawlerConsolePage() {
                           </div>
                         </td>
                         <td className="py-2 pr-3">
-                          <div className="flex items-center gap-2">
-                            {r.sourceLeagueLogo ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={r.sourceLeagueLogo}
-                                alt=""
-                                className="h-5 w-5 flex-none rounded-sm object-contain"
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              {r.sourceLeagueLogo ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={r.sourceLeagueLogo}
+                                  alt=""
+                                  className="h-5 w-5 flex-none rounded-sm object-contain"
+                                />
+                              ) : null}
+                              <LocaleBadge locale="ko" />
+                              <input
+                                value={ed.league}
+                                onChange={(e) =>
+                                  setEditing((prev) => ({
+                                    ...prev,
+                                    [r.id]: {
+                                      ...prev[r.id],
+                                      league: e.target.value,
+                                    },
+                                  }))
+                                }
+                                className="w-52 rounded border border-gray-200 px-2 py-1 text-xs"
                               />
-                            ) : null}
-                            <input
-                              value={ed.league}
-                              onChange={(e) =>
-                                setEditing((prev) => ({
-                                  ...prev,
-                                  [r.id]: {
-                                    ...prev[r.id],
-                                    league: e.target.value,
-                                  },
-                                }))
-                              }
-                              className="w-52 rounded border border-gray-200 px-2 py-1 text-xs"
-                            />
+                            </div>
+                            <div className="flex items-center gap-2 pl-7">
+                              <LocaleBadge locale="en" />
+                              <span className="truncate text-[11px] text-gray-500">
+                                {enLeague ?? "—"}
+                              </span>
+                            </div>
                           </div>
                         </td>
                         <td className="py-2 pr-3">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <TeamLogo src={r.sourceHomeLogo} />
-                              <input
-                                value={ed.home}
-                                onChange={(e) =>
-                                  setEditing((prev) => ({
-                                    ...prev,
-                                    [r.id]: {
-                                      ...prev[r.id],
-                                      home: e.target.value,
-                                    },
-                                  }))
-                                }
-                                className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
-                              />
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-2">
+                                <TeamLogo src={r.sourceHomeLogo} />
+                                <LocaleBadge locale="ko" />
+                                <input
+                                  value={ed.home}
+                                  onChange={(e) =>
+                                    setEditing((prev) => ({
+                                      ...prev,
+                                      [r.id]: {
+                                        ...prev[r.id],
+                                        home: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2 pl-7">
+                                <LocaleBadge locale="en" />
+                                <span className="text-[11px] text-gray-500">
+                                  {enHome ?? "—"}
+                                </span>
+                              </div>
                             </div>
-                            <span className="ml-7 text-[10px] text-gray-400">
-                              vs
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <TeamLogo src={r.sourceAwayLogo} />
-                              <input
-                                value={ed.away}
-                                onChange={(e) =>
-                                  setEditing((prev) => ({
-                                    ...prev,
-                                    [r.id]: {
-                                      ...prev[r.id],
-                                      away: e.target.value,
-                                    },
-                                  }))
-                                }
-                                className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
-                              />
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-2">
+                                <TeamLogo src={r.sourceAwayLogo} />
+                                <LocaleBadge locale="ko" />
+                                <input
+                                  value={ed.away}
+                                  onChange={(e) =>
+                                    setEditing((prev) => ({
+                                      ...prev,
+                                      [r.id]: {
+                                        ...prev[r.id],
+                                        away: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2 pl-7">
+                                <LocaleBadge locale="en" />
+                                <span className="text-[11px] text-gray-500">
+                                  {enAway ?? "—"}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -700,27 +831,66 @@ export default function CrawlerConsolePage() {
                         />
                       </td>
                       <td className="py-2 pr-3 text-sm text-black">
-                        <div className="flex items-center gap-2">
-                          {r.sourceLeagueLogo ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={r.sourceLeagueLogo}
-                              alt=""
-                              className="h-5 w-5 flex-none rounded-sm object-contain"
-                            />
-                          ) : null}
-                          <span className="truncate">{leagueLabel}</span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            {r.sourceLeagueLogo ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={r.sourceLeagueLogo}
+                                alt=""
+                                className="h-5 w-5 flex-none rounded-sm object-contain"
+                              />
+                            ) : null}
+                            <LocaleBadge locale="ko" />
+                            <span className="truncate font-medium">
+                              {koLeague ?? leagueLabel ?? "—"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 pl-7">
+                            <LocaleBadge locale="en" />
+                            <span className="truncate text-xs text-gray-500">
+                              {enLeague ?? "—"}
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td className="py-2 pr-3 text-sm text-black">
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <TeamLogo src={r.sourceHomeLogo} />
-                            <span>{r.rawHomeName ?? "—"}</span>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <TeamLogo src={r.sourceHomeLogo} />
+                              <LocaleBadge locale="ko" />
+                              <span className="font-medium">
+                                {koHome ??
+                                  r.providerHomeKoreanName ??
+                                  r.rawHomeName ??
+                                  "—"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 pl-7">
+                              <LocaleBadge locale="en" />
+                              <span className="text-xs text-gray-500">
+                                {enHome ?? "—"}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <TeamLogo src={r.sourceAwayLogo} />
-                            <span>{r.rawAwayName ?? "—"}</span>
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <TeamLogo src={r.sourceAwayLogo} />
+                              <LocaleBadge locale="ko" />
+                              <span className="font-medium">
+                                {koAway ??
+                                  r.providerAwayKoreanName ??
+                                  r.rawAwayName ??
+                                  "—"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 pl-7">
+                              <LocaleBadge locale="en" />
+                              <span className="text-xs text-gray-500">
+                                {enAway ?? "—"}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -771,6 +941,535 @@ export default function CrawlerConsolePage() {
           </div>
         </div>
       </section>
+
+      {/*
+       * ---------------------------------------------------------------
+       * 알리아스 편집기 — 리그 / 팀 을 "수집내역" 기준으로 독립 수정
+       * (강등·이적으로 리그-팀 관계가 바뀌는 경우를 따로 관리하기 위함)
+       * ---------------------------------------------------------------
+       */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <LeagueAliasPanel />
+        <TeamAliasPanel />
+      </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 알리아스(=솔루션 표시명) 독립 편집기                                 */
+/* ------------------------------------------------------------------ */
+
+const SPORT_OPTIONS = [
+  "",
+  "football",
+  "basketball",
+  "baseball",
+  "ice-hockey",
+  "volleyball",
+  "tennis",
+  "american-football",
+  "esports",
+];
+
+type LeagueAliasRow = {
+  id: string;
+  sport: string;
+  slug: string;
+  originalName: string | null;
+  koreanName: string | null;
+  country: string | null;
+  logoUrl: string | null;
+};
+
+type TeamAliasRow = {
+  id: string;
+  sport: string;
+  externalId: string;
+  originalName: string | null;
+  koreanName: string | null;
+  logoUrl: string | null;
+};
+
+function LeagueAliasPanel() {
+  const [sport, setSport] = useState("football");
+  const [q, setQ] = useState("");
+  const [qDraft, setQDraft] = useState("");
+  const [onlyUnmapped, setOnlyUnmapped] = useState(false);
+  const [rows, setRows] = useState<LeagueAliasRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [draft, setDraft] = useState<
+    Record<string, { koreanName: string; country: string }>
+  >({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const qs = new URLSearchParams();
+      if (sport) qs.set("sport", sport);
+      if (q) qs.set("q", q);
+      if (onlyUnmapped) qs.set("onlyUnmapped", "true");
+      qs.set("take", "300");
+      const r = await apiFetch<{ rows: LeagueAliasRow[] }>(
+        `/hq/odds-api-ws/aliases/leagues?${qs.toString()}`,
+      );
+      setRows(r.rows ?? []);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "불러오기 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, [sport, q, onlyUnmapped]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function startEdit(row: LeagueAliasRow) {
+    setDraft((prev) => ({
+      ...prev,
+      [row.id]: {
+        koreanName: row.koreanName ?? "",
+        country: row.country ?? "",
+      },
+    }));
+  }
+
+  function cancelEdit(id: string) {
+    setDraft((prev) => {
+      const n = { ...prev };
+      delete n[id];
+      return n;
+    });
+  }
+
+  async function save(row: LeagueAliasRow) {
+    const d = draft[row.id];
+    if (!d) return;
+    try {
+      setSaving((s) => ({ ...s, [row.id]: true }));
+      await apiFetch(`/hq/odds-api-ws/aliases/leagues/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          koreanName: d.koreanName.trim(),
+          country: d.country.trim(),
+        }),
+      });
+      cancelEdit(row.id);
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setSaving((s) => {
+        const n = { ...s };
+        delete n[row.id];
+        return n;
+      });
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-semibold text-black">
+          리그 수집내역 (알리아스)
+        </h2>
+        <span className="text-xs text-gray-500">
+          {loading ? "불러오는 중…" : `${rows.length}건`}
+        </span>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <select
+          value={sport}
+          onChange={(e) => setSport(e.target.value)}
+          className="rounded border border-gray-200 px-2 py-1 text-xs"
+        >
+          {SPORT_OPTIONS.map((s) => (
+            <option key={s || "all"} value={s}>
+              {s || "전체 종목"}
+            </option>
+          ))}
+        </select>
+        <input
+          value={qDraft}
+          onChange={(e) => setQDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") setQ(qDraft.trim());
+          }}
+          placeholder="리그명(영/한) · slug 로 검색"
+          className="flex-1 min-w-[180px] rounded border border-gray-200 px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          onClick={() => setQ(qDraft.trim())}
+          className="rounded bg-[#3182f6] px-3 py-1 text-xs font-semibold text-white"
+        >
+          검색
+        </button>
+        <label className="flex items-center gap-1 text-xs text-gray-600">
+          <input
+            type="checkbox"
+            checked={onlyUnmapped}
+            onChange={(e) => setOnlyUnmapped(e.target.checked)}
+          />
+          한글 미입력만
+        </label>
+      </div>
+
+      {err ? (
+        <div className="mb-2 rounded bg-red-50 px-2 py-1 text-xs text-red-600">
+          {err}
+        </div>
+      ) : null}
+
+      <div className="overflow-y-auto" style={{ maxHeight: 480 }}>
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-white text-left text-[10px] uppercase tracking-wider text-gray-500">
+            <tr className="border-b border-gray-100">
+              <th className="py-1 pr-2">종목</th>
+              <th className="py-1 pr-2">원문 / slug</th>
+              <th className="py-1 pr-2">한글명</th>
+              <th className="py-1 pr-2">국가</th>
+              <th className="py-1 pr-2 text-right">액션</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && !loading ? (
+              <tr>
+                <td colSpan={5} className="py-4 text-center text-gray-400">
+                  결과 없음
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => {
+                const d = draft[row.id];
+                return (
+                  <tr key={row.id} className="border-b border-gray-50">
+                    <td className="py-1 pr-2 text-[11px] text-gray-500">
+                      {row.sport}
+                    </td>
+                    <td className="py-1 pr-2">
+                      <div className="flex flex-col">
+                        <span>{row.originalName ?? row.slug}</span>
+                        <span className="font-mono text-[10px] text-gray-400">
+                          {row.slug}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-1 pr-2">
+                      {d ? (
+                        <input
+                          value={d.koreanName}
+                          onChange={(e) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              [row.id]: {
+                                ...prev[row.id],
+                                koreanName: e.target.value,
+                              },
+                            }))
+                          }
+                          className="w-40 rounded border border-gray-200 px-2 py-0.5 text-xs"
+                        />
+                      ) : (
+                        <span className="font-medium">
+                          {row.koreanName ?? (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1 pr-2">
+                      {d ? (
+                        <input
+                          value={d.country}
+                          onChange={(e) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              [row.id]: {
+                                ...prev[row.id],
+                                country: e.target.value,
+                              },
+                            }))
+                          }
+                          className="w-28 rounded border border-gray-200 px-2 py-0.5 text-xs"
+                        />
+                      ) : (
+                        <span className="text-[11px] text-gray-600">
+                          {row.country ?? (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1 pr-2 text-right">
+                      {d ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={saving[row.id]}
+                            onClick={() => save(row)}
+                            className="mr-1 rounded bg-[#3182f6] px-2 py-0.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                          >
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => cancelEdit(row.id)}
+                            className="rounded border border-gray-200 px-2 py-0.5 text-[11px]"
+                          >
+                            취소
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => startEdit(row)}
+                          className="rounded border border-gray-200 px-2 py-0.5 text-[11px] hover:bg-gray-50"
+                        >
+                          수정
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function TeamAliasPanel() {
+  const [sport, setSport] = useState("football");
+  const [q, setQ] = useState("");
+  const [qDraft, setQDraft] = useState("");
+  const [onlyUnmapped, setOnlyUnmapped] = useState(false);
+  const [rows, setRows] = useState<TeamAliasRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, { koreanName: string }>>(
+    {},
+  );
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const qs = new URLSearchParams();
+      if (sport) qs.set("sport", sport);
+      if (q) qs.set("q", q);
+      if (onlyUnmapped) qs.set("onlyUnmapped", "true");
+      qs.set("take", "300");
+      const r = await apiFetch<{ rows: TeamAliasRow[] }>(
+        `/hq/odds-api-ws/aliases/teams?${qs.toString()}`,
+      );
+      setRows(r.rows ?? []);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "불러오기 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, [sport, q, onlyUnmapped]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function startEdit(row: TeamAliasRow) {
+    setDraft((prev) => ({
+      ...prev,
+      [row.id]: { koreanName: row.koreanName ?? "" },
+    }));
+  }
+
+  function cancelEdit(id: string) {
+    setDraft((prev) => {
+      const n = { ...prev };
+      delete n[id];
+      return n;
+    });
+  }
+
+  async function save(row: TeamAliasRow) {
+    const d = draft[row.id];
+    if (!d) return;
+    try {
+      setSaving((s) => ({ ...s, [row.id]: true }));
+      await apiFetch(`/hq/odds-api-ws/aliases/teams/${row.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ koreanName: d.koreanName.trim() }),
+      });
+      cancelEdit(row.id);
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setSaving((s) => {
+        const n = { ...s };
+        delete n[row.id];
+        return n;
+      });
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-semibold text-black">
+          팀(경기) 수집내역 (알리아스)
+        </h2>
+        <span className="text-xs text-gray-500">
+          {loading ? "불러오는 중…" : `${rows.length}건`}
+        </span>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <select
+          value={sport}
+          onChange={(e) => setSport(e.target.value)}
+          className="rounded border border-gray-200 px-2 py-1 text-xs"
+        >
+          {SPORT_OPTIONS.map((s) => (
+            <option key={s || "all"} value={s}>
+              {s || "전체 종목"}
+            </option>
+          ))}
+        </select>
+        <input
+          value={qDraft}
+          onChange={(e) => setQDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") setQ(qDraft.trim());
+          }}
+          placeholder="팀명(영/한) · id 로 검색"
+          className="flex-1 min-w-[180px] rounded border border-gray-200 px-2 py-1 text-xs"
+        />
+        <button
+          type="button"
+          onClick={() => setQ(qDraft.trim())}
+          className="rounded bg-[#3182f6] px-3 py-1 text-xs font-semibold text-white"
+        >
+          검색
+        </button>
+        <label className="flex items-center gap-1 text-xs text-gray-600">
+          <input
+            type="checkbox"
+            checked={onlyUnmapped}
+            onChange={(e) => setOnlyUnmapped(e.target.checked)}
+          />
+          한글 미입력만
+        </label>
+      </div>
+
+      {err ? (
+        <div className="mb-2 rounded bg-red-50 px-2 py-1 text-xs text-red-600">
+          {err}
+        </div>
+      ) : null}
+
+      <div className="overflow-y-auto" style={{ maxHeight: 480 }}>
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-white text-left text-[10px] uppercase tracking-wider text-gray-500">
+            <tr className="border-b border-gray-100">
+              <th className="py-1 pr-2">종목</th>
+              <th className="py-1 pr-2">원문 팀명 / id</th>
+              <th className="py-1 pr-2">한글명</th>
+              <th className="py-1 pr-2 text-right">액션</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && !loading ? (
+              <tr>
+                <td colSpan={4} className="py-4 text-center text-gray-400">
+                  결과 없음
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => {
+                const d = draft[row.id];
+                return (
+                  <tr key={row.id} className="border-b border-gray-50">
+                    <td className="py-1 pr-2 text-[11px] text-gray-500">
+                      {row.sport}
+                    </td>
+                    <td className="py-1 pr-2">
+                      <div className="flex items-center gap-2">
+                        <TeamLogo src={row.logoUrl} />
+                        <div className="flex flex-col">
+                          <span>{row.originalName ?? row.externalId}</span>
+                          <span className="font-mono text-[10px] text-gray-400">
+                            id: {row.externalId}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-1 pr-2">
+                      {d ? (
+                        <input
+                          value={d.koreanName}
+                          onChange={(e) =>
+                            setDraft((prev) => ({
+                              ...prev,
+                              [row.id]: {
+                                ...prev[row.id],
+                                koreanName: e.target.value,
+                              },
+                            }))
+                          }
+                          className="w-40 rounded border border-gray-200 px-2 py-0.5 text-xs"
+                        />
+                      ) : (
+                        <span className="font-medium">
+                          {row.koreanName ?? (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1 pr-2 text-right">
+                      {d ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={saving[row.id]}
+                            onClick={() => save(row)}
+                            className="mr-1 rounded bg-[#3182f6] px-2 py-0.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                          >
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => cancelEdit(row.id)}
+                            className="rounded border border-gray-200 px-2 py-0.5 text-[11px]"
+                          >
+                            취소
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => startEdit(row)}
+                          className="rounded border border-gray-200 px-2 py-0.5 text-[11px] hover:bg-gray-50"
+                        >
+                          수정
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

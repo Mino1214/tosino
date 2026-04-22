@@ -716,6 +716,13 @@ export type CrawlerMatchOverlayItem = {
   sourceCountryFlag?: string | null;
   providerHomeLogo?: string | null;
   providerAwayLogo?: string | null;
+  /** OddsApiLeagueAlias.country resolver 결과(한글) — 없으면 pairedLocaleRaw.rawCountryLabel 폴백 */
+  providerCountryKo?: string | null;
+  /** OddsApiLeagueAlias.country raw(영문/현지어) */
+  oddsLeagueAliasCountry?: string | null;
+  /** OddsApiTeamAlias.koreanName — 목록 표기용 */
+  providerHomeKoreanName?: string | null;
+  providerAwayKoreanName?: string | null;
 };
 
 export type CrawlerMatchOverlaysResponse = {

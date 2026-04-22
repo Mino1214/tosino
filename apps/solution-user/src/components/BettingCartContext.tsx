@@ -47,14 +47,18 @@ export function BettingCartProvider({ children }: { children: React.ReactNode })
   /**
    * 동일 경기 + 동일 마켓(ex. moneyline home/draw/away) 는 서로 상충이라 중복 선택 금지.
    * selectionKey 형식: `${matchId}:${marketType}:${outcome}[:line]`.
-   * 접두사 `${matchId}:${marketType}:` 가 같은 기존 라인은 제거하고 새 라인으로 교체.
-   * extra 마켓(selectionKey 에 `:extra:` 포함)은 그 마켓 이름까지 포함한 prefix 로 교체.
+   * - 동일한 selectionKey 가 이미 있으면 → 제거만 (토글 off).
+   * - 접두사 `${matchId}:${marketType}:` 가 같은 기존 라인은 제거하고 새 라인으로 교체.
+   * - extra 마켓(selectionKey 에 `:extra:` 포함)은 그 마켓 이름까지 포함한 prefix 로 교체.
    */
   const addLine = useCallback((line: Omit<BettingCartLine, "id">) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const nextKey = line.selectionKey ?? "";
     const conflictPrefix = deriveConflictPrefix(nextKey);
     setLines((prev) => {
+      if (nextKey && prev.some((l) => l.selectionKey === nextKey)) {
+        return prev.filter((l) => l.selectionKey !== nextKey);
+      }
       const filtered = conflictPrefix
         ? prev.filter((l) => {
             const k = l.selectionKey ?? "";
