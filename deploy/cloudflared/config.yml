@@ -6,8 +6,8 @@
 #   apisgate.org               → API (NestJS :4001) + sms-ingest (:4050)
 #   tozinosolution.com         → solution-main :3010   (공식 홍보/소개 사이트)
 #   www.tozinosolution.com     → solution-main :3010
-#   mod.tozinosolution.com     → super-admin   :3000   (마스터 총괄 어드민)
-#   mod.tozinosoltion.com      → super-admin   :3000   (오타 도메인 호환)
+#   mod.tozinosolution.com     → /api·/uploads :4001, 나머지 super-admin :3000
+#   mod.tozinosoltion.com      → 동일 (오타 도메인 호환)
 #   user.i-on.bet              → solution-user :3002
 #   i-on.bet                   → solution-user :3002
 #   www.i-on.bet               → solution-user :3002
@@ -46,12 +46,21 @@ ingress:
     service: http://localhost:3010
 
   # ══════════════════════════════════════════════════
-  # mod.tozinosolution.com — 마스터 총괄 어드민 (super-admin :3000)
+  # mod.tozinosolution.com — 슈퍼어드민(:3000) + 같은 호스트 /api → Nest(:4001)
+  #   (super-admin 은 NEXT_PUBLIC_USE_SAME_ORIGIN_API 로 https://mod.../api 호출)
   # ══════════════════════════════════════════════════
+  - hostname: mod.tozinosolution.com
+    path: "^/(api|uploads)(/|$)"
+    service: http://localhost:4001
+
   - hostname: mod.tozinosolution.com
     service: http://localhost:3000
 
   # 과거 오타 도메인 호환 (일부 북마크가 남아있어 유지)
+  - hostname: mod.tozinosoltion.com
+    path: "^/(api|uploads)(/|$)"
+    service: http://localhost:4001
+
   - hostname: mod.tozinosoltion.com
     service: http://localhost:3000
 
