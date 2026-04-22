@@ -41,6 +41,7 @@ type MatchingRow = {
   id: string;
   rawMatchId: string;
   internalSportSlug: string | null;
+  providerSportSlug: string | null;
   rawLeagueSlug: string | null;
   rawHomeName: string | null;
   rawAwayName: string | null;
@@ -238,7 +239,10 @@ export default function CrawlerConsolePage() {
 
   // ── 인라인 편집
   const [editing, setEditing] = useState<
-    Record<string, { league: string; home: string; away: string }>
+    Record<
+      string,
+      { league: string; home: string; away: string; country: string }
+    >
   >({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
@@ -249,6 +253,8 @@ export default function CrawlerConsolePage() {
         league: row.rawMatch?.rawLeagueLabel ?? "",
         home: row.rawHomeName ?? "",
         away: row.rawAwayName ?? "",
+        country:
+          row.providerCountryKo ?? row.rawMatch?.rawCountryLabel ?? "",
       },
     }));
   }
@@ -290,6 +296,48 @@ export default function CrawlerConsolePage() {
             body: JSON.stringify({ field: "away", value: draft.away }),
           }),
         );
+      }
+      /**
+       * 국가명 저장 — OddsApiLeagueAlias.country 로 upsert.
+       * 표시용 providerCountryKo 는 해당 값을 기반으로 resolver 가 한글로 변환한다.
+       * 저장 키: (sport, providerLeagueSlug ?? rawLeagueSlug)
+       */
+      const originalCountry = (
+        row.providerCountryKo ?? row.rawMatch?.rawCountryLabel ?? ""
+      ).trim();
+      const nextCountry = draft.country.trim();
+      if (nextCountry !== originalCountry) {
+        const sport = (
+          row.internalSportSlug ||
+          (row as { providerSportSlug?: string | null }).providerSportSlug ||
+          ""
+        )
+          .toString()
+          .trim();
+        const leagueSlug = (
+          row.providerLeagueSlug ||
+          row.rawLeagueSlug ||
+          ""
+        )
+          .toString()
+          .trim();
+        if (!sport || !leagueSlug) {
+          setErr(
+            "국가명을 저장하려면 리그 슬러그(provider 또는 raw)와 종목이 필요합니다.",
+          );
+        } else {
+          tasks.push(
+            apiFetch(`/hq/crawler/matches/provider-league-alias`, {
+              method: "PATCH",
+              body: JSON.stringify({
+                sport,
+                slug: leagueSlug,
+                originalName: row.displayLeagueName ?? leagueSlug,
+                country: nextCountry,
+              }),
+            }),
+          );
+        }
       }
       await Promise.all(tasks);
       cancelEdit(row.id);
@@ -525,10 +573,30 @@ export default function CrawlerConsolePage() {
                           {r.internalSportSlug ?? "—"}
                         </td>
                         <td className="py-2 pr-3">
-                          <CountryCell
-                            flag={r.sourceCountryFlag}
-                            label={countryLabel}
-                          />
+                          <div className="flex items-center gap-1.5">
+                            {r.sourceCountryFlag ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={r.sourceCountryFlag}
+                                alt=""
+                                className="h-4 w-5 flex-none rounded-sm object-cover ring-1 ring-gray-200"
+                              />
+                            ) : null}
+                            <input
+                              value={ed.country}
+                              onChange={(e) =>
+                                setEditing((prev) => ({
+                                  ...prev,
+                                  [r.id]: {
+                                    ...prev[r.id],
+                                    country: e.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="대한민국"
+                              className="w-28 rounded border border-gray-200 px-2 py-1 text-xs"
+                            />
+                          </div>
                         </td>
                         <td className="py-2 pr-3">
                           <div className="flex items-center gap-2">

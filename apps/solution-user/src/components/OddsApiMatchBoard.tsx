@@ -25,19 +25,57 @@ import { LiveMatchPanel, useLiveMatchPanelState } from "./LiveMatchPanel";
  *  - 한글 리그/팀명, 리그 로고 → 서버
  * 본 컴포넌트는 표시·종목 필터·트래커 패널 열기만 담당.
  *
- * mode: 'live'|'prematch' — 외부에서 결정 (SportsHubClient 의 탭과 동기화).
+ * mode:
+ *  - 'live' | 'prematch' — 운영자 디버그용(탭 분리). 하나의 상태만 폴링.
+ *  - 'all' — 일반 유저용 통합 뷰. live + prematch 를 합쳐서 한 번에 받고,
+ *    고정 종목 필터바(축구·야구·농구·배구·아이스하키·미식축구·테니스·LOL)로
+ *    좁혀서 본다. 기본 종목은 축구.
  */
+
+type BoardMode = "live" | "prematch" | "all";
+
+/** 일반 유저 뷰에서 보여줄 고정 종목 필터 — 서버 sport 키와 매핑 */
+const FIXED_SPORT_FILTERS: ReadonlyArray<{
+  id: string;
+  label: string;
+  emoji: string;
+  /** 한 필터가 여러 sport 키를 포함할 수 있음(LOL 은 esports 전체로 매칭) */
+  sports: readonly string[];
+}> = [
+  { id: "football", label: "축구", emoji: "⚽", sports: ["football", "soccer"] },
+  { id: "baseball", label: "야구", emoji: "⚾", sports: ["baseball"] },
+  { id: "basketball", label: "농구", emoji: "🏀", sports: ["basketball"] },
+  { id: "volleyball", label: "배구", emoji: "🏐", sports: ["volleyball"] },
+  { id: "ice-hockey", label: "아이스하키", emoji: "🏒", sports: ["ice-hockey"] },
+  {
+    id: "american-football",
+    label: "미식축구",
+    emoji: "🏈",
+    sports: ["american-football"],
+  },
+  { id: "tennis", label: "테니스", emoji: "🎾", sports: ["tennis"] },
+  { id: "lol", label: "LOL", emoji: "🎮", sports: ["esports"] },
+];
+
+const DEFAULT_SPORT_FILTER_ID = "football";
+
 export function OddsApiMatchBoard({
   mode,
 }: {
-  mode: "live" | "prematch";
+  mode: BoardMode;
 }) {
   const b = useBootstrap();
   const requestHost = useBootstrapHost();
   const { lines, addLine, removeLine } = useBettingCart();
   const [matches, setMatches] = useState<AggregatedMatch[]>([]);
   const [status, setStatus] = useState<OddsApiWsStatus | null>(null);
-  const [activeSport, setActiveSport] = useState<string>("");
+  /**
+   * - mode=all: FIXED_SPORT_FILTERS 의 id. 기본 "football".
+   * - mode=live|prematch: 레거시 sport 키 그대로. 빈 문자열이면 "전체".
+   */
+  const [activeSport, setActiveSport] = useState<string>(
+    mode === "all" ? DEFAULT_SPORT_FILTER_ID : "",
+  );
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const live = useLiveMatchPanelState();
@@ -74,8 +112,9 @@ export function OddsApiMatchBoard({
 
   useEffect(() => {
     void load();
-    // 라이브는 4초, 프리매치는 30초 간격으로 폴링
-    const interval = mode === "live" ? 4_000 : 30_000;
+    // 라이브는 4초, 프리매치는 30초, 통합(all)은 5초(라이브 포함) 간격으로 폴링
+    const interval =
+      mode === "live" ? 4_000 : mode === "prematch" ? 30_000 : 5_000;
     const id = window.setInterval(() => void load(), interval);
     return () => clearInterval(id);
   }, [load, mode]);
@@ -98,9 +137,21 @@ export function OddsApiMatchBoard({
   }, []);
 
   const visibleMatches = useMemo(() => {
-    const bySport = activeSport
-      ? matches.filter((m) => m.sport === activeSport)
-      : matches;
+    let bySport: AggregatedMatch[];
+    if (mode === "all") {
+      // 고정 필터바 기준 — activeSport 는 필터 id
+      const current = FIXED_SPORT_FILTERS.find((f) => f.id === activeSport);
+      if (!current) {
+        bySport = matches;
+      } else {
+        const keys = new Set(current.sports);
+        bySport = matches.filter((m) => keys.has(m.sport));
+      }
+    } else {
+      bySport = activeSport
+        ? matches.filter((m) => m.sport === activeSport)
+        : matches;
+    }
     return bySport.filter((m) => {
       if (m.status === 'live') return true;
       if (!m.startTime) return true;
@@ -108,20 +159,32 @@ export function OddsApiMatchBoard({
       if (!Number.isFinite(t)) return true;
       return t > nowMs;
     });
-  }, [matches, activeSport, nowMs]);
+  }, [matches, activeSport, nowMs, mode]);
 
   const matchesByLeague = useMemo(
-    () => groupByLeague(visibleMatches),
-    [visibleMatches],
+    () =>
+      mode === "all"
+        ? groupByLeagueAndDate(visibleMatches)
+        : groupByLeague(visibleMatches),
+    [visibleMatches, mode],
   );
 
+  /** mode=all 일 때 각 고정 필터의 count, 그 외 레거시(탭) 기준 sport 별 count */
   const sportCounts = useMemo(() => {
     const m = new Map<string, number>();
+    if (mode === "all") {
+      for (const filter of FIXED_SPORT_FILTERS) {
+        const keys = new Set(filter.sports);
+        const n = matches.reduce((a, x) => (keys.has(x.sport) ? a + 1 : a), 0);
+        m.set(filter.id, n);
+      }
+      return m;
+    }
     for (const x of matches) {
       m.set(x.sport, (m.get(x.sport) ?? 0) + 1);
     }
     return m;
-  }, [matches]);
+  }, [matches, mode]);
 
   const picked = useMemo(() => {
     const next = new Set<string>();
@@ -195,7 +258,11 @@ export function OddsApiMatchBoard({
               isLight ? "text-zinc-900" : "text-white"
             }`}
           >
-            {mode === "live" ? "인게임 라이브" : "프리매치"}
+            {mode === "live"
+              ? "인게임 라이브"
+              : mode === "prematch"
+                ? "프리매치"
+                : "배당 목록"}
           </h2>
           <p
             className={`mt-0.5 text-xs ${
@@ -227,48 +294,82 @@ export function OddsApiMatchBoard({
         <EmptyBox isLight={isLight}>
           아직 이 플랫폼의 Live Odds가 활성화되지 않았습니다.
         </EmptyBox>
-      ) : status.filters.sports.length === 0 ? (
+      ) : mode !== "all" && status.filters.sports.length === 0 ? (
         <EmptyBox isLight={isLight}>
           HQ 구독 종목 또는 플랫폼 종목 필터를 먼저 설정해 주세요.
         </EmptyBox>
       ) : (
         <>
-          {/* 종목 탭 — 맨 앞 "전체" 는 필터 해제 */}
-          <div className="mb-3 flex flex-wrap gap-2">
-            {[
-              { sp: "", label: "전체", count: matches.length },
-              ...status.filters.sports.map((sp) => ({
-                sp,
-                label: prettySport(sp),
-                count: sportCounts.get(sp) ?? 0,
-              })),
-            ].map(({ sp, label, count }) => {
-              const active = activeSport === sp;
-              return (
-                <button
-                  key={sp || "__all__"}
-                  type="button"
-                  onClick={() => setActiveSport(sp)}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition md:px-4 ${
-                    active
-                      ? `border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.15)] ${isLight ? "text-zinc-900" : "text-main-gold"}`
-                      : isLight
-                        ? "border-zinc-200 bg-white/80 text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-                        : "border-white/10 bg-zinc-900/50 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
-                  }`}
-                >
-                  <span className="font-semibold capitalize">{label}</span>
-                  <span className="text-[11px] opacity-80">({count})</span>
-                </button>
-              );
-            })}
-          </div>
+          {mode === "all" ? (
+            /* 일반 유저용 고정 종목 필터바 — 버튼을 기존보다 크게, 기본=축구 */
+            <div className="mb-4 flex flex-wrap gap-2 md:gap-3">
+              {FIXED_SPORT_FILTERS.map((f) => {
+                const active = activeSport === f.id;
+                const count = sportCounts.get(f.id) ?? 0;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setActiveSport(f.id)}
+                    className={`flex min-w-[92px] items-center justify-center gap-2 rounded-xl border px-4 py-3 text-[14px] font-semibold transition md:min-w-[108px] md:px-5 md:py-3.5 md:text-[15px] ${
+                      active
+                        ? `border-[rgba(218,174,87,0.65)] bg-[rgba(218,174,87,0.18)] ${isLight ? "text-zinc-900" : "text-main-gold"} shadow-[0_0_0_1px_rgba(218,174,87,0.4)]`
+                        : isLight
+                          ? "border-zinc-200 bg-white/80 text-zinc-700 hover:border-zinc-300 hover:text-zinc-900"
+                          : "border-white/10 bg-zinc-900/50 text-zinc-300 hover:border-white/25 hover:bg-zinc-900/80 hover:text-zinc-100"
+                    }`}
+                  >
+                    <span className="text-lg leading-none md:text-xl">{f.emoji}</span>
+                    <span>{f.label}</span>
+                    <span className={`text-[11px] font-normal ${active ? "opacity-90" : "opacity-60"}`}>
+                      ({count})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* 레거시(운영자 탭) — 맨 앞 "전체" 는 필터 해제 */
+            <div className="mb-3 flex flex-wrap gap-2">
+              {[
+                { sp: "", label: "전체", count: matches.length },
+                ...status.filters.sports.map((sp) => ({
+                  sp,
+                  label: prettySport(sp),
+                  count: sportCounts.get(sp) ?? 0,
+                })),
+              ].map(({ sp, label, count }) => {
+                const active = activeSport === sp;
+                return (
+                  <button
+                    key={sp || "__all__"}
+                    type="button"
+                    onClick={() => setActiveSport(sp)}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition md:px-4 ${
+                      active
+                        ? `border-[rgba(218,174,87,0.55)] bg-[rgba(218,174,87,0.15)] ${isLight ? "text-zinc-900" : "text-main-gold"}`
+                        : isLight
+                          ? "border-zinc-200 bg-white/80 text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+                          : "border-white/10 bg-zinc-900/50 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
+                    }`}
+                  >
+                    <span className="font-semibold capitalize">{label}</span>
+                    <span className="text-[11px] opacity-80">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {totalMatches === 0 ? (
             <EmptyBox isLight={isLight}>
               {mode === "live"
                 ? "현재 진행 중인 라이브 경기가 없습니다."
-                : "예정 경기 데이터가 없습니다."}
+                : mode === "prematch"
+                  ? "예정 경기 데이터가 없습니다."
+                  : activeSport
+                    ? `선택한 종목(${FIXED_SPORT_FILTERS.find((f) => f.id === activeSport)?.label ?? activeSport})의 매칭된 경기가 없습니다.`
+                    : "표시할 경기가 없습니다."}
             </EmptyBox>
           ) : (
             <div className="space-y-4">
@@ -386,6 +487,10 @@ type LeagueGroup = {
   sport: string;
   leagueDisplay: string;
   leagueLogo: string | null;
+  /** 날짜별 복제된 그룹일 때만 설정. 헤더에 "4월 23일 (화)" 형태로 표기 */
+  dateLabel?: string;
+  /** 정렬용 epoch ms — 그룹 내 가장 빠른 kickoff 기준 */
+  sortKey?: number;
   matches: AggregatedMatch[];
 };
 
