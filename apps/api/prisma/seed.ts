@@ -87,6 +87,18 @@ async function ensureDemoUser(
   );
 }
 
+/** odds-api.io 저장 스냅샷·Live Odds Control Room 용 (서버 ODDS_API_KEY + 주기/수동 refresh 와 함께 씀) */
+const DEMO_ODDS_API_JSON: Prisma.InputJsonValue = {
+  enabled: true,
+  sports: ['football', 'basketball'],
+  /** 비우면 REST 카탈로그가 multi-odds 후 전부 걸러질 수 있음 — 코드에서도 selected 로 폴백하지만 시드는 명시 */
+  bookmakers: ['Bet365'],
+  status: 'all',
+  cacheTtlSeconds: 30,
+  matchLimit: 120,
+  useDisplayWhitelist: false,
+};
+
 /** 데모 플랫폼에 항상 채울 연동 예시 — 솔루션 화면에서 탭·피드 목록 확인용 */
 const DEMO_INTEGRATIONS_JSON: Prisma.InputJsonValue = {
   sportsFeeds: [
@@ -123,12 +135,29 @@ const DEMO_INTEGRATIONS_JSON: Prisma.InputJsonValue = {
       notes: '국내 북메이커/피드 예시',
     },
   ],
+  oddsApi: DEMO_ODDS_API_JSON,
 };
 
 function needsDemoSportsFeeds(integrationsJson: unknown): boolean {
   if (!integrationsJson || typeof integrationsJson !== 'object') return true;
   const feeds = (integrationsJson as { sportsFeeds?: unknown }).sportsFeeds;
   return !Array.isArray(feeds) || feeds.length === 0;
+}
+
+function needsDemoOddsApi(integrationsJson: unknown): boolean {
+  if (!integrationsJson || typeof integrationsJson !== 'object') return true;
+  const oa = (integrationsJson as { oddsApi?: { enabled?: boolean } }).oddsApi;
+  if (!oa || typeof oa !== 'object') return true;
+  return oa.enabled !== true;
+}
+
+/** oddsApi 켜져 있는데 bookmakers 만 비어 있으면 REST 스냅샷이 0건 — 시드로 보강 */
+function needsDemoOddsApiBookmakers(integrationsJson: unknown): boolean {
+  if (!integrationsJson || typeof integrationsJson !== 'object') return false;
+  const oa = (integrationsJson as { oddsApi?: { enabled?: boolean } }).oddsApi;
+  if (!oa || typeof oa !== 'object' || oa.enabled !== true) return false;
+  const bm = (oa as { bookmakers?: unknown }).bookmakers;
+  return !Array.isArray(bm) || bm.length === 0;
 }
 
 /** SEED_PLATFORM_HOSTS / SEED_DEMO_PLATFORM_HOSTS — 쉼표·공백 구분, demo 플랫폼에 platform_domains 행 추가 */
@@ -797,12 +826,48 @@ async function main() {
     });
     console.log('Created platform demo + domain localhost + sportsFeeds');
   } else {
-    if (needsDemoSportsFeeds(platform.integrationsJson)) {
+    const needFeeds = needsDemoSportsFeeds(platform.integrationsJson);
+    const needOdds = needsDemoOddsApi(platform.integrationsJson);
+    if (needFeeds || needOdds) {
+      const base =
+        platform.integrationsJson && typeof platform.integrationsJson === 'object'
+          ? { ...(platform.integrationsJson as Record<string, unknown>) }
+          : {};
+      const merged: Record<string, unknown> = {
+        ...base,
+        ...(needFeeds
+          ? {
+              sportsFeeds: (DEMO_INTEGRATIONS_JSON as { sportsFeeds: unknown })
+                .sportsFeeds,
+            }
+          : {}),
+        ...(needOdds ? { oddsApi: DEMO_ODDS_API_JSON } : {}),
+      };
       await prisma.platform.update({
         where: { id: platform.id },
-        data: { integrationsJson: DEMO_INTEGRATIONS_JSON },
+        data: { integrationsJson: merged as Prisma.InputJsonValue },
       });
-      console.log('Updated demo platform: seeded sportsFeeds (was empty)');
+      console.log(
+        `Updated demo platform integrations: sportsFeeds=${needFeeds ? 'patched' : 'keep'} oddsApi=${needOdds ? 'patched' : 'keep'}`,
+      );
+    } else if (needsDemoOddsApiBookmakers(platform.integrationsJson)) {
+      const base =
+        platform.integrationsJson && typeof platform.integrationsJson === 'object'
+          ? { ...(platform.integrationsJson as Record<string, unknown>) }
+          : {};
+      const prevOa =
+        base.oddsApi && typeof base.oddsApi === 'object'
+          ? { ...(base.oddsApi as Record<string, unknown>) }
+          : {};
+      const merged: Record<string, unknown> = {
+        ...base,
+        oddsApi: { ...prevOa, bookmakers: ['Bet365'] },
+      };
+      await prisma.platform.update({
+        where: { id: platform.id },
+        data: { integrationsJson: merged as Prisma.InputJsonValue },
+      });
+      console.log('Updated demo platform: oddsApi.bookmakers → Bet365 (REST 스냅샷용)');
     }
     if (platform.previewPort == null) {
       const portTaken = await prisma.platform.findFirst({

@@ -131,6 +131,12 @@ type ProcessedSnapshotSummary = {
 export class OddsApiSnapshotService {
   private readonly log = new Logger(OddsApiSnapshotService.name);
 
+  /** integrationsJson.bookmakers 가 비었을 때 listSelected 결과 캐시(분당 호출 폭주 방지) */
+  private restBookmakerFallbackCache: {
+    until: number;
+    bookmakers: string[];
+  } | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly aggregator: OddsApiAggregatorService,
@@ -545,6 +551,51 @@ export class OddsApiSnapshotService {
   }
 
   /**
+   * 플랫폼에 bookmakers 가 비어 있으면 `/v3/odds/multi` 응답의 bookmakers 가 비어
+   * catalog 가 전부 필터링되는 문제가 있음 → API `bookmakers/selected` 또는 Bet365 폴백.
+   */
+  private async resolveOddsApiBookmakersForRest(
+    config: OddsApiConfig,
+  ): Promise<string[]> {
+    const configured = uniqClean(config.bookmakers);
+    if (configured.length > 0) {
+      return configured.slice(0, 16);
+    }
+    const now = Date.now();
+    const c = this.restBookmakerFallbackCache;
+    if (c && now < c.until && c.bookmakers.length > 0) {
+      return c.bookmakers;
+    }
+    try {
+      const selected = await this.rest.listSelectedBookmakers();
+      const slugs = uniqClean(
+        selected.map((b) => (typeof b.slug === 'string' ? b.slug.trim() : '')),
+      );
+      const out = slugs.length > 0 ? slugs.slice(0, 12) : ['Bet365'];
+      if (slugs.length === 0) {
+        this.log.warn(
+          'odds-api REST: bookmakers 비어 있고 /bookmakers/selected 도 비어 있음 — Bet365 로 multi-odds 호출',
+        );
+      } else {
+        this.log.log(
+          `odds-api REST: integrationsJson.bookmakers 비어 있음 — API selected ${out.length}개 사용`,
+        );
+      }
+      this.restBookmakerFallbackCache = { until: now + 60_000, bookmakers: out };
+      return out;
+    } catch (e) {
+      this.log.warn(
+        `odds-api REST: listSelectedBookmakers 실패 — Bet365 폴백: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+      const out = ['Bet365'];
+      this.restBookmakerFallbackCache = { until: now + 60_000, bookmakers: out };
+      return out;
+    }
+  }
+
+  /**
    * REST 카탈로그를 한 번 빌드. 다음을 모두 수행한다:
    *   1) 종목 풀에서 이번 tick 에 다룰 종목만 골라 (티어 로테이션)
    *   2) 종목별로 status=pending(prematch) × bookmaker / status=live / status=settled 분리 호출
@@ -562,7 +613,7 @@ export class OddsApiSnapshotService {
     const allSports = uniqClean(config.sports);
     const tickIndex = currentTickIndex(fetchedAt);
     const sports = allSports.filter((s) => shouldFetchSportThisTick(s, tickIndex));
-    const bookmakers = uniqClean(config.bookmakers);
+    const bookmakers = await this.resolveOddsApiBookmakersForRest(config);
     const filters = this.filtersFromConfig(config);
     const fetchedAtIso = fetchedAt.toISOString();
 

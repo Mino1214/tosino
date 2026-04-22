@@ -622,7 +622,17 @@ export class CrawlerMatcherService {
   // ─── Admin helpers ────────────────────────────────────────────────
 
   async listMappings(params: {
-    status?: 'pending' | 'auto' | 'confirmed' | 'rejected' | 'ignored' | 'all';
+    status?:
+      | 'pending'
+      | 'auto'
+      | 'confirmed'
+      | 'rejected'
+      | 'ignored'
+      | 'all'
+      /** HQ UI: 자동+수동확정 한 화면에서 보기 */
+      | 'matched'
+      /** HQ UI: 거부+무시 등 정리함 */
+      | 'misc';
     sportSlug?: string;
     leagueSlug?: string;
     sourceSite?: string;
@@ -640,7 +650,15 @@ export class CrawlerMatcherService {
     const where: Record<string, unknown> = {};
     const andClauses: Record<string, unknown>[] = [];
     if (params.sourceSite) where.sourceSite = params.sourceSite;
-    if (params.status && params.status !== 'all') where.status = params.status;
+    if (params.status && params.status !== 'all') {
+      if (params.status === 'matched') {
+        where.status = { in: ['auto', 'confirmed'] };
+      } else if (params.status === 'misc') {
+        where.status = { in: ['rejected', 'ignored'] };
+      } else {
+        where.status = params.status;
+      }
+    }
     if (params.sportSlug) {
       andClauses.push({
         OR: [

@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import {
   DragEvent,
   useCallback,
@@ -200,6 +201,46 @@ const STATUS_COLOR: Record<MatchStatus, string> = {
 
 const DND_MIME = "application/x-tosino-provider-event";
 
+/** odds-api / 내부 slug — 기본은 축구(전체 종목 자동 로드 안 함) */
+const DEFAULT_SPORT_SLUG = "soccer";
+
+const QUICK_SPORT_PILLS: { slug: string; label: string }[] = [
+  { slug: "soccer", label: "축구" },
+  { slug: "basketball", label: "농구" },
+  { slug: "baseball", label: "야구" },
+  { slug: "ice-hockey", label: "아이스하키" },
+  { slug: "tennis", label: "테니스" },
+  { slug: "football", label: "풋볼" },
+];
+
+type ListStatusTab = "pending" | "matched" | "misc";
+
+const LIST_TAB_META: {
+  id: ListStatusTab;
+  label: string;
+  hint: string;
+  apiStatus: "pending" | "matched" | "misc";
+}[] = [
+  {
+    id: "pending",
+    label: "매칭 대기",
+    hint: "strict 미충족·수동 확정 전",
+    apiStatus: "pending",
+  },
+  {
+    id: "matched",
+    label: "매칭됨",
+    hint: "자동·수동확정 (크롤 쪽 이름 ✏ 수정)",
+    apiStatus: "matched",
+  },
+  {
+    id: "misc",
+    label: "미분류",
+    hint: "거부·무시",
+    apiStatus: "misc",
+  },
+];
+
 function fmtDate(v: string | null | undefined) {
   if (!v) return "-";
   try {
@@ -288,10 +329,8 @@ export default function CrawlerMatchesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<MatchStatus | "all">(
-    "pending",
-  );
-  const [sportFilter, setSportFilter] = useState(""); // internalSport
+  const [listStatusTab, setListStatusTab] = useState<ListStatusTab>("pending");
+  const [sportFilter, setSportFilter] = useState(DEFAULT_SPORT_SLUG);
   const [leagueFilter, setLeagueFilter] = useState("");
   const [query, setQuery] = useState("");
   const [runBusy, setRunBusy] = useState(false);
@@ -325,12 +364,14 @@ export default function CrawlerMatchesPage() {
     }
   }, []);
 
+  const listApiStatus = LIST_TAB_META.find((t) => t.id === listStatusTab)?.apiStatus ?? "pending";
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const qp = new URLSearchParams();
-      if (statusFilter !== "all") qp.set("status", statusFilter);
+      qp.set("status", listApiStatus);
       if (sportFilter.trim()) qp.set("sportSlug", sportFilter.trim());
       if (leagueFilter.trim()) qp.set("leagueSlug", leagueFilter.trim());
       if (query.trim()) qp.set("q", query.trim());
@@ -346,7 +387,7 @@ export default function CrawlerMatchesPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, sportFilter, leagueFilter, query, kickoffScope]);
+  }, [listApiStatus, sportFilter, leagueFilter, query, kickoffScope]);
 
   useEffect(() => {
     void refreshStats();
@@ -357,13 +398,35 @@ export default function CrawlerMatchesPage() {
     void refresh();
   }, [refresh]);
 
+  /** facets 로 실제 있는 slug 로 보정 (기본 soccer 가 DB 에 없을 때) */
+  useEffect(() => {
+    if (!facets?.sports?.length) return;
+    const slugs = new Set(
+      facets.sports
+        .map((s) => (s.internalSport || s.sourceSport).trim())
+        .filter(Boolean),
+    );
+    if (slugs.has(sportFilter)) return;
+    const pick =
+      ["soccer", "football", "basketball", "baseball", "ice-hockey", "tennis"].find(
+        (s) => slugs.has(s),
+      ) ??
+      facets.sports[0].internalSport ??
+      facets.sports[0].sourceSport;
+    if (pick) setSportFilter(pick);
+  }, [facets, sportFilter]);
+
   const runMatcher = useCallback(async () => {
     setRunBusy(true);
     setRunResult(null);
     try {
+      const body: Record<string, unknown> = { limit: 2000 };
+      if (listStatusTab === "pending") {
+        body.onlyStatuses = ["pending", "rejected"];
+      }
       const r = await apiFetch<RunMatcherQueuedResponse | RunMatcherDoneResponse>(
         "/hq/crawler/matches/run-matcher",
-        { method: "POST", body: JSON.stringify({ limit: 2000 }) },
+        { method: "POST", body: JSON.stringify(body) },
       );
       setRunResult(r);
       if (!isRunMatcherQueued(r)) {
@@ -376,7 +439,7 @@ export default function CrawlerMatchesPage() {
     } finally {
       setRunBusy(false);
     }
-  }, [refresh, refreshStats, refreshFacets]);
+  }, [refresh, refreshStats, refreshFacets, listStatusTab]);
 
   const actionReject = useCallback(
     async (row: MatchMapping) => {
@@ -463,16 +526,34 @@ export default function CrawlerMatchesPage() {
   const counts = useMemo(() => stats, [stats]);
 
   // ── UI ─────────────────────────────────────────────────────
+  const pillBase: CSSProperties = {
+    padding: "7px 14px",
+    borderRadius: 999,
+    fontSize: 13,
+    fontWeight: 600,
+    border: "1px solid #e2e8f0",
+    background: "#fff",
+    color: "#334155",
+    cursor: "pointer",
+    lineHeight: 1.2,
+  };
+  const pillActive: CSSProperties = {
+    ...pillBase,
+    borderColor: "#2563eb",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    boxShadow: "0 0 0 1px rgba(37,99,235,0.2)",
+  };
+
   return (
     <div style={{ padding: 20, maxWidth: 1800, margin: "0 auto" }}>
       <h1 style={{ marginBottom: 4 }}>크롤러 경기 매칭</h1>
-      <p style={{ color: "#666", marginBottom: 12, fontSize: 12 }}>
-        오른쪽 provider 이벤트 카드를 왼쪽 크롤러 매칭 카드로 드래그하면 즉시
-        확정됩니다. strict 규칙(리그·홈·원정 팀 전부 confirmed + 동일
-        sport/leagueSlug/homeId/awayId + kickoff ±90분)을 만족하면 매처가 자동
-        <code> auto </code>로 올립니다. 기본 목록은{" "}
-        <strong>경기 시각이 아직 오지 않은 건</strong>만 보여 주며, 이미 시작·종료된
-        건은 「미처리(과거)」에서 따로 봅니다.
+      <p style={{ color: "#666", marginBottom: 12, fontSize: 12, lineHeight: 1.5 }}>
+        <strong>strict 매칭·DB 스캔</strong>은{" "}
+        <code style={{ fontSize: 11 }}>crawler-matcher-worker</code> 큐에서 처리하고,
+        이 화면은 <strong>선택 종목·탭 기준 매칭 결과만 조회</strong>합니다. 오른쪽
+        catalog 카드를 왼쪽 카드로 드래그하면 즉시 확정됩니다. kickoff 구간은
+        아래에서 고릅니다.
       </p>
 
       {/* 상태 카운터 */}
@@ -533,7 +614,7 @@ export default function CrawlerMatchesPage() {
         </div>
       </div>
 
-      {/* 실행 + 필터 */}
+      {/* 구간 + 워커 큐 */}
       <div
         style={{
           display: "flex",
@@ -543,9 +624,7 @@ export default function CrawlerMatchesPage() {
           marginBottom: 10,
         }}
       >
-        <span style={{ fontSize: 12, color: "#555", fontWeight: 600 }}>
-          구간
-        </span>
+        <span style={{ fontSize: 12, color: "#555", fontWeight: 600 }}>구간</span>
         <select
           value={kickoffScope}
           onChange={(e) =>
@@ -581,59 +660,132 @@ export default function CrawlerMatchesPage() {
           </span>
         )}
 
-        <span style={{ marginLeft: 12, fontSize: 12, color: "#555" }}>
-          상태
+        <button type="button" onClick={() => void refresh()} style={btnGhost}>
+          새로고침
+        </button>
+        {loading && (
+          <span style={{ fontSize: 11, color: "#666" }}>loading…</span>
+        )}
+      </div>
+
+      {/* 종목 pill — 기본 축구, 전체는 명시 선택 */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          alignItems: "center",
+          marginBottom: 10,
+        }}
+      >
+        <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600, marginRight: 4 }}>
+          종목
         </span>
-        <select
-          value={statusFilter}
-          onChange={(e) =>
-            setStatusFilter(e.target.value as MatchStatus | "all")
-          }
-          style={inputStyle}
-        >
-          {(["pending", "auto", "confirmed", "rejected", "ignored", "all"] as const).map(
-            (s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ),
-          )}
-        </select>
-
-        <span style={{ fontSize: 12, color: "#555" }}>sport</span>
-        <select
-          value={sportFilter}
-          onChange={(e) => {
-            setSportFilter(e.target.value);
-            setLeagueFilter(""); // sport 바꾸면 league 리셋
-          }}
-          style={inputStyle}
-        >
-          <option value="">(전체)</option>
-          {(facets?.sports ?? []).map((s) => (
-            <option
-              key={`${s.sourceSport}::${s.internalSport}`}
-              value={s.internalSport || s.sourceSport}
+        {QUICK_SPORT_PILLS.map((p) => {
+          const active = sportFilter === p.slug;
+          return (
+            <button
+              key={p.slug}
+              type="button"
+              onClick={() => {
+                setSportFilter(p.slug);
+                setLeagueFilter("");
+              }}
+              style={active ? pillActive : pillBase}
             >
-              {(s.internalSport || s.sourceSport)} ({s.count})
-            </option>
-          ))}
-        </select>
+              {p.label}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => {
+            setSportFilter("");
+            setLeagueFilter("");
+          }}
+          style={sportFilter === "" ? pillActive : pillBase}
+        >
+          전체
+        </button>
+        {(facets?.sports ?? [])
+          .filter((s) => {
+            const slug = (s.internalSport || s.sourceSport).trim();
+            return (
+              slug &&
+              !QUICK_SPORT_PILLS.some((p) => p.slug === slug)
+            );
+          })
+          .slice(0, 8)
+          .map((s) => {
+            const slug = (s.internalSport || s.sourceSport).trim();
+            const active = sportFilter === slug;
+            return (
+              <button
+                key={slug}
+                type="button"
+                onClick={() => {
+                  setSportFilter(slug);
+                  setLeagueFilter("");
+                }}
+                style={active ? pillActive : pillBase}
+              >
+                {slug}
+                <span style={{ fontWeight: 500, color: "#94a3b8", fontSize: 11 }}>
+                  {" "}
+                  ({s.count})
+                </span>
+              </button>
+            );
+          })}
+      </div>
 
+      {/* 목록 탭: 대기 / 매칭됨 / 미분류 */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          alignItems: "center",
+          marginBottom: 10,
+        }}
+      >
+        {LIST_TAB_META.map((t) => {
+          const active = listStatusTab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              title={t.hint}
+              onClick={() => setListStatusTab(t.id)}
+              style={active ? pillActive : pillBase}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 리그 · 검색 (좌·우 목록 공통 필터) */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: 10,
+        }}
+      >
         <span style={{ fontSize: 12, color: "#555" }}>league</span>
         <select
           value={leagueFilter}
           onChange={(e) => setLeagueFilter(e.target.value)}
-          style={{ ...inputStyle, minWidth: 220 }}
+          style={{ ...inputStyle, minWidth: 200 }}
         >
-          <option value="">(전체)</option>
+          <option value="">(전체 리그)</option>
           {(facets?.leagues ?? [])
             .filter(
               (l) =>
-                !sportFilter.trim() ||
-                l.sourceSport === sportFilter.trim() ||
-                // internal sport 기준이라 source=live soccer 같은 변형 케이스 느슨 매칭
-                true,
+                !sportFilter.trim() || l.sourceSport === sportFilter.trim(),
             )
             .map((l) => (
               <option
@@ -644,7 +796,6 @@ export default function CrawlerMatchesPage() {
               </option>
             ))}
         </select>
-
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -654,15 +805,9 @@ export default function CrawlerMatchesPage() {
               void refresh();
             }
           }}
-          placeholder="팀 / 리그 / eventId 검색"
-          style={{ ...inputStyle, minWidth: 220 }}
+          placeholder="팀 / 리그 / eventId (좌·우 동시 필터)"
+          style={{ ...inputStyle, minWidth: 240, flex: 1 }}
         />
-        <button type="button" onClick={() => void refresh()} style={btnGhost}>
-          새로고침
-        </button>
-        {loading && (
-          <span style={{ fontSize: 11, color: "#666" }}>loading…</span>
-        )}
       </div>
 
       {error && (
@@ -685,7 +830,7 @@ export default function CrawlerMatchesPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.15fr) minmax(300px, 400px)",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
           gap: 0,
           alignItems: "stretch",
           borderRadius: 14,
@@ -793,8 +938,7 @@ export default function CrawlerMatchesPage() {
           sport={sportFilter}
           leagueSlug={leagueFilter}
           kickoffScope={kickoffScope}
-          onChangeSport={setSportFilter}
-          facets={facets}
+          searchQuery={query}
         />
       </div>
 
@@ -1734,22 +1878,18 @@ function ProviderPoolPanel({
   sport,
   leagueSlug,
   kickoffScope,
-  onChangeSport,
-  facets,
+  searchQuery,
 }: {
   sport: string;
   leagueSlug: string;
   kickoffScope: "upcoming" | "past";
-  onChangeSport: (s: string) => void;
-  facets: FacetsResponse | null;
+  searchQuery: string;
 }) {
   const [events, setEvents] = useState<ProviderEvent[]>([]);
   const [poolTotal, setPoolTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [onlyUnused, setOnlyUnused] = useState(true);
-  const [q, setQ] = useState("");
-  const [localSport, setLocalSport] = useState(sport);
   const [suggestSourceSite, setSuggestSourceSite] = useState("");
   const [crawlSuggestEv, setCrawlSuggestEv] = useState<ProviderEvent | null>(
     null,
@@ -1761,11 +1901,6 @@ function ProviderPoolPanel({
     listLenRef.current = events.length;
   }, [events.length]);
 
-  // 부모의 sport 필터가 바뀌면 동기화 (명시적 초기값만)
-  useEffect(() => {
-    setLocalSport(sport);
-  }, [sport]);
-
   /** fromSkip=0 이면 목록 교체, 그보다 크면 이어 붙임(페이지네이션). */
   const load = useCallback(
     async (fromSkip: number) => {
@@ -1773,9 +1908,9 @@ function ProviderPoolPanel({
       setErr(null);
       try {
         const qp = new URLSearchParams();
-        if (localSport.trim()) qp.set("sport", localSport.trim());
+        if (sport.trim()) qp.set("sport", sport.trim());
         if (leagueSlug.trim()) qp.set("leagueSlug", leagueSlug.trim());
-        if (q.trim()) qp.set("q", q.trim());
+        if (searchQuery.trim()) qp.set("q", searchQuery.trim());
         if (onlyUnused) qp.set("onlyUnused", "1");
         qp.set("kickoffScope", kickoffScope);
         qp.set("limit", "400");
@@ -1796,7 +1931,7 @@ function ProviderPoolPanel({
         setLoading(false);
       }
     },
-    [localSport, leagueSlug, q, onlyUnused, kickoffScope],
+    [sport, leagueSlug, searchQuery, onlyUnused, kickoffScope],
   );
 
   /** 팀/리그 한글명 upsert 후 카드 state 낙관적 업데이트. */
@@ -1892,110 +2027,73 @@ function ProviderPoolPanel({
         minHeight: 0,
         minWidth: 0,
         height: "100%",
-        overflow: "hidden",
-        background: "linear-gradient(165deg, #eef2ff 0%, #e0e7ff 40%, #f8fafc 100%)",
-        padding: 10,
+        background: "#fff",
       }}
     >
       <div
         style={{
           flexShrink: 0,
-          paddingBottom: 8,
-          borderBottom: "1px solid rgba(99,102,241,0.25)",
-          marginBottom: 8,
+          padding: "10px 14px",
+          background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+          borderBottom: "1px solid #e2e8f0",
         }}
       >
         <div
           style={{
             display: "flex",
-            alignItems: "center",
+            alignItems: "baseline",
             justifyContent: "space-between",
-            marginBottom: 4,
             gap: 8,
+            flexWrap: "wrap",
           }}
         >
-        <div style={{ fontWeight: 700, fontSize: 14, color: "#312e81" }}>
-          Provider 카드 풀
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+            Provider 카탈로그
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>
+            {events.length.toLocaleString()}
+            {poolTotal > 0 && (
+              <span style={{ color: "#475569", fontWeight: 500 }}>
+                {" "}
+                / {poolTotal.toLocaleString()} 건
+              </span>
+            )}
+            {hasMore ? " · 더 있음" : ""}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 600 }}>
-          {events.length.toLocaleString()}
-          {poolTotal > 0 && (
-            <span style={{ color: "#4f46e5", fontWeight: 500 }}>
-              {" "}
-              / {poolTotal.toLocaleString()} 건(필터)
-            </span>
-          )}
-          {hasMore ? " · 더 있음" : ""}
-        </div>
-        </div>
-      <div style={{ fontSize: 11, color: "#4338ca", marginBottom: 8, lineHeight: 1.45 }}>
-        odds-api.io catalog 최근 24h 스냅샷. 왼쪽과 동일하게{" "}
-        {kickoffScope === "upcoming"
-          ? "예정·진행 이벤트만"
-          : "과거 kickoff 이벤트만"}{" "}
-        표시합니다. 종목을 좁히면 풀을 빠르게 훑을 수 있고, &quot;더 불러오기&quot;로
-        이어서 불러옵니다.
-      </div>
-      {!localSport.trim() && (
         <div
           style={{
             fontSize: 11,
-            color: "#92400e",
-            background: "#fffbeb",
-            border: "1px solid #fde68a",
-            borderRadius: 8,
-            padding: "6px 8px",
-            marginBottom: 8,
-            flexShrink: 0,
+            color: "#64748b",
+            marginTop: 4,
+            lineHeight: 1.45,
           }}
         >
-          종목(스포츠)을 선택하지 않으면 전 종목이 섞인 풀에서 앞쪽만 보입니다.
+          왼쪽과 동일한 구간·종목·리그·검색어로 풀을 불러옵니다. 카드를 왼쪽으로 드래그하면
+          확정됩니다.
+          {kickoffScope === "upcoming"
+            ? " 예정·진행 이벤트만."
+            : " 과거 kickoff 이벤트만."}
+          {!sport.trim() && (
+            <span style={{ color: "#b45309", display: "block", marginTop: 4 }}>
+              종목이 「전체」이면 여러 스포츠가 섞여 앞쪽 일부만 보일 수 있습니다.
+            </span>
+          )}
         </div>
-      )}
       </div>
 
-      {/* 필터 (고정 영역) */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 6, flexShrink: 0 }}>
-        <select
-          value={localSport}
-          onChange={(e) => {
-            setLocalSport(e.target.value);
-            onChangeSport(e.target.value);
-          }}
-          style={{ ...inputStyle, flex: 1 }}
-        >
-          <option value="">(sport 선택)</option>
-          {(facets?.sports ?? []).map((s) => (
-            <option
-              key={s.internalSport || s.sourceSport}
-              value={s.internalSport || s.sourceSport}
-            >
-              {s.internalSport || s.sourceSport}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={() => void load(0)}
-          style={btnGhost}
-          title="첫 페이지부터 다시"
-        >
-          ↻
-        </button>
-      </div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexShrink: 0 }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void load(0);
-            }
-          }}
-          placeholder="팀/리그 검색"
-          style={{ ...inputStyle, flex: 1 }}
-        />
+      <div
+        style={{
+          flexShrink: 0,
+          padding: "8px 14px",
+          borderBottom: "1px solid #e2e8f0",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          alignItems: "center",
+          background: "#fafafa",
+        }}
+      >
         <label
           style={{
             display: "inline-flex",
@@ -2013,55 +2111,49 @@ function ProviderPoolPanel({
           />
           미사용만
         </label>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          marginBottom: 8,
-          alignItems: "center",
-          flexShrink: 0,
-        }}
-      >
         <label style={{ fontSize: 11, color: "#555", whiteSpace: "nowrap" }}>
-          후보 추천·매핑용 sourceSite
+          후보 sourceSite
         </label>
         <input
           value={suggestSourceSite}
           onChange={(e) => setSuggestSourceSite(e.target.value)}
-          placeholder="예: livesport (비우면 전체)"
-          style={{ ...inputStyle, flex: 1 }}
+          placeholder="예: livesport"
+          style={{ ...inputStyle, minWidth: 120, flex: 1, maxWidth: 260 }}
         />
+        <button
+          type="button"
+          onClick={() => void load(0)}
+          style={btnGhost}
+          title="첫 페이지부터 다시"
+        >
+          ↻ 새로고침
+        </button>
       </div>
       {err && (
         <div
           style={{
-            fontSize: 11,
-            color: "#c00",
-            padding: "4px 6px",
-            marginBottom: 6,
+            fontSize: 12,
+            color: "#a00",
+            padding: "8px 14px",
             flexShrink: 0,
+            borderBottom: "1px solid #fecaca",
+            background: "#fef2f2",
           }}
         >
           {err}
         </div>
       )}
-      {/* 카드 리스트 — flex에서 스크롤하려면 minHeight:0 필수 */}
+
       <div
         style={{
           flex: 1,
           minHeight: 0,
           overflowY: "auto",
-          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
+          padding: 12,
           display: "flex",
           flexDirection: "column",
-          gap: 6,
-          paddingRight: 6,
-          WebkitOverflowScrolling: "touch",
-          borderRadius: 8,
-          background: "rgba(255,255,255,0.72)",
-          border: "1px solid rgba(99,102,241,0.2)",
-          padding: 8,
+          gap: 10,
         }}
       >
         {loading && events.length === 0 && (
@@ -2075,10 +2167,12 @@ function ProviderPoolPanel({
               fontSize: 12,
               color: "#888",
               textAlign: "center",
-              padding: 16,
+              padding: 24,
+              border: "1px dashed #ddd",
+              borderRadius: 10,
             }}
           >
-            카드 없음 — sport 를 선택하거나 &apos;미사용만&apos; 을 꺼보세요.
+            카드 없음 — 위에서 종목·필터를 조정하거나 &apos;미사용만&apos; 을 꺼보세요.
           </div>
         )}
         {groupProviderByCountry(events).map((g) => (

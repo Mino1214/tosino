@@ -295,7 +295,9 @@ export class CrawlerMatchesAdminController {
       | 'confirmed'
       | 'rejected'
       | 'ignored'
-      | 'all',
+      | 'all'
+      | 'matched'
+      | 'misc',
     @Query('sportSlug') sportSlug?: string,
     @Query('leagueSlug') leagueSlug?: string,
     @Query('q') q?: string,
