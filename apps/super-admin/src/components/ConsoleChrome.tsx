@@ -36,6 +36,11 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/console/credits", label: "알값 · 크레딧", hint: "HQ 크레딧 허브" },
       { href: "/console/semi-virtual-accounts", label: "반가상 번들", hint: "전 솔루션 집계" },
       { href: "/console/odds-api-ws", label: "Live Odds", hint: "피드 · WS 안내" },
+      { href: "/console/odds-api-aliases", label: "Odds 매핑", hint: "리그 · 팀 한글명/로고" },
+      { href: "/console/odds-api-whitelist", label: "Odds 화이트리스트", hint: "스코어 크롤러 연동" },
+      { href: "/console/crawler-leagues", label: "크롤러 리그 매핑", hint: "livesport ↔ odds-api" },
+      { href: "/console/crawler-teams", label: "크롤러 팀 매핑", hint: "한글명 역학습" },
+      { href: "/console/crawler-matches", label: "크롤러 경기 매칭", hint: "strict 자동 + 수동 검수" },
     ],
   },
   {

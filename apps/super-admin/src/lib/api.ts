@@ -57,6 +57,24 @@ export function getApiBase(): string {
   return ENV_API_BASE;
 }
 
+/**
+ * DB·크롤러가 상대 경로로 넣는 `/assets/crawler/...` 를, API 정적 서빙 URL로 풀어 쓴다.
+ * (super-admin이 API와 다른 호스트이면 `src="/assets/...` 는 콘솔 도메인으로 가 404가 남)
+ */
+export function publicAssetUrl(
+  pathOrUrl: string | null | undefined,
+): string | undefined {
+  if (pathOrUrl == null) return undefined;
+  const s = String(pathOrUrl).trim();
+  if (!s) return undefined;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("/")) {
+    const base = getApiBase().replace(/\/api\/?$/, "");
+    return `${base}${s}`;
+  }
+  return s;
+}
+
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("accessToken");

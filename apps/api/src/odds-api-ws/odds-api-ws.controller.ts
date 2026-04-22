@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -11,14 +13,17 @@ import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import { PublicPlatformResolveService } from '../public/public-platform-resolve.service';
 import { OddsApiWsService } from './odds-api-ws.service';
 import {
   OddsApiAggregatorService,
   type MatchStatus,
 } from './odds-api-aggregator.service';
+import { OddsApiIntegrationKeyGuard } from './odds-api-integration-key.guard';
 import { OddsApiRestService } from './odds-api-rest.service';
 import { OddsApiSnapshotService } from './odds-api-snapshot.service';
+import { OddsApiWhitelistService } from './odds-api-whitelist.service';
 
 function parseMatchStatus(v: string | undefined): MatchStatus | 'all' {
   const s = (v ?? '').trim().toLowerCase();
@@ -197,6 +202,8 @@ export class OddsApiWsAdminController {
     private readonly aggregator: OddsApiAggregatorService,
     private readonly rest: OddsApiRestService,
     private readonly snapshots: OddsApiSnapshotService,
+    private readonly prisma: PrismaService,
+    private readonly whitelist: OddsApiWhitelistService,
   ) {}
 
   @Get('status')
@@ -409,6 +416,262 @@ export class OddsApiWsAdminController {
       items,
     };
   }
+
+  @Get('aliases/leagues')
+  async listLeagueAliases(
+    @Query('sport') sport?: string,
+    @Query('q') q?: string,
+    @Query('onlyUnmapped') onlyUnmapped?: string,
+    @Query('take') take?: string,
+  ) {
+    const size = Math.min(Math.max(parseInt(take || '100', 10) || 100, 1), 500);
+    const sp = (sport || '').trim();
+    const query = (q || '').trim();
+    const unmapped = (onlyUnmapped || '').toLowerCase() === 'true';
+    const rows = await this.prisma.oddsApiLeagueAlias.findMany({
+      where: {
+        ...(sp ? { sport: sp } : {}),
+        ...(unmapped ? { koreanName: null } : {}),
+        ...(query
+          ? {
+              OR: [
+                { slug: { contains: query, mode: 'insensitive' as const } },
+                { originalName: { contains: query, mode: 'insensitive' as const } },
+                { koreanName: { contains: query, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ sport: 'asc' }, { originalName: 'asc' }],
+      take: size,
+    });
+    return { total: rows.length, rows };
+  }
+
+  @Patch('aliases/leagues/:id')
+  async updateLeagueAlias(
+    @Param('id') paramId: string,
+    @Body()
+    body: {
+      koreanName?: string | null;
+      logoUrl?: string | null;
+      country?: string | null;
+      displayPriority?: number;
+      isHidden?: boolean;
+    },
+  ) {
+    const id = (paramId || '').trim();
+    if (!id) throw new BadRequestException('id is required');
+    return this.prisma.oddsApiLeagueAlias.update({
+      where: { id },
+      data: {
+        koreanName:
+          body.koreanName === undefined
+            ? undefined
+            : body.koreanName === ''
+              ? null
+              : body.koreanName,
+        logoUrl:
+          body.logoUrl === undefined
+            ? undefined
+            : body.logoUrl === ''
+              ? null
+              : body.logoUrl,
+        country:
+          body.country === undefined
+            ? undefined
+            : body.country === ''
+              ? null
+              : body.country,
+        displayPriority: body.displayPriority,
+        isHidden: body.isHidden,
+      },
+    });
+  }
+
+  @Get('aliases/teams')
+  async listTeamAliases(
+    @Query('sport') sport?: string,
+    @Query('q') q?: string,
+    @Query('onlyUnmapped') onlyUnmapped?: string,
+    @Query('take') take?: string,
+  ) {
+    const size = Math.min(Math.max(parseInt(take || '100', 10) || 100, 1), 500);
+    const sp = (sport || '').trim();
+    const query = (q || '').trim();
+    const unmapped = (onlyUnmapped || '').toLowerCase() === 'true';
+    const rows = await this.prisma.oddsApiTeamAlias.findMany({
+      where: {
+        ...(sp ? { sport: sp } : {}),
+        ...(unmapped ? { koreanName: null } : {}),
+        ...(query
+          ? {
+              OR: [
+                { externalId: { contains: query } },
+                { originalName: { contains: query, mode: 'insensitive' as const } },
+                { koreanName: { contains: query, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ sport: 'asc' }, { originalName: 'asc' }],
+      take: size,
+    });
+    return { total: rows.length, rows };
+  }
+
+  @Patch('aliases/teams/:id')
+  async updateTeamAlias(
+    @Param('id') paramId: string,
+    @Body()
+    body: {
+      koreanName?: string | null;
+      logoUrl?: string | null;
+      country?: string | null;
+    },
+  ) {
+    const id = (paramId || '').trim();
+    if (!id) throw new BadRequestException('id is required');
+    return this.prisma.oddsApiTeamAlias.update({
+      where: { id },
+      data: {
+        koreanName:
+          body.koreanName === undefined
+            ? undefined
+            : body.koreanName === ''
+              ? null
+              : body.koreanName,
+        logoUrl:
+          body.logoUrl === undefined
+            ? undefined
+            : body.logoUrl === ''
+              ? null
+              : body.logoUrl,
+        country:
+          body.country === undefined
+            ? undefined
+            : body.country === ''
+              ? null
+              : body.country,
+      },
+    });
+  }
+
+  // ───────── display whitelist (Phase 3) ─────────
+
+  @Get('whitelist')
+  async listWhitelist(
+    @Query('sport') sport?: string,
+    @Query('take') take?: string,
+  ) {
+    return this.whitelist.list({
+      sport: (sport || '').trim() || undefined,
+      take: take ? parseInt(take, 10) : undefined,
+    });
+  }
+
+  @Get('whitelist/stats')
+  async whitelistStats() {
+    return this.whitelist.stats();
+  }
+
+  @Post('whitelist/replace')
+  async replaceWhitelist(
+    @Body()
+    body: {
+      sport?: string;
+      externalEventIds?: string[];
+      source?: string;
+      ttlSeconds?: number | null;
+    },
+  ) {
+    const sport = (body.sport || '').trim();
+    if (!sport) throw new BadRequestException('sport is required');
+    const ids = Array.isArray(body.externalEventIds)
+      ? body.externalEventIds
+      : [];
+    return this.whitelist.replaceForSport(sport, ids, {
+      source: body.source,
+      ttlSeconds: body.ttlSeconds ?? null,
+    });
+  }
+
+  @Post('whitelist/add')
+  async addWhitelist(
+    @Body()
+    body: {
+      items?: Array<{
+        sport: string;
+        externalEventId: string;
+        expiresAt?: string | null;
+      }>;
+      source?: string;
+    },
+  ) {
+    const items = Array.isArray(body.items) ? body.items : [];
+    return this.whitelist.addMany(items, { source: body.source });
+  }
+
+  @Post('whitelist/clear')
+  async clearWhitelist(@Body() body: { sport?: string }) {
+    const sp = (body?.sport || '').trim();
+    return this.whitelist.clear(sp || undefined);
+  }
+
+  @Post('whitelist/purge-expired')
+  async purgeExpiredWhitelist() {
+    return this.whitelist.purgeExpired();
+  }
+
+  // ───────── alias stats (phase 2) ─────────
+  @Get('aliases/stats')
+  async aliasStats() {
+    const [
+      leagueTotal,
+      leagueMapped,
+      teamTotal,
+      teamMapped,
+      leagueBySport,
+      teamBySport,
+    ] = await Promise.all([
+      this.prisma.oddsApiLeagueAlias.count(),
+      this.prisma.oddsApiLeagueAlias.count({
+        where: { koreanName: { not: null } },
+      }),
+      this.prisma.oddsApiTeamAlias.count(),
+      this.prisma.oddsApiTeamAlias.count({
+        where: { koreanName: { not: null } },
+      }),
+      this.prisma.oddsApiLeagueAlias.groupBy({
+        by: ['sport'],
+        _count: { _all: true },
+      }),
+      this.prisma.oddsApiTeamAlias.groupBy({
+        by: ['sport'],
+        _count: { _all: true },
+      }),
+    ]);
+    return {
+      league: {
+        total: leagueTotal,
+        mapped: leagueMapped,
+        unmapped: leagueTotal - leagueMapped,
+        bySport: leagueBySport.map((r) => ({
+          sport: r.sport,
+          count: r._count._all,
+        })),
+      },
+      team: {
+        total: teamTotal,
+        mapped: teamMapped,
+        unmapped: teamTotal - teamMapped,
+        bySport: teamBySport.map((r) => ({
+          sport: r.sport,
+          count: r._count._all,
+        })),
+      },
+    };
+  }
 }
 
 function pickBestOdds(bookmakers: Record<string, unknown>): {
@@ -450,4 +713,93 @@ function pickBestOdds(bookmakers: Record<string, unknown>): {
     }
   }
   return { home: bestHome, draw: bestDraw, away: bestAway, source };
+}
+
+/**
+ * 스코어 크롤러 등 M2M 주체가 display whitelist 를 갱신할 때 사용.
+ *  - Auth: x-integration-key 또는 Authorization: Integration <key>
+ *  - env ODDS_API_INTEGRATION_KEYS (콤마 구분) 에 등록된 키만 허용.
+ *  - HQ UI 는 JWT 기반 /hq/odds-api-ws/whitelist 를 그대로 사용.
+ */
+@Controller('integrations/odds-api-whitelist')
+@UseGuards(OddsApiIntegrationKeyGuard)
+export class OddsApiIntegrationController {
+  constructor(private readonly whitelist: OddsApiWhitelistService) {}
+
+  @Post('replace')
+  async replace(
+    @Body()
+    body: {
+      sport?: string;
+      externalEventIds?: string[];
+      source?: string;
+      ttlSeconds?: number | null;
+    },
+  ) {
+    const sport = (body.sport || '').trim();
+    if (!sport) throw new BadRequestException('sport is required');
+    const ids = Array.isArray(body.externalEventIds)
+      ? body.externalEventIds
+      : [];
+    return this.whitelist.replaceForSport(sport, ids, {
+      source: body.source,
+      ttlSeconds: body.ttlSeconds ?? null,
+    });
+  }
+
+  @Post('add')
+  async add(
+    @Body()
+    body: {
+      items?: Array<{
+        sport: string;
+        externalEventId: string;
+        expiresAt?: string | null;
+      }>;
+      source?: string;
+    },
+  ) {
+    const items = Array.isArray(body.items) ? body.items : [];
+    return this.whitelist.addMany(items, { source: body.source });
+  }
+
+  @Post('bulk-replace')
+  async bulkReplace(
+    @Body()
+    body: {
+      source?: string;
+      ttlSeconds?: number | null;
+      bySport?: Record<string, string[]>;
+    },
+  ) {
+    const bySport = body.bySport || {};
+    const entries = Object.entries(bySport);
+    const results = [] as Array<{
+      sport: string;
+      removed: number;
+      inserted: number;
+    }>;
+    for (const [sport, ids] of entries) {
+      const r = await this.whitelist.replaceForSport(
+        sport,
+        Array.isArray(ids) ? ids : [],
+        {
+          source: body.source,
+          ttlSeconds: body.ttlSeconds ?? null,
+        },
+      );
+      results.push(r);
+    }
+    return { results };
+  }
+
+  @Post('purge-expired')
+  async purge() {
+    return this.whitelist.purgeExpired();
+  }
+
+  @Get('stats')
+  async stats() {
+    return this.whitelist.stats();
+  }
 }

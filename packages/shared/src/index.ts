@@ -105,6 +105,12 @@ export const oddsApiConfigSchema = z.object({
   status: oddsApiStatusFilterSchema.default("all"),
   cacheTtlSeconds: z.number().int().positive().default(30),
   matchLimit: z.number().int().positive().max(500).default(120),
+  /**
+   * true 로 두면 OddsApiDisplayWhitelist 에 등록된 (sport, externalEventId) 조합만
+   * 솔루션 사이트로 노출된다. 스코어 크롤러가 실제로 "표시 가능한" 경기 목록을
+   * 주입해 주는 것을 전제로 한다. 기본값 false — 필터 미적용(전량 노출).
+   */
+  useDisplayWhitelist: z.boolean().default(false),
   betSlipTemplate: oddsApiBetSlipTemplateSchema.default(
     DEFAULT_ODDS_API_BET_SLIP_TEMPLATE,
   ),

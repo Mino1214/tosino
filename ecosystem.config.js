@@ -6,6 +6,8 @@ const API_ROOT = path.join(ROOT, 'apps', 'api');
 const API_ENTRY = path.join(API_ROOT, 'dist', 'src', 'main.js');
 const SMS_INGEST_ROOT = path.join(ROOT, 'apps', 'sms-ingest');
 const SMS_INGEST_ENTRY = path.join(SMS_INGEST_ROOT, 'dist', 'index.js');
+const SCORE_CRAWLER_ROOT = path.join(ROOT, 'apps', 'score-crawler');
+const SCORE_CRAWLER_RUN = path.join(SCORE_CRAWLER_ROOT, 'scripts', 'run.sh');
 /**
  * 정적 앱은 scripts/pm2-serve-static.sh 를 통해 띄운다.
  * 이유: serve 가 직접 EADDRINUSE 로 죽으면 좀비가 포트를 잡고 남는 사고가 있었음
@@ -79,6 +81,24 @@ module.exports = {
     {
       name: 'solution-main',
       ...serveStaticApp('apps/solution-main/out', 3010),
+    },
+    {
+      name: 'score-crawler',
+      /**
+       * livesport 기반 스코어 크롤러 (Python MVP).
+       * scripts/run.sh 가 venv 를 자동 활성 후 run.py 를 실행.
+       * --loop 모드로 주기 실행하며, 사이클마다 헬스체크 + 탭 1개 재사용.
+       */
+      script: 'bash',
+      args: [SCORE_CRAWLER_RUN, '--loop', '--interval-seconds', '300'],
+      interpreter: 'none',
+      cwd: SCORE_CRAWLER_ROOT,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      /** Ctrl+C 처리 여유를 두기 위해 살짝 길게 */
+      kill_timeout: 10000,
+      env: { PYTHONUNBUFFERED: '1' },
     },
     {
       name: 'cloudflared',

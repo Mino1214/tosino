@@ -89,6 +89,7 @@ export class OddsApiAggregatorService {
           url: ev.url,
         });
       }
+      // WS path 에는 아직 homeId/awayId/leagueSlug 전달 경로 없음 (Phase 2) — null 유지
       m.bookies.add(ev.bookie);
       const t = Date.parse(ev.updatedAt);
       if (Number.isFinite(t) && t > m.lastUpdatedMs) m.lastUpdatedMs = t;
@@ -101,6 +102,9 @@ export class OddsApiAggregatorService {
   /**
    * REST `events + odds/multi` 결과처럼 "이벤트 1행 + bookmakers 묶음" 형태의 카탈로그를
    * 기존 매치 응답 포맷으로 변환한다.
+   *
+   * @param opts.allowEmptyBookies true 면 multi-odds 가 안 도는 finished 매치도
+   *   (북메이커 0개) 결과 카드로 노출. 기본 false (라이브/프리매치는 배당 없는 카드 차단).
    */
   listMatchesFromCatalog(
     catalog: OddsApiCatalogItem[],
@@ -110,9 +114,11 @@ export class OddsApiAggregatorService {
       sports?: string[];
       bookmakers?: string[];
       limit?: number;
+      allowEmptyBookies?: boolean;
     } = {},
   ): MatchesResponse {
     const normalized = normalizeListOptions(opts);
+    const allowEmptyBookies = !!opts.allowEmptyBookies;
     const map = new Map<string, MatchAccumulator>();
 
     for (const item of catalog) {
@@ -130,7 +136,10 @@ export class OddsApiAggregatorService {
           sport: item.sport,
           home: item.home,
           away: item.away,
+          homeId: item.homeId ?? null,
+          awayId: item.awayId ?? null,
           league: item.league,
+          leagueSlug: item.leagueSlug ?? null,
           startTime: item.date,
           eventStatus: item.status,
           scores: item.scores,
@@ -142,7 +151,10 @@ export class OddsApiAggregatorService {
           sport: item.sport,
           home: item.home,
           away: item.away,
+          homeId: item.homeId ?? null,
+          awayId: item.awayId ?? null,
           league: item.league,
+          leagueSlug: item.leagueSlug ?? null,
           startTime: item.date,
           eventStatus: item.status,
           scores: item.scores,
@@ -163,15 +175,18 @@ export class OddsApiAggregatorService {
           continue;
         }
         acc.bookies.add(bookie);
-        const markets =
-          raw && typeof raw === 'object'
+        // odds-api.io /v3/odds[/multi] 응답에서 bookmakers["Bet365"] 는 markets 배열 자체.
+        // 다른 경로(WS enrichment 등)는 { markets: [...] } 형태로 들어올 수 있어 둘 다 허용.
+        const markets = Array.isArray(raw)
+          ? raw
+          : raw && typeof raw === 'object'
             ? (raw as { markets?: unknown }).markets
             : undefined;
         this.absorbMarkets(acc, markets);
       }
     }
 
-    return this.finalizeMatches(map, normalized);
+    return this.finalizeMatches(map, normalized, { allowEmptyBookies });
   }
 
   /* ─────────────────────────── 내부 ─────────────────────────── */
@@ -181,7 +196,10 @@ export class OddsApiAggregatorService {
     sport: string;
     home: string | null;
     away: string | null;
+    homeId?: number | null;
+    awayId?: number | null;
     league: string | null;
+    leagueSlug?: string | null;
     startTime: string | null;
     eventStatus: string | null;
     scores: AggregatedMatch['scores'];
@@ -192,7 +210,10 @@ export class OddsApiAggregatorService {
       sport: input.sport,
       home: input.home,
       away: input.away,
+      homeId: input.homeId ?? null,
+      awayId: input.awayId ?? null,
       league: input.league,
+      leagueSlug: input.leagueSlug ?? null,
       startTime: input.startTime,
       eventStatus: input.eventStatus,
       scores: input.scores,
@@ -202,6 +223,7 @@ export class OddsApiAggregatorService {
       mlPrices: { home: [], draw: [], away: [] },
       handicapByLine: new Map<number, { home: number[]; away: number[] }>(),
       totalsByLine: new Map<number, { over: number[]; under: number[] }>(),
+      extrasByMarket: new Map<string, ExtraAccum>(),
     };
   }
 
@@ -211,7 +233,10 @@ export class OddsApiAggregatorService {
       sport: string;
       home: string | null;
       away: string | null;
+      homeId?: number | null;
+      awayId?: number | null;
       league: string | null;
+      leagueSlug?: string | null;
       startTime: string | null;
       eventStatus: string | null;
       scores: AggregatedMatch['scores'];
@@ -220,7 +245,10 @@ export class OddsApiAggregatorService {
   ): void {
     acc.home ??= input.home;
     acc.away ??= input.away;
+    acc.homeId ??= input.homeId ?? null;
+    acc.awayId ??= input.awayId ?? null;
     acc.league ??= input.league;
+    acc.leagueSlug ??= input.leagueSlug ?? null;
     acc.startTime ??= input.startTime;
     acc.eventStatus ??= input.eventStatus;
     acc.scores ??= input.scores;
@@ -234,10 +262,11 @@ export class OddsApiAggregatorService {
   private finalizeMatches(
     map: Map<string, MatchAccumulator>,
     normalized: NormalizedListOptions,
+    opts: { allowEmptyBookies?: boolean } = {},
   ): MatchesResponse {
     const all: AggregatedMatch[] = [];
     for (const acc of map.values()) {
-      if (acc.bookies.size === 0) continue;
+      if (acc.bookies.size === 0 && !opts.allowEmptyBookies) continue;
       const status = classifyStatus(acc);
       if (normalized.wantStatus !== 'all' && status !== normalized.wantStatus) {
         continue;
@@ -256,11 +285,20 @@ export class OddsApiAggregatorService {
       return b.lastUpdatedMs - a.lastUpdatedMs;
     });
 
+    // limit 는 종목이 여러 개일 때 "종목별 상한" 으로 해석한다.
+    // 예전엔 전역 slice 였는데, 그러면 kickoff 이 가까운 테니스/탁구 류가 모든 슬롯을
+    // 먹어버려 저녁 농구/축구 등이 응답에서 빠지는 starvation 이 발생했다.
+    // 단일 종목 요청이거나 wantSports 가 1개 이하면 기존처럼 전역 cap 과 동일하게 동작.
+    const sliced =
+      normalized.wantSports.length > 1
+        ? takeTopPerSport(all, normalized.limit)
+        : all.slice(0, normalized.limit);
+
     return {
       status: normalized.wantStatus,
       sport: normalized.wantSport ?? null,
       total: all.length,
-      matches: all.slice(0, normalized.limit),
+      matches: sliced,
     };
   }
 
@@ -274,13 +312,13 @@ export class OddsApiAggregatorService {
     if (!Array.isArray(markets)) return;
     for (const market of markets) {
       if (!market || typeof market !== 'object') continue;
-      const name = String((market as { name?: unknown }).name ?? '')
-        .trim()
-        .toLowerCase();
+      const rawName = String((market as { name?: unknown }).name ?? '').trim();
+      if (!rawName) continue;
+      const lower = rawName.toLowerCase();
       const odds = (market as { odds?: unknown }).odds;
       if (!Array.isArray(odds) || odds.length === 0) continue;
 
-      if (name === 'ml' || name === 'h2h' || name === '1x2') {
+      if (lower === 'ml' || lower === 'h2h' || lower === '1x2') {
         for (const row of odds) {
           if (!row || typeof row !== 'object') continue;
           const r = row as Record<string, unknown>;
@@ -288,7 +326,12 @@ export class OddsApiAggregatorService {
           pushNum(acc.mlPrices.draw, r.draw);
           pushNum(acc.mlPrices.away, r.away);
         }
-      } else if (name === 'spread' || name.includes('handicap')) {
+        continue;
+      }
+
+      // 아시안 핸디캡: odds-api.io 는 `hdp` 와 함께 (home/away) 혹은 (over/under) 키를 사용.
+      // 둘 다 호환되게 처리한다 (실제 Bet365 응답은 over=홈측, under=원정측).
+      if (lower === 'spread' || lower === 'asian handicap') {
         for (const row of odds) {
           if (!row || typeof row !== 'object') continue;
           const r = row as Record<string, unknown>;
@@ -299,10 +342,15 @@ export class OddsApiAggregatorService {
             bag = { home: [], away: [] };
             acc.handicapByLine.set(line, bag);
           }
-          pushNum(bag.home, r.home);
-          pushNum(bag.away, r.away);
+          const homeVal = r.home ?? r.over; // 홈측 또는 over 키
+          const awayVal = r.away ?? r.under; // 원정측 또는 under 키
+          pushNum(bag.home, homeVal);
+          pushNum(bag.away, awayVal);
         }
-      } else if (name === 'totals' || name.includes('total')) {
+        continue;
+      }
+
+      if (lower === 'totals' || lower === 'total') {
         for (const row of odds) {
           if (!row || typeof row !== 'object') continue;
           const r = row as Record<string, unknown>;
@@ -316,8 +364,76 @@ export class OddsApiAggregatorService {
           pushNum(bag.over, r.over);
           pushNum(bag.under, r.under);
         }
+        continue;
+      }
+
+      // ────────── 그 외 (Draw No Bet / Double Chance / BTTS / European Handicap
+      // / Half Time Full Time / 1st Half ML / Team Totals / 기타 모든 스페셜) ──────────
+      // 공통 형태: odds[] 안의 각 row 가 한 "라인" 을 의미.
+      //  - 라인 식별자는 hdp 가 있으면 hdp, 없으면 label, 없으면 인덱스(null).
+      //  - 가격 키(payload): row 객체에서 updatedAt/hdp/line/points/label/*Lay*/*depth*/max/min
+      //    같은 메타키를 제외한 전부를 outcome 으로 간주.
+      let extra = acc.extrasByMarket.get(rawName);
+      if (!extra) {
+        extra = { name: rawName, lineGroups: new Map() };
+        acc.extrasByMarket.set(rawName, extra);
+      }
+      for (const row of odds) {
+        if (!row || typeof row !== 'object') continue;
+        const r = row as Record<string, unknown>;
+        const hdp = numFrom(r.hdp ?? r.line ?? r.points);
+        // HTFT 처럼 row 1개 == outcome 1개 인 경우: `label`+`odds` 패턴
+        if (
+          typeof r.label === 'string' &&
+          numFrom(r.odds) !== null &&
+          Object.keys(r).filter(
+            (k) => !isExtraMetaKey(k) && k !== 'label' && k !== 'odds',
+          ).length === 0
+        ) {
+          const line = this.getOrCreateExtraLine(extra, null, r.label);
+          pushNum(this.getOrCreateOutcome(line, r.label), r.odds);
+          continue;
+        }
+        const line = this.getOrCreateExtraLine(extra, hdp, null);
+        for (const [key, val] of Object.entries(r)) {
+          if (isExtraMetaKey(key)) continue;
+          const price = numFrom(val);
+          if (price === null) continue;
+          pushNum(this.getOrCreateOutcome(line, key), price);
+        }
       }
     }
+  }
+
+  private getOrCreateExtraLine(
+    extra: ExtraAccum,
+    hdp: number | null,
+    label: string | null,
+  ): ExtraLineAccum {
+    const key =
+      hdp !== null
+        ? `hdp:${hdp}`
+        : label
+          ? `label:${label}`
+          : 'line:__';
+    let line = extra.lineGroups.get(key);
+    if (!line) {
+      line = { hdp, label, outcomes: new Map() };
+      extra.lineGroups.set(key, line);
+    }
+    return line;
+  }
+
+  private getOrCreateOutcome(
+    line: ExtraLineAccum,
+    outcomeKey: string,
+  ): number[] {
+    let arr = line.outcomes.get(outcomeKey);
+    if (!arr) {
+      arr = [];
+      line.outcomes.set(outcomeKey, arr);
+    }
+    return arr;
   }
 
   /**
@@ -328,35 +444,52 @@ export class OddsApiAggregatorService {
    */
   private finalize(acc: MatchAccumulator, status: MatchStatus): AggregatedMatch {
     const ml = this.buildMoneyline(acc);
-    const handicap = this.buildHandicap(acc);
-    const totals = this.buildTotals(acc);
+    const handicapLines = this.buildHandicapLines(acc);
+    const totalsLines = this.buildTotalsLines(acc);
+    const handicap = handicapLines.find((l) => l.primary) ?? handicapLines[0] ?? null;
+    const totals = totalsLines.find((l) => l.primary) ?? totalsLines[0] ?? null;
 
     const leagueI18n = koreanLeague(acc.league);
+    const { kickoffUtc, kickoffKst } = splitKickoff(acc.startTime);
     return {
       matchId: acc.eventId,
       sport: acc.sport,
       status,
+      // 하위호환: startTime (= kickoffUtc) 유지
       startTime: acc.startTime,
+      kickoffUtc,
+      kickoffKst,
       league: {
         name: acc.league,
         nameKr: leagueI18n.nameKr,
         logoUrl: leagueI18n.logoUrl,
+        slug: acc.leagueSlug ?? null,
       },
       home: {
         name: acc.home,
         nameKr: koreanTeamName(acc.home),
-        logoUrl: null, // 팀 로고는 별도 자산 정책 필요 — 1차에서는 미제공
+        logoUrl: null,
+        externalId: acc.homeId ?? null,
       },
       away: {
         name: acc.away,
         nameKr: koreanTeamName(acc.away),
         logoUrl: null,
+        externalId: acc.awayId ?? null,
       },
       scores: acc.scores ?? null,
       markets: {
         ...(ml ? { moneyline: ml } : {}),
-        ...(handicap ? { handicap } : {}),
-        ...(totals ? { totals } : {}),
+        // 기존 솔루션 페이지 호환: 대표 라인은 primary=true 1개를 그대로 노출
+        ...(handicap ? { handicap: stripPrimary(handicap) } : {}),
+        ...(totals ? { totals: stripPrimary(totals) } : {}),
+        // 모든 라인 (펼쳤을 때): 라인값 오름차순
+        ...(handicapLines.length > 0 ? { handicapLines } : {}),
+        ...(totalsLines.length > 0 ? { totalsLines } : {}),
+        // 스페셜 마켓 전체 (펼쳤을 때)
+        ...(acc.extrasByMarket.size > 0
+          ? { extras: this.buildExtras(acc) }
+          : {}),
       },
       bookies: [...acc.bookies],
       bookieCount: acc.bookies.size,
@@ -401,49 +534,131 @@ export class OddsApiAggregatorService {
     };
   }
 
-  private buildHandicap(acc: MatchAccumulator): HandicapMarket | null {
-    const line = pickModalLine(acc.handicapByLine);
-    if (line === null) return null;
-    const bag = acc.handicapByLine.get(line)!;
-    const home = bestOf(bag.home);
-    const away = bestOf(bag.away);
-    if (home === null || away === null) return null;
-    const targetMargin = pickMargin(
-      this.MARGIN_MIN,
-      this.MARGIN_MAX,
-      acc.eventId,
-      `hdp:${line}`,
-    );
-    const adjusted = renormalizeOverround([home, away], targetMargin);
-    return {
-      line,
-      home: round3(adjusted[0]),
-      away: round3(adjusted[1]),
-      margin: round4(targetMargin),
-    };
+  /**
+   * 핸디캡은 여러 라인이 함께 들어옴 (예: -1.5 / -0.5 / +0.5).
+   * 모든 라인을 수집해서 오름차순으로 리턴하고, "모달 라인 (가장 많은 북메이커가 다루는 라인)"
+   * 에 primary=true 마크를 단다. UI 는 primary 만 펼쳐 보이고, 클릭 시 나머지 라인도 노출.
+   */
+  private buildHandicapLines(acc: MatchAccumulator): HandicapLine[] {
+    if (acc.handicapByLine.size === 0) return [];
+    const primary = pickModalLine(acc.handicapByLine);
+    const out: HandicapLine[] = [];
+    for (const [line, bag] of acc.handicapByLine) {
+      const home = bestOf(bag.home);
+      const away = bestOf(bag.away);
+      if (home === null || away === null) continue;
+      const targetMargin = pickMargin(
+        this.MARGIN_MIN,
+        this.MARGIN_MAX,
+        acc.eventId,
+        `hdp:${line}`,
+      );
+      const adjusted = renormalizeOverround([home, away], targetMargin);
+      out.push({
+        line,
+        home: round3(adjusted[0]),
+        away: round3(adjusted[1]),
+        margin: round4(targetMargin),
+        primary: line === primary,
+      });
+    }
+    out.sort((a, b) => a.line - b.line);
+    return out;
   }
 
-  private buildTotals(acc: MatchAccumulator): TotalsMarket | null {
-    const line = pickModalLine(acc.totalsByLine);
-    if (line === null) return null;
-    const bag = acc.totalsByLine.get(line)!;
-    const over = bestOf(bag.over);
-    const under = bestOf(bag.under);
-    if (over === null || under === null) return null;
-    const targetMargin = pickMargin(
-      this.MARGIN_MIN,
-      this.MARGIN_MAX,
-      acc.eventId,
-      `tot:${line}`,
-    );
-    const adjusted = renormalizeOverround([over, under], targetMargin);
-    return {
-      line,
-      over: round3(adjusted[0]),
-      under: round3(adjusted[1]),
-      margin: round4(targetMargin),
-    };
+  private buildTotalsLines(acc: MatchAccumulator): TotalsLine[] {
+    if (acc.totalsByLine.size === 0) return [];
+    const primary = pickModalLine(acc.totalsByLine);
+    const out: TotalsLine[] = [];
+    for (const [line, bag] of acc.totalsByLine) {
+      const over = bestOf(bag.over);
+      const under = bestOf(bag.under);
+      if (over === null || under === null) continue;
+      const targetMargin = pickMargin(
+        this.MARGIN_MIN,
+        this.MARGIN_MAX,
+        acc.eventId,
+        `tot:${line}`,
+      );
+      const adjusted = renormalizeOverround([over, under], targetMargin);
+      out.push({
+        line,
+        over: round3(adjusted[0]),
+        under: round3(adjusted[1]),
+        margin: round4(targetMargin),
+        primary: line === primary,
+      });
+    }
+    out.sort((a, b) => a.line - b.line);
+    return out;
   }
+
+  /**
+   * 스페셜 마켓을 outcome 별 best price 로 flatten 하여 반환.
+   * - 마진 재가공은 하지 않는다 (다출력/비대칭 시장이라 규칙이 다양함).
+   * - 라인이 여러 개인 경우 (European Handicap 등) hdp 오름차순.
+   */
+  private buildExtras(acc: MatchAccumulator): Record<string, ExtraMarket> {
+    const out: Record<string, ExtraMarket> = {};
+    for (const [name, extra] of acc.extrasByMarket.entries()) {
+      const lines: ExtraLine[] = [];
+      for (const group of extra.lineGroups.values()) {
+        const outcomes: ExtraOutcome[] = [];
+        for (const [key, prices] of group.outcomes.entries()) {
+          const best = bestOf(prices);
+          if (best === null) continue;
+          const oc: ExtraOutcome = { key, price: round3(best) };
+          if (group.label !== null) oc.label = group.label;
+          outcomes.push(oc);
+        }
+        if (outcomes.length === 0) continue;
+        lines.push({
+          ...(group.hdp !== null ? { hdp: group.hdp } : {}),
+          ...(group.label !== null ? { label: group.label } : {}),
+          outcomes,
+        });
+      }
+      if (lines.length === 0) continue;
+      lines.sort((a, b) => {
+        if (a.hdp != null && b.hdp != null) return a.hdp - b.hdp;
+        if (a.hdp != null) return -1;
+        if (b.hdp != null) return 1;
+        return (a.label ?? '').localeCompare(b.label ?? '');
+      });
+      out[name] = { name, lines };
+    }
+    return out;
+  }
+}
+
+function stripPrimary<T extends { primary?: boolean }>(v: T): Omit<T, 'primary'> {
+  const { primary: _p, ...rest } = v;
+  void _p;
+  return rest;
+}
+
+/**
+ * ISO UTC 시간을 한국시간으로 변환.
+ * 기준: odds-api.io 는 date 를 UTC (Z 접미사) 로 내려준다.
+ * kickoffKst 는 "2026-04-21T19:30:00+09:00" 형태.
+ */
+function splitKickoff(startTime: string | null): {
+  kickoffUtc: string | null;
+  kickoffKst: string | null;
+} {
+  if (!startTime) return { kickoffUtc: null, kickoffKst: null };
+  const t = Date.parse(startTime);
+  if (!Number.isFinite(t)) return { kickoffUtc: null, kickoffKst: null };
+  const d = new Date(t);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // KST 로컬 숫자를 새로 조립 (UTC+9)
+  const k = new Date(t + 9 * 60 * 60 * 1000);
+  const kst = `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(
+    k.getUTCDate(),
+  )}T${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(
+    k.getUTCSeconds(),
+  )}+09:00`;
+  return { kickoffUtc: d.toISOString(), kickoffKst: kst };
 }
 
 /* ─────────────────────────── 타입 ─────────────────────────── */
@@ -471,14 +686,69 @@ export type TotalsMarket = {
   margin: number;
 };
 
+export type HandicapLine = HandicapMarket & { primary: boolean };
+export type TotalsLine = TotalsMarket & { primary: boolean };
+
+/**
+ * 스페셜 마켓 (Draw No Bet / Double Chance / BTTS / European Handicap /
+ * Half Time Full Time / 1st Half ML / Team Totals / 기타) 에 대한 패스스루.
+ *
+ *  - outcomes: 북메이커 중 best price (= 가장 높은 배당) 만 모아 둔다.
+ *  - line 단위: 같은 시장 안에 여러 hdp 라인이 있을 경우 배열로 내려간다
+ *    (예: European Handicap hdp = -1, 1, -2, 2 …).
+ *  - 마진 재가공은 **하지 않는다** — 다출력/N-way 시장은 보정 규칙이 다양하므로
+ *    원본 best price 를 그대로 노출하고, 필요 시 클라이언트에서 가공.
+ */
+export type ExtraOutcome = {
+  /** odds-api 원본 outcome key (home / away / draw / yes / no / 1X / X2 / 12 / …) */
+  key: string;
+  /** label 기반 row (ex: HTFT "1/1") 일 때만 채움 */
+  label?: string | null;
+  price: number;
+};
+
+export type ExtraLine = {
+  /** hdp/line 값 (있을 때만) */
+  hdp?: number | null;
+  /** HTFT 처럼 label 로 구분되는 라인 (있을 때만) */
+  label?: string | null;
+  outcomes: ExtraOutcome[];
+};
+
+export type ExtraMarket = {
+  /** odds-api.io 원본 market name (대소문자 보존) */
+  name: string;
+  lines: ExtraLine[];
+};
+
 export type AggregatedMatch = {
   matchId: string;
   sport: string;
   status: MatchStatus;
+  /** 하위호환 — kickoffUtc 와 동일 (ISO UTC "...Z") */
   startTime: string | null;
-  league: { name: string | null; nameKr: string | null; logoUrl: string | null };
-  home: { name: string | null; nameKr: string | null; logoUrl: string | null };
-  away: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  /** 명시적 UTC (ISO "...Z") */
+  kickoffUtc: string | null;
+  /** KST (UTC+9) ISO (예: "2026-04-21T19:30:00+09:00") */
+  kickoffKst: string | null;
+  league: {
+    name: string | null;
+    nameKr: string | null;
+    logoUrl: string | null;
+    slug: string | null;
+  };
+  home: {
+    name: string | null;
+    nameKr: string | null;
+    logoUrl: string | null;
+    externalId: number | null;
+  };
+  away: {
+    name: string | null;
+    nameKr: string | null;
+    logoUrl: string | null;
+    externalId: number | null;
+  };
   scores: {
     home: number | null;
     away: number | null;
@@ -486,8 +756,17 @@ export type AggregatedMatch = {
   } | null;
   markets: {
     moneyline?: MoneylineMarket;
+    /** 대표 라인 (modal line) — 기존 솔루션 사이트 호환 */
     handicap?: HandicapMarket;
     totals?: TotalsMarket;
+    /** 전체 라인 (펼쳤을 때 노출). primary=true 가 대표 */
+    handicapLines?: HandicapLine[];
+    totalsLines?: TotalsLine[];
+    /**
+     * 스페셜 마켓 전부 (odds-api 원본 name 을 그대로 키로 사용).
+     * UI 에서 경기 펼쳐보기 탭에 렌더링 대상.
+     */
+    extras?: Record<string, ExtraMarket>;
   };
   bookies: string[];
   bookieCount: number;
@@ -507,7 +786,11 @@ export type OddsApiCatalogItem = {
   sport: string;
   home: string | null;
   away: string | null;
+  /** odds-api.io 의 안정적인 팀 PK (매핑 테이블 조인 키) */
+  homeId?: number | null;
+  awayId?: number | null;
   league: string | null;
+  leagueSlug?: string | null;
   date: string | null;
   status: string | null;
   scores: AggregatedMatch['scores'];
@@ -521,7 +804,10 @@ type MatchAccumulator = {
   sport: string;
   home: string | null;
   away: string | null;
+  homeId: number | null;
+  awayId: number | null;
   league: string | null;
+  leagueSlug: string | null;
   startTime: string | null;
   eventStatus: string | null;
   scores: AggregatedMatch['scores'];
@@ -531,6 +817,19 @@ type MatchAccumulator = {
   mlPrices: { home: number[]; draw: number[]; away: number[] };
   handicapByLine: Map<number, { home: number[]; away: number[] }>;
   totalsByLine: Map<number, { over: number[]; under: number[] }>;
+  /** 스페셜 마켓 누적 (market name → line → outcome → price[]) */
+  extrasByMarket: Map<string, ExtraAccum>;
+};
+
+type ExtraAccum = {
+  name: string;
+  lineGroups: Map<string, ExtraLineAccum>;
+};
+
+type ExtraLineAccum = {
+  hdp: number | null;
+  label: string | null;
+  outcomes: Map<string, number[]>;
 };
 
 type NormalizedListOptions = {
@@ -546,6 +845,29 @@ type NormalizedListOptions = {
 function pushNum(arr: number[], v: unknown): void {
   const n = numFrom(v);
   if (n !== null && n > 1.0) arr.push(n);
+}
+
+/**
+ * odds-api.io row 안에서 "가격이 아닌" 메타 필드.
+ * 이 이름의 키는 extras 에서 outcome 으로 간주하지 않는다.
+ *
+ *  - hdp/line/points : 라인 식별자
+ *  - updatedAt/max/min : 메타
+ *  - lay* / depth* : Betfair Exchange 전용 (back 쪽 가격만 사용)
+ */
+const EXTRA_META_KEYS = new Set([
+  'hdp',
+  'line',
+  'points',
+  'updatedAt',
+  'max',
+  'min',
+]);
+function isExtraMetaKey(k: string): boolean {
+  if (EXTRA_META_KEYS.has(k)) return true;
+  if (k.startsWith('lay')) return true;
+  if (k.startsWith('depth')) return true;
+  return false;
 }
 
 function numFrom(v: unknown): number | null {
@@ -657,6 +979,7 @@ export function classifyOddsApiMatchStatus(input: {
   if (
     s === 'finished' ||
     s === 'ended' ||
+    s === 'settled' /* odds-api.io: 경기 종료 + 결과 확정 */ ||
     s === 'cancelled' ||
     s === 'canceled' ||
     s === 'postponed' ||
@@ -723,6 +1046,27 @@ function normalizeListOptions(opts: {
         ? Math.min(opts.limit, 500)
         : 200,
   };
+}
+
+/**
+ * 정렬된 매치 배열에서 종목별 상한을 적용. 입력 순서를 유지하면서 각 sport 의
+ * 처음 `perSportLimit` 개만 통과시켜, 특정 종목이 다른 종목을 굶기는 상황을 막는다.
+ */
+function takeTopPerSport(
+  matches: AggregatedMatch[],
+  perSportLimit: number,
+): AggregatedMatch[] {
+  if (perSportLimit <= 0) return [];
+  const counts = new Map<string, number>();
+  const out: AggregatedMatch[] = [];
+  for (const m of matches) {
+    const sport = m.sport || 'unknown';
+    const n = counts.get(sport) ?? 0;
+    if (n >= perSportLimit) continue;
+    counts.set(sport, n + 1);
+    out.push(m);
+  }
+  return out;
 }
 
 function round3(v: number): number {

@@ -8,6 +8,9 @@ import {
   type AggregatedMoneyline,
   type AggregatedHandicap,
   type AggregatedTotals,
+  type AggregatedHandicapLine,
+  type AggregatedTotalsLine,
+  type AggregatedExtraMarket,
   type OddsApiWsEvent,
   type OddsApiWsStatus,
 } from "@/lib/api";
@@ -492,6 +495,24 @@ function MatchRow({
     Math.floor((Date.now() - match.lastUpdatedMs) / 1000),
   );
   const displayMarket = pickDisplayMarket(match, marketPriority);
+  // 기본적으로 모든 마켓을 펼쳐서 보여준다 (DNB / 유럽식 HDP / HTFT / Double Chance / BTTS …).
+  // 데이터 많은 경우 사용자 요청으로 접을 수 있음.
+  const [expanded, setExpanded] = useState(true);
+
+  // 펼쳐볼 게 있는지: 대표 라인 외 추가 라인 or extras
+  const extraHandicapCount = Math.max(
+    0,
+    (match.markets.handicapLines?.length ?? 0) - 1,
+  );
+  const extraTotalsCount = Math.max(
+    0,
+    (match.markets.totalsLines?.length ?? 0) - 1,
+  );
+  const extrasCount = match.markets.extras
+    ? Object.keys(match.markets.extras).length
+    : 0;
+  const hasExtras = extraHandicapCount + extraTotalsCount + extrasCount > 0;
+  const extraTotal = extraHandicapCount + extraTotalsCount + extrasCount;
 
   return (
     <li
@@ -535,11 +556,12 @@ function MatchRow({
           >
             <div className="min-w-0 flex-1">
               <p
-                className={`truncate text-[14px] font-semibold leading-tight group-hover:text-main-gold ${
+                className={`flex min-w-0 items-center gap-2 truncate text-[14px] font-semibold leading-tight group-hover:text-main-gold ${
                   isLight ? "text-zinc-900" : "text-white"
                 }`}
               >
-                {homeName}
+                <TeamLogo src={match.home.logoUrl} />
+                <span className="truncate">{homeName}</span>
                 {match.scores?.home != null ? (
                   <span className="ml-2 font-mono text-main-gold">
                     {match.scores.home}
@@ -547,11 +569,12 @@ function MatchRow({
                 ) : null}
               </p>
               <p
-                className={`truncate text-[14px] font-semibold leading-tight group-hover:text-main-gold ${
+                className={`flex min-w-0 items-center gap-2 truncate text-[14px] font-semibold leading-tight group-hover:text-main-gold ${
                   isLight ? "text-zinc-900" : "text-white"
                 }`}
               >
-                {awayName}
+                <TeamLogo src={match.away.logoUrl} />
+                <span className="truncate">{awayName}</span>
                 {match.scores?.away != null ? (
                   <span className="ml-2 font-mono text-main-gold">
                     {match.scores.away}
@@ -584,6 +607,19 @@ function MatchRow({
             </>
           ) : null}
           <span className="text-zinc-500">{ago(updatedSec)}</span>
+          {hasExtras ? (
+            <>
+              <span className="text-zinc-600">·</span>
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300 transition hover:border-main-gold/50 hover:text-main-gold"
+              >
+                <span>{expanded ? "▲ 접기" : "▼ 전체 마켓"}</span>
+                <span className="opacity-70">+{extraTotal}</span>
+              </button>
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -605,7 +641,39 @@ function MatchRow({
           </div>
         )}
       </div>
+
+      {/* 펼침 패널 — 전체 마켓 */}
+      {expanded && hasExtras ? (
+        <div className="col-span-1 md:col-span-3">
+          <ExpandedMarkets
+            match={match}
+            isLight={isLight}
+            picked={picked}
+            onPick={onPick}
+            homeName={displayHomeName}
+            awayName={displayAwayName}
+            leagueName={leagueName}
+          />
+        </div>
+      ) : null}
     </li>
+  );
+}
+
+function TeamLogo({ src }: { src: string | null | undefined }) {
+  if (!src) {
+    return <span className="inline-block h-4 w-4 shrink-0 rounded-full bg-white/5" />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      className="h-4 w-4 shrink-0 rounded-full object-contain"
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
+    />
   );
 }
 
@@ -651,6 +719,402 @@ function PriceCell({
       </span>
     </button>
   );
+}
+
+/* ─────────────────────────── 펼침 패널 ─────────────────────────── */
+
+function ExpandedMarkets({
+  match,
+  isLight,
+  picked,
+  onPick,
+  homeName,
+  awayName,
+  leagueName,
+}: {
+  match: AggregatedMatch;
+  isLight: boolean;
+  picked: Set<string>;
+  onPick: (pick: OddsPickPayload) => void;
+  homeName: string;
+  awayName: string;
+  leagueName: string | null;
+}) {
+  const handicapLines = match.markets.handicapLines ?? [];
+  const totalsLines = match.markets.totalsLines ?? [];
+  const extras = match.markets.extras ?? {};
+  const extraNames = Object.keys(extras);
+
+  const sectionClass = isLight
+    ? "rounded-xl border border-zinc-200 bg-zinc-50/60 p-3"
+    : "rounded-xl border border-white/10 bg-zinc-950/60 p-3";
+  const titleClass = isLight ? "text-zinc-700" : "text-zinc-300";
+
+  return (
+    <div className="mt-3 grid gap-3 md:grid-cols-2">
+      {handicapLines.length > 1 ? (
+        <section className={sectionClass}>
+          <h4 className={`mb-2 text-[11px] font-bold uppercase tracking-wider ${titleClass}`}>
+            핸디캡 전체 ({handicapLines.length}라인)
+          </h4>
+          <LineTable>
+            {handicapLines.map((ln) => (
+              <HandicapLineRow
+                key={`h:${ln.line}`}
+                line={ln}
+                match={match}
+                picked={picked}
+                onPick={onPick}
+                homeName={homeName}
+                awayName={awayName}
+                leagueName={leagueName}
+              />
+            ))}
+          </LineTable>
+        </section>
+      ) : null}
+
+      {totalsLines.length > 1 ? (
+        <section className={sectionClass}>
+          <h4 className={`mb-2 text-[11px] font-bold uppercase tracking-wider ${titleClass}`}>
+            언/오버 전체 ({totalsLines.length}라인)
+          </h4>
+          <LineTable>
+            {totalsLines.map((ln) => (
+              <TotalsLineRow
+                key={`t:${ln.line}`}
+                line={ln}
+                match={match}
+                picked={picked}
+                onPick={onPick}
+                homeName={homeName}
+                awayName={awayName}
+                leagueName={leagueName}
+              />
+            ))}
+          </LineTable>
+        </section>
+      ) : null}
+
+      {extraNames.length > 0
+        ? extraNames.map((name) => (
+            <section key={name} className={sectionClass}>
+              <h4
+                className={`mb-2 text-[11px] font-bold uppercase tracking-wider ${titleClass}`}
+              >
+                {prettyMarketName(name)} · {extras[name].lines.reduce((a, l) => a + l.outcomes.length, 0)}개
+              </h4>
+              <ExtraMarketTable
+                market={extras[name]}
+                match={match}
+                picked={picked}
+                onPick={onPick}
+                homeName={homeName}
+                awayName={awayName}
+                leagueName={leagueName}
+              />
+            </section>
+          ))
+        : null}
+    </div>
+  );
+}
+
+function LineTable({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-1">{children}</div>;
+}
+
+function HandicapLineRow({
+  line,
+  match,
+  picked,
+  onPick,
+  homeName,
+  awayName,
+  leagueName,
+}: {
+  line: AggregatedHandicapLine;
+  match: AggregatedMatch;
+  picked: Set<string>;
+  onPick: (pick: OddsPickPayload) => void;
+  homeName: string;
+  awayName: string;
+  leagueName: string | null;
+}) {
+  return (
+    <div className="grid grid-cols-[60px_1fr_1fr] items-center gap-1.5">
+      <span
+        className={`font-mono text-[11px] ${
+          line.primary ? "text-main-gold" : "text-zinc-500"
+        }`}
+      >
+        {formatLine(line.line, "home")}
+      </span>
+      <PriceCell
+        selectionKey={buildSelectionKey(match.matchId, "handicap", "home", line.line)}
+        label="홈"
+        price={line.home}
+        picked={picked}
+        onPick={onPick}
+        pick={buildPickPayload({
+          match,
+          marketType: "handicap",
+          outcome: "home",
+          odd: line.home,
+          line: line.line,
+          pickLabel: `${homeName} 핸디캡 ${formatLine(line.line, "home")}`,
+          homeName,
+          awayName,
+          leagueName,
+        })}
+      />
+      <PriceCell
+        selectionKey={buildSelectionKey(match.matchId, "handicap", "away", line.line)}
+        label="원정"
+        price={line.away}
+        picked={picked}
+        onPick={onPick}
+        pick={buildPickPayload({
+          match,
+          marketType: "handicap",
+          outcome: "away",
+          odd: line.away,
+          line: line.line,
+          pickLabel: `${awayName} 핸디캡 ${formatLine(line.line, "away")}`,
+          homeName,
+          awayName,
+          leagueName,
+        })}
+      />
+    </div>
+  );
+}
+
+function TotalsLineRow({
+  line,
+  match,
+  picked,
+  onPick,
+  homeName,
+  awayName,
+  leagueName,
+}: {
+  line: AggregatedTotalsLine;
+  match: AggregatedMatch;
+  picked: Set<string>;
+  onPick: (pick: OddsPickPayload) => void;
+  homeName: string;
+  awayName: string;
+  leagueName: string | null;
+}) {
+  return (
+    <div className="grid grid-cols-[60px_1fr_1fr] items-center gap-1.5">
+      <span
+        className={`font-mono text-[11px] ${
+          line.primary ? "text-main-gold" : "text-zinc-500"
+        }`}
+      >
+        {line.line}
+      </span>
+      <PriceCell
+        selectionKey={buildSelectionKey(match.matchId, "totals", "over", line.line)}
+        label="Over"
+        price={line.over}
+        picked={picked}
+        onPick={onPick}
+        pick={buildPickPayload({
+          match,
+          marketType: "totals",
+          outcome: "over",
+          odd: line.over,
+          line: line.line,
+          pickLabel: `오버 ${line.line}`,
+          homeName,
+          awayName,
+          leagueName,
+        })}
+      />
+      <PriceCell
+        selectionKey={buildSelectionKey(match.matchId, "totals", "under", line.line)}
+        label="Under"
+        price={line.under}
+        picked={picked}
+        onPick={onPick}
+        pick={buildPickPayload({
+          match,
+          marketType: "totals",
+          outcome: "under",
+          odd: line.under,
+          line: line.line,
+          pickLabel: `언더 ${line.line}`,
+          homeName,
+          awayName,
+          leagueName,
+        })}
+      />
+    </div>
+  );
+}
+
+/**
+ * 스페셜 마켓(pass-through) 을 라인 × outcome 그리드로 렌더.
+ * 선택은 extras 전용 selectionKey 사용 (기존 slip 구조와 충돌 방지).
+ */
+function ExtraMarketTable({
+  market,
+  match,
+  picked,
+  onPick,
+  homeName,
+  awayName,
+  leagueName,
+}: {
+  market: AggregatedExtraMarket;
+  match: AggregatedMatch;
+  picked: Set<string>;
+  onPick: (pick: OddsPickPayload) => void;
+  homeName: string;
+  awayName: string;
+  leagueName: string | null;
+}) {
+  return (
+    <div className="grid gap-1">
+      {market.lines.map((line, i) => {
+        const cols = Math.min(Math.max(line.outcomes.length, 2), 4);
+        return (
+          <div
+            key={`${market.name}:${i}`}
+            className="grid items-center gap-1.5"
+            style={{
+              gridTemplateColumns:
+                line.hdp != null || line.label
+                  ? `60px repeat(${cols}, 1fr)`
+                  : `repeat(${cols}, 1fr)`,
+            }}
+          >
+            {line.hdp != null || line.label ? (
+              <span className="font-mono text-[11px] text-zinc-500">
+                {line.hdp != null ? formatSignedLine(line.hdp) : line.label ?? ""}
+              </span>
+            ) : null}
+            {line.outcomes.map((oc) => {
+              const outcomeKey = oc.label ?? oc.key;
+              const selectionKey = `${match.matchId}:extra:${market.name}:${oc.label ?? oc.key}:${line.hdp ?? ""}`;
+              return (
+                <ExtraPriceCell
+                  key={selectionKey}
+                  selectionKey={selectionKey}
+                  label={prettyOutcomeKey(oc.label ?? oc.key, market.name, homeName, awayName)}
+                  price={oc.price}
+                  picked={picked}
+                  onPick={() =>
+                    onPick({
+                      selectionKey,
+                      // slip 에서는 일단 moneyline 계열로 처리하되, 실제 pickLabel 에 마켓/라인 정보 포함
+                      marketType: "moneyline",
+                      outcome: "home",
+                      odd: oc.price,
+                      pickLabel: `[${prettyMarketName(market.name)}${line.hdp != null ? ` ${formatSignedLine(line.hdp)}` : ""}] ${prettyOutcomeKey(outcomeKey, market.name, homeName, awayName)}`,
+                      homeName,
+                      awayName,
+                      leagueName,
+                      startTime: match.startTime,
+                      bookmakerCount: match.bookieCount,
+                    })
+                  }
+                />
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ExtraPriceCell({
+  selectionKey,
+  label,
+  price,
+  picked,
+  onPick,
+}: {
+  selectionKey: string;
+  label: string;
+  price: number;
+  picked: Set<string>;
+  onPick: () => void;
+}) {
+  const isPicked = picked.has(selectionKey);
+  const hasPrice = price > 1;
+  return (
+    <button
+      type="button"
+      disabled={!hasPrice}
+      onClick={onPick}
+      className={`flex min-w-0 flex-col items-center justify-center rounded-md border px-1.5 py-1 transition ${
+        !hasPrice
+          ? "cursor-not-allowed border-white/5 bg-white/[0.02] text-zinc-600"
+          : isPicked
+            ? "border-main-gold bg-[rgba(218,174,87,0.18)] text-main-gold shadow-[0_0_0_1px_rgba(218,174,87,0.55)]"
+            : "border-white/10 bg-zinc-900/60 text-zinc-200 hover:border-main-gold/50 hover:bg-[rgba(218,174,87,0.08)] hover:text-main-gold"
+      }`}
+      title={`${label} @ ${price.toFixed(2)}`}
+    >
+      <span className="truncate text-[10px] font-semibold uppercase tracking-wider opacity-80">
+        {label}
+      </span>
+      <span className="font-mono text-[13px] font-bold leading-tight">
+        {price.toFixed(2)}
+      </span>
+    </button>
+  );
+}
+
+function formatSignedLine(v: number): string {
+  if (v === 0) return "0";
+  return v > 0 ? `+${v}` : `${v}`;
+}
+
+function prettyMarketName(name: string): string {
+  const m: Record<string, string> = {
+    "Draw No Bet": "무승부 제외",
+    "Double Chance": "더블찬스",
+    "Both Teams To Score": "양팀 득점",
+    "European Handicap": "유러피언 핸디캡",
+    "Half Time / Full Time": "전반/전체",
+    "1st Half ML": "전반 승부",
+    "Team Totals": "팀 토탈",
+    "Correct Score": "정확한 스코어",
+    "Odd/Even": "홀짝",
+  };
+  return m[name] ?? name;
+}
+
+function prettyOutcomeKey(
+  key: string,
+  marketName: string,
+  homeName: string,
+  awayName: string,
+): string {
+  const k = key.toLowerCase();
+  // 공통
+  if (k === "home") return homeName;
+  if (k === "away") return awayName;
+  if (k === "draw") return "무승부";
+  if (k === "yes") return "Yes";
+  if (k === "no") return "No";
+  // Double Chance
+  if (key === "1X") return `${homeName}/무`;
+  if (key === "X2") return `무/${awayName}`;
+  if (key === "12") return `${homeName}/${awayName}`;
+  // HTFT label: "1/1" "1/X" "X/2" …
+  if (/^[1X2]\/[1X2]$/.test(key)) {
+    const [ht, ft] = key.split("/");
+    const map: Record<string, string> = { "1": "홈", X: "무", "2": "원" };
+    return `${map[ht]}→${map[ft]}`;
+  }
+  return key;
 }
 
 /* ─────────────────────────── helpers ─────────────────────────── */

@@ -554,6 +554,215 @@ model OddsApiCatalogSnapshot {
   @@index([platformId, fetchedAt])
 }
 
+/// odds-api.io 의 리그(slug) → 한글명/로고/국가/표시우선순위 매핑.
+/// 수집 시점에 원본명 + slug 만 채워 자동 upsert 되고, 관리자가 나중에 koreanName/logoUrl 을 보강한다.
+/// 집계 단계에서 (sport, slug) 로 join 되어 솔루션 사이트 응답의 league.nameKr / logoUrl 을 채운다.
+model OddsApiLeagueAlias {
+  id              String   @id @default(cuid())
+  sport           String
+  slug            String
+  originalName    String
+  koreanName      String?
+  logoUrl         String?
+  country         String?
+  displayPriority Int      @default(100)
+  isHidden        Boolean  @default(false)
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([sport, slug])
+  @@index([sport])
+  @@index([isHidden])
+}
+
+/// odds-api.io 의 팀(externalId) → 한글명/로고/국가 매핑.
+/// externalId 는 String 으로 저장 (odds-api 가 12자리 숫자 id 도 발급하여 Int32 초과 위험).
+model OddsApiTeamAlias {
+  id           String   @id @default(cuid())
+  sport        String
+  externalId   String
+  originalName String
+  koreanName   String?
+  logoUrl      String?
+  country      String?
+  firstSeenAt  DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([sport, externalId])
+  @@index([sport])
+  @@index([originalName])
+}
+
+/// 스코어 크롤러(예: livesport) 가 발견한 리그 슬러그를 odds-api.io 리그 슬러그로 매핑하기 위한 테이블.
+/// 크롤러가 돌 때마다 "처음 보는 리그" 는 status=pending 으로 자동 upsert 된다.
+/// Super-Admin 이 provider_league_slug 를 채워 status=confirmed 로 바꾸면 매칭 엔진이 사용한다.
+model CrawlerLeagueMapping {
+  id                   String   @id @default(cuid())
+  sourceSite           String                              // "aiscore" 또는 "livesport"
+  sourceSportSlug      String                              // 크롤러 사이트의 sport 카테고리
+  sourceLeagueSlug     String                              // 예: "south-korea/k-league-1" 또는 "russian-premier-league/{id}"
+  sourceLeagueLabel    String?                             // "K리그 1", "프리미어 리그"
+  sourceLeagueLogo     String?                             // 리그 전용 로고 (있을 때만)
+  sourceCountryLabel   String?                             // "대한민국", "러시아"
+  sourceCountryFlag    String?                             // 국기 이미지 (로컬 캐시된 /assets 경로)
+  internalSportSlug    String?                             // 내부 표준 sport (예: "football")
+  providerName         String?                             // 현재는 "odds-api.io"
+  providerSportSlug    String?                             // odds-api.io 의 sport (예: "football")
+  providerLeagueSlug   String?                             // odds-api.io 의 league slug (예: "south-korea-k-league-1")
+  providerLeagueLabel  String?                             // odds-api.io 의 league 표기
+  status               String   @default("pending")        // pending | confirmed | ignored
+  note                 String?
+  matchCount           Int      @default(0)                // 이 리그로 집계된 raw match 수
+  firstSeenAt          DateTime @default(now())
+  lastSeenAt           DateTime @default(now())
+  confirmedAt          DateTime?
+  confirmedBy          String?
+  updatedAt            DateTime @updatedAt
+
+  @@unique([sourceSite, sourceLeagueSlug])
+  @@index([sourceSite, status])
+  @@index([providerName, providerLeagueSlug])
+  @@index([internalSportSlug])
+}
+
+/// 스코어 크롤러(예: livesport) 가 발견한 팀을 odds-api.io 팀 externalId 로 매핑하기 위한 테이블.
+/// 리그 매핑과 동일한 workflow: 크롤러가 돌 때마다 distinct team 들을 pending 으로 올려두고,
+/// Super-Admin 이 providerTeamExternalId 를 채워 confirmed 로 바꾸면 매칭 엔진이 사용한다.
+/// 확정 시에는 sourceTeamName(한글일 가능성 높음) 을 OddsApiTeamAlias.koreanName 으로 역학습해 채울 수 있다.
+model CrawlerTeamMapping {
+  id                     String   @id @default(cuid())
+  sourceSite             String                               // "livesport" 등
+  sourceSportSlug        String                               // livesport 의 sport 카테고리
+  sourceTeamName         String                               // livesport 상의 팀 이름 (한글 가능)
+  sourceTeamSlug         String?                              // href 에서 뽑은 slug
+  sourceTeamHref         String?
+  sourceTeamLogo         String?
+  sourceLeagueSlug       String?                              // 어떤 리그에서 나왔는지 (참고용)
+  sourceLeagueLabel      String?
+  sourceCountryLabel     String?
+  internalSportSlug      String?                              // "football" 등 내부 표준 sport
+  providerName           String?                              // "odds-api.io"
+  providerSportSlug      String?                              // odds-api.io sport
+  providerTeamExternalId String?                              // odds-api.io team externalId
+  providerTeamName       String?                              // odds-api.io 에서의 team originalName
+  status                 String   @default("pending")         // pending | confirmed | ignored
+  note                   String?
+  matchCount             Int      @default(0)                 // 이 팀이 등장한 raw match 수 (home+away)
+  firstSeenAt            DateTime @default(now())
+  lastSeenAt             DateTime @default(now())
+  confirmedAt            DateTime?
+  confirmedBy            String?
+  updatedAt              DateTime @updatedAt
+
+  @@unique([sourceSite, sourceSportSlug, sourceTeamName])
+  @@index([sourceSite, status])
+  @@index([providerName, providerTeamExternalId])
+  @@index([internalSportSlug])
+}
+
+/// 스코어 크롤러가 올린 raw 경기 row 1건 — sqlite 의 crawler_matches_raw 와 같은 의미.
+/// 매처가 이 테이블을 돌면서 CrawlerMatchMapping 을 만들거나 업데이트한다.
+model CrawlerRawMatch {
+  id                  String   @id @default(cuid())
+  sourceSite          String
+  sourceSportSlug     String
+  sourceMatchId       String
+  sourceUrl           String?
+  sourceMatchHref     String?
+  internalSportSlug   String?
+  providerName        String?
+  providerSportSlug   String?
+  rawHomeName         String?
+  rawHomeSlug         String?
+  rawAwayName         String?
+  rawAwaySlug         String?
+  rawLeagueLabel      String?
+  rawLeagueSlug       String?
+  rawCountryLabel     String?
+  rawKickoffText      String?
+  rawKickoffUtc       DateTime?
+  rawScoreText        String?
+  rawStatusText       String?
+  firstSeenAt         DateTime @default(now())
+  lastSeenAt          DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  mapping             CrawlerMatchMapping?
+
+  @@unique([sourceSite, sourceSportSlug, sourceMatchId])
+  @@index([sourceSite, rawKickoffUtc])
+  @@index([internalSportSlug, rawKickoffUtc])
+  @@index([rawLeagueSlug])
+}
+
+/// livesport raw match ↔ odds-api.io event 의 매칭 결과.
+/// status=auto 는 엄격 규칙으로 자동 확정, manual 은 운영자 검수 확정.
+model CrawlerMatchMapping {
+  id                      String   @id @default(cuid())
+  rawMatchId              String   @unique
+  rawMatch                CrawlerRawMatch @relation(fields: [rawMatchId], references: [id], onDelete: Cascade)
+
+  // 컨텍스트 (raw 에서 복사 — 인덱스/조회 편의용)
+  sourceSite              String
+  sourceSportSlug         String
+  internalSportSlug       String?
+  rawLeagueSlug           String?
+  rawHomeName             String?
+  rawAwayName             String?
+  rawKickoffUtc           DateTime?
+
+  // 확정된 매핑 참조 (snapshot 값 — 변동 추적용)
+  leagueMappingId         String?
+  homeTeamMappingId       String?
+  awayTeamMappingId       String?
+
+  // provider(odds-api.io) 쪽 매칭 대상
+  providerName            String   @default("odds-api.io")
+  providerSportSlug       String?
+  providerLeagueSlug      String?
+  providerExternalEventId String?
+  providerHomeExternalId  String?
+  providerAwayExternalId  String?
+  providerHomeName        String?
+  providerAwayName        String?
+  providerKickoffUtc      DateTime?
+  kickoffDeltaSeconds     Int?
+
+  // 매칭 상태 — auto | confirmed | pending | rejected | ignored
+  status                  String   @default("pending")
+  matchedVia              String?                     // "strict" | "manual" | null
+  matchScore              Float?                      // 0..1 (strict 는 1.0)
+  candidatesJson          Json?                       // pending 인 경우 가능한 후보 stash
+  reason                  String?                     // pending/rejected 원인
+  note                    String?
+
+  firstSeenAt             DateTime @default(now())
+  matchedAt               DateTime?
+  confirmedAt             DateTime?
+  confirmedBy             String?
+  updatedAt               DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([providerSportSlug, providerExternalEventId])
+  @@index([rawKickoffUtc])
+}
+
+/// Phase 3 stub — 스코어 크롤러가 "이 경기만 솔루션에 노출" 로 넣을 화이트리스트.
+/// 비어있으면 필터 off (기본 동작). platform 별 적용 여부는 platform.integrationsJson.oddsApi 쪽에서 제어.
+model OddsApiDisplayWhitelist {
+  id         String   @id @default(cuid())
+  sport      String
+  externalEventId String
+  source     String   @default("score-crawler")
+  addedAt    DateTime @default(now())
+  expiresAt  DateTime?
+
+  @@unique([sport, externalEventId])
+  @@index([expiresAt])
+}
+
 /// odds-api 가공 결과 저장소. 라이브/프리매치 클라이언트용 payload 를 실행 시점별로 보존한다.
 model OddsApiProcessedSnapshot {
   id                String   @id @default(cuid())

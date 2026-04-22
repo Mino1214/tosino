@@ -44,9 +44,16 @@ export class OddsApiRestService {
   /** /v3/events sport refresh single-flight */
   private eventsInflight = new Map<string, Promise<Set<string>>>();
 
-  /** 슬라이딩 윈도우 레이트리밋 (보수적: 분당 30회) */
+  /** 슬라이딩 윈도우 레이트리밋. odds-api.io 무료/기본 플랜 ≈ 5000/h ⇒ 안전계수 두고 80/min. */
   private callTimes: number[] = [];
-  private readonly MAX_PER_MIN = 30;
+  private readonly MAX_PER_MIN = 80;
+
+  /** /v3/events?sport=&status=&bookmaker= 결과 캐시 (full event items). */
+  private eventListCache = new Map<
+    string,
+    { items: OddsApiEventItem[]; until: number }
+  >();
+  private eventListInflight = new Map<string, Promise<OddsApiEventItem[]>>();
 
   /** 가벼운 차단 — 429 가 와도 잠시 쉼 */
   private cooldownUntil = 0;
@@ -185,6 +192,8 @@ export class OddsApiRestService {
     this.oddsInflight.clear();
     this.eventsBySport.clear();
     this.eventsInflight.clear();
+    this.eventListCache.clear();
+    this.eventListInflight.clear();
   }
 
   /** 진단용 */
@@ -192,6 +201,7 @@ export class OddsApiRestService {
     return {
       odds: this.oddsCache.size,
       eventsBySport: this.eventsBySport.size,
+      eventList: this.eventListCache.size,
       callsLastMinute: this.recentCallCount(),
       cooldownMs: Math.max(0, this.cooldownUntil - Date.now()),
     };
@@ -226,26 +236,66 @@ export class OddsApiRestService {
     }));
   }
 
+  /**
+   * 종목별 활성 이벤트(매치) 목록.
+   *
+   * @param status odds-api.io 분류:
+   *   - `pending` (= prematch, kickoff 가 미래)
+   *   - `live`    (실시간 진행 중, scores 동봉)
+   *   - `settled` (종료, fulltime 점수 동봉)
+   *   - 미지정 시 `pending|live|settled|cancelled` 가 섞여서 옴
+   */
   async listEventsBySport(
     sport: string,
-    opts: { limit?: number } = {},
+    opts: {
+      limit?: number;
+      bookmaker?: string;
+      status?: 'pending' | 'live' | 'settled' | 'cancelled';
+      ttlMs?: number;
+    } = {},
   ): Promise<OddsApiEventItem[]> {
     if (!this.apiKey) return [];
-    const q = new URLSearchParams({
-      apiKey: this.apiKey,
-      sport,
-      limit: String(Math.min(Math.max(opts.limit ?? 200, 1), 1000)),
-    });
-    const data = await this.fetchJson(`/events?${q.toString()}`);
-    return parseArrayItems(data).map((x) => ({
-      id: String(x.id ?? ''),
-      home: readNamedText(x.home),
-      away: readNamedText(x.away),
-      league: readNamedText(x.league) ?? readNamedText(x.tournament),
-      date: typeof x.date === 'string' ? x.date : null,
-      status: typeof x.status === 'string' ? x.status : null,
-      sport,
-    }));
+    const limit = Math.min(Math.max(opts.limit ?? 200, 1), 1000);
+    const cacheKey = `${sport}|${opts.status ?? ''}|${opts.bookmaker ?? ''}|${limit}`;
+    const ttl = opts.ttlMs ?? 60_000;
+
+    const now = Date.now();
+    const hit = this.eventListCache.get(cacheKey);
+    if (hit && now < hit.until) return hit.items;
+    const inflight = this.eventListInflight.get(cacheKey);
+    if (inflight) return inflight;
+
+    const p = (async () => {
+      try {
+        const q = new URLSearchParams({
+          apiKey: this.apiKey,
+          sport,
+          limit: String(limit),
+        });
+        if (opts.bookmaker) q.set('bookmaker', opts.bookmaker);
+        if (opts.status) q.set('status', opts.status);
+        const data = await this.fetchJson(`/events?${q.toString()}`);
+        const items = parseArrayItems(data).map((x) => parseEventItem(x, sport));
+        this.eventListCache.set(cacheKey, { items, until: Date.now() + ttl });
+        return items;
+      } catch (e) {
+        this.log.warn(
+          `listEventsBySport(${sport}, status=${opts.status ?? '*'}, book=${
+            opts.bookmaker ?? '*'
+          }) 실패: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        const fallback = hit?.items ?? [];
+        this.eventListCache.set(cacheKey, {
+          items: fallback,
+          until: Date.now() + 30_000,
+        });
+        return fallback;
+      } finally {
+        this.eventListInflight.delete(cacheKey);
+      }
+    })();
+    this.eventListInflight.set(cacheKey, p);
+    return p;
   }
 
   async getMultiOdds(
@@ -325,15 +375,14 @@ export type OddsByEvent = {
   id: string;
   home: string | null;
   away: string | null;
+  homeId: number | null;
+  awayId: number | null;
   league: string | null;
+  leagueSlug: string | null;
   date: string | null;
   status: string | null;
   /** 라이브 스코어 (해당 응답에 들어 있을 때) — periods 키는 종목마다 다름 (p1/p2/p3/p4/fulltime/overtime …) */
-  scores: {
-    home: number | null;
-    away: number | null;
-    periods: Record<string, { home: number; away: number }>;
-  } | null;
+  scores: ScoresPayload | null;
   /** 이번 enrichment 호출 시점에 odds-api 가 알려준 풀 마켓 (북메이커별) */
   bookmakers: Record<string, unknown>;
 };
@@ -355,10 +404,55 @@ export type OddsApiEventItem = {
   sport: string;
   home: string | null;
   away: string | null;
+  /** odds-api.io 의 안정적인 팀 PK (없을 수도 있음) — 매핑 테이블 join 키 */
+  homeId: number | null;
+  awayId: number | null;
   league: string | null;
+  /** odds-api.io 의 league slug (예: 'republic-of-korea-k-league-1') */
+  leagueSlug: string | null;
   date: string | null;
   status: string | null;
+  scores: ScoresPayload | null;
 };
+
+export type ScoresPayload = {
+  home: number | null;
+  away: number | null;
+  periods: Record<string, { home: number; away: number }>;
+};
+
+function parseEventItem(x: Record<string, unknown>, sport: string): OddsApiEventItem {
+  const sportSlug = readObjectField(x.sport, 'slug') ?? sport;
+  return {
+    id: String(x.id ?? ''),
+    sport: sportSlug,
+    home: readNamedText(x.home),
+    away: readNamedText(x.away),
+    homeId: readNumber(x.homeId),
+    awayId: readNumber(x.awayId),
+    league: readNamedText(x.league) ?? readNamedText(x.tournament),
+    leagueSlug:
+      readObjectField(x.league, 'slug') ?? readObjectField(x.tournament, 'slug'),
+    date: typeof x.date === 'string' ? x.date : null,
+    status: typeof x.status === 'string' ? x.status : null,
+    scores: parseScores(x.scores),
+  };
+}
+
+function readObjectField(value: unknown, field: string): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = (value as Record<string, unknown>)[field];
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 function parseOddsResponse(d: unknown): OddsByEvent | null {
   if (!d || typeof d !== 'object') return null;
@@ -369,7 +463,11 @@ function parseOddsResponse(d: unknown): OddsByEvent | null {
     id: String(id),
     home: readNamedText(o.home),
     away: readNamedText(o.away),
+    homeId: readNumber(o.homeId),
+    awayId: readNumber(o.awayId),
     league: readNamedText(o.league) ?? readNamedText(o.tournament),
+    leagueSlug:
+      readObjectField(o.league, 'slug') ?? readObjectField(o.tournament, 'slug'),
     date: typeof o.date === 'string' ? o.date : null,
     status: typeof o.status === 'string' ? o.status : null,
     scores: parseScores(o.scores),
@@ -380,7 +478,7 @@ function parseOddsResponse(d: unknown): OddsByEvent | null {
   };
 }
 
-function parseScores(v: unknown): OddsByEvent['scores'] {
+function parseScores(v: unknown): ScoresPayload | null {
   if (!v || typeof v !== 'object') return null;
   const s = v as Record<string, unknown>;
   const home = typeof s.home === 'number' ? s.home : null;

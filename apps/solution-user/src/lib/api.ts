@@ -569,14 +569,50 @@ export type AggregatedTotals = {
   margin: number;
 };
 
+export type AggregatedHandicapLine = AggregatedHandicap & { primary: boolean };
+export type AggregatedTotalsLine = AggregatedTotals & { primary: boolean };
+
+/** 스페셜 마켓 (Draw No Bet / BTTS / European Handicap / HTFT 등) — 원본 pass-through */
+export type AggregatedExtraOutcome = {
+  key: string;
+  label?: string | null;
+  price: number;
+};
+export type AggregatedExtraLine = {
+  hdp?: number | null;
+  label?: string | null;
+  outcomes: AggregatedExtraOutcome[];
+};
+export type AggregatedExtraMarket = {
+  name: string;
+  lines: AggregatedExtraLine[];
+};
+
 export type AggregatedMatch = {
   matchId: string;
   sport: string;
   status: AggregatedMatchStatus;
   startTime: string | null;
-  league: { name: string | null; nameKr: string | null; logoUrl: string | null };
-  home: { name: string | null; nameKr: string | null; logoUrl: string | null };
-  away: { name: string | null; nameKr: string | null; logoUrl: string | null };
+  kickoffUtc?: string | null;
+  kickoffKst?: string | null;
+  league: {
+    name: string | null;
+    nameKr: string | null;
+    logoUrl: string | null;
+    slug?: string | null;
+  };
+  home: {
+    name: string | null;
+    nameKr: string | null;
+    logoUrl: string | null;
+    externalId?: number | null;
+  };
+  away: {
+    name: string | null;
+    nameKr: string | null;
+    logoUrl: string | null;
+    externalId?: number | null;
+  };
   scores: {
     home: number | null;
     away: number | null;
@@ -586,6 +622,9 @@ export type AggregatedMatch = {
     moneyline?: AggregatedMoneyline;
     handicap?: AggregatedHandicap;
     totals?: AggregatedTotals;
+    handicapLines?: AggregatedHandicapLine[];
+    totalsLines?: AggregatedTotalsLine[];
+    extras?: Record<string, AggregatedExtraMarket>;
   };
   bookies: string[];
   bookieCount: number;

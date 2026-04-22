@@ -75,7 +75,21 @@
     "vinus:callback-smoke": "pnpm --filter @tosino/api run vinus:callback-smoke",
     "vinus:flows-smoke": "pnpm --filter @tosino/api run vinus:flows-smoke",
     "nginx:enable": "echo 'nginx: scripts/nginx-migrate-to-tosino.sh | scripts/nginx-quick-https-selfsigned.sh | 점검: scripts/nginx-doctor.sh'",
-    "deploy:all:tunnel": "pnpm install && pnpm build:apps && pnpm db:seed:hosts && pm2 reload ecosystem.config.js"
+    "deploy:all:tunnel": "pnpm install && pnpm build:apps && pnpm db:seed:hosts && pm2 reload ecosystem.config.js",
+    "crawler:setup": "bash apps/score-crawler/scripts/setup.sh",
+    "crawler:run": "bash apps/score-crawler/scripts/run.sh",
+    "crawler:loop": "bash apps/score-crawler/scripts/run.sh --loop",
+    "crawler:log": "bash apps/score-crawler/scripts/run.sh --show-log --log-take 20",
+    "crawler:test": "bash apps/score-crawler/scripts/run.sh --sports football --limit-rows 3",
+    "crawler:aiscore": "bash apps/score-crawler/scripts/run.sh --source-site aiscore",
+    "crawler:aiscore:loop": "bash apps/score-crawler/scripts/run.sh --source-site aiscore --loop",
+    "crawler:aiscore:test": "bash apps/score-crawler/scripts/run.sh --source-site aiscore --sports football --limit-rows 3",
+    "crawler:livesport": "bash apps/score-crawler/scripts/run.sh --source-site livesport",
+    "crawler:pm2:start": "pm2 start ecosystem.config.js --only score-crawler",
+    "crawler:pm2:stop": "pm2 stop score-crawler",
+    "crawler:pm2:restart": "pm2 restart score-crawler",
+    "crawler:pm2:logs": "pm2 logs score-crawler",
+    "deploy:crawler": "pnpm crawler:setup && pnpm crawler:pm2:start"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

@@ -23,6 +23,7 @@ import { UsdtDepositModule } from './usdt-deposit/usdt-deposit.module';
 import { TestScenarioModule } from './test-scenario/test-scenario.module';
 import { CreditsModule } from './credits/credits.module';
 import { OddsApiWsModule } from './odds-api-ws/odds-api-ws.module';
+import { CrawlerMappingsModule } from './crawler-mappings/crawler-mappings.module';
 import { SemiVirtualModule } from './semi-virtual/semi-virtual.module';
 import { BlacklistModule } from './blacklist/blacklist.module';
 import { ReserveBalanceModule } from './reserve-balance/reserve-balance.module';
@@ -66,6 +67,7 @@ import { IpAccessModule } from './ip-access/ip-access.module';
     TestScenarioModule,
     CreditsModule,
     OddsApiWsModule,
+    CrawlerMappingsModule,
     SemiVirtualModule,
     BlacklistModule,
     ReserveBalanceModule,
