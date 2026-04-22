@@ -681,23 +681,60 @@ export default function CrawlerMatchesPage() {
         </div>
       )}
 
-      {/* 2-pane: 왼쪽 매칭 리스트 / 오른쪽 provider 풀 */}
+      {/* 2-pane: 왼쪽(크롤 raw) / 오른쪽(provider) — 각 열 독립 스크롤 */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 420px",
-          gap: 12,
-          alignItems: "flex-start",
+          gridTemplateColumns: "minmax(0, 1.15fr) minmax(300px, 400px)",
+          gap: 0,
+          alignItems: "stretch",
+          borderRadius: 14,
+          overflow: "hidden",
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 1px 3px rgba(15,23,42,0.06)",
+          height: "calc(100dvh - 220px)",
+          maxHeight: "calc(100dvh - 220px)",
+          minHeight: 360,
         }}
       >
-        {/* 왼쪽: 크롤러 매칭 카드 (국가별 그룹) */}
+        {/* 왼쪽: 크롤러 매칭 — 밝은 패널 */}
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 10,
+            minHeight: 0,
+            minWidth: 0,
+            background: "#fff",
+            borderRight: "1px solid #e2e8f0",
           }}
         >
+          <div
+            style={{
+              flexShrink: 0,
+              padding: "10px 14px",
+              background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+              borderBottom: "1px solid #e2e8f0",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+              크롤러 원본 · 매핑
+            </div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+              드롭 타겟: 대기·거부 카드에 provider 카드를 놓으면 확정
+            </div>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
+              padding: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
           {items.length === 0 && !loading && (
             <div
               style={{
@@ -745,8 +782,9 @@ export default function CrawlerMatchesPage() {
               ))}
             </CountrySection>
           ))}
-          <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: "#888", marginTop: "auto", paddingTop: 4 }}>
             {items.length.toLocaleString()} / {total.toLocaleString()} 건
+          </div>
           </div>
         </div>
 
@@ -1849,37 +1887,48 @@ function ProviderPoolPanel({
   return (
     <div
       style={{
-        position: "sticky",
-        top: 8,
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        background: "#fafbff",
-        padding: 10,
-        maxHeight: "calc(100vh - 80px)",
         display: "flex",
         flexDirection: "column",
+        minHeight: 0,
+        minWidth: 0,
+        height: "100%",
+        overflow: "hidden",
+        background: "linear-gradient(165deg, #eef2ff 0%, #e0e7ff 40%, #f8fafc 100%)",
+        padding: 10,
       }}
     >
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 6,
+          flexShrink: 0,
+          paddingBottom: 8,
+          borderBottom: "1px solid rgba(99,102,241,0.25)",
+          marginBottom: 8,
         }}
       >
-        <div style={{ fontWeight: 700, fontSize: 14 }}>
-          내 provider 카드 풀
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 4,
+            gap: 8,
+          }}
+        >
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#312e81" }}>
+          Provider 카드 풀
         </div>
-        <div style={{ fontSize: 11, color: "#888" }}>
+        <div style={{ fontSize: 11, color: "#6366f1", fontWeight: 600 }}>
           {events.length.toLocaleString()}
           {poolTotal > 0 && (
-            <span> / {poolTotal.toLocaleString()} 건(필터)</span>
+            <span style={{ color: "#4f46e5", fontWeight: 500 }}>
+              {" "}
+              / {poolTotal.toLocaleString()} 건(필터)
+            </span>
           )}
           {hasMore ? " · 더 있음" : ""}
         </div>
-      </div>
-      <div style={{ fontSize: 11, color: "#666", marginBottom: 8 }}>
+        </div>
+      <div style={{ fontSize: 11, color: "#4338ca", marginBottom: 8, lineHeight: 1.45 }}>
         odds-api.io catalog 최근 24h 스냅샷. 왼쪽과 동일하게{" "}
         {kickoffScope === "upcoming"
           ? "예정·진행 이벤트만"
@@ -1897,14 +1946,16 @@ function ProviderPoolPanel({
             borderRadius: 8,
             padding: "6px 8px",
             marginBottom: 8,
+            flexShrink: 0,
           }}
         >
           종목(스포츠)을 선택하지 않으면 전 종목이 섞인 풀에서 앞쪽만 보입니다.
         </div>
       )}
+      </div>
 
-      {/* 필터 */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+      {/* 필터 (고정 영역) */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 6, flexShrink: 0 }}>
         <select
           value={localSport}
           onChange={(e) => {
@@ -1932,7 +1983,7 @@ function ProviderPoolPanel({
           ↻
         </button>
       </div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexShrink: 0 }}>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -1963,7 +2014,15 @@ function ProviderPoolPanel({
           미사용만
         </label>
       </div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          marginBottom: 8,
+          alignItems: "center",
+          flexShrink: 0,
+        }}
+      >
         <label style={{ fontSize: 11, color: "#555", whiteSpace: "nowrap" }}>
           후보 추천·매핑용 sourceSite
         </label>
@@ -1981,20 +2040,28 @@ function ProviderPoolPanel({
             color: "#c00",
             padding: "4px 6px",
             marginBottom: 6,
+            flexShrink: 0,
           }}
         >
           {err}
         </div>
       )}
-      {/* 카드 리스트 */}
+      {/* 카드 리스트 — flex에서 스크롤하려면 minHeight:0 필수 */}
       <div
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: "auto",
+          overflowX: "hidden",
           display: "flex",
           flexDirection: "column",
           gap: 6,
-          paddingRight: 4,
+          paddingRight: 6,
+          WebkitOverflowScrolling: "touch",
+          borderRadius: 8,
+          background: "rgba(255,255,255,0.72)",
+          border: "1px solid rgba(99,102,241,0.2)",
+          padding: 8,
         }}
       >
         {loading && events.length === 0 && (
