@@ -62,7 +62,8 @@ const appApi = {
   autorestart: true,
   max_restarts: 10,
   restart_delay: 3000,
-  env: envBase(),
+  /** crawler-matcher-worker 가 스케줄·소비 담당 — API 안 Bull 매처는 끔(중복 주기 방지) */
+  env: envBase({ CRAWLER_MATCHER_IN_API: '0' }),
 };
 
 const appMatcherWorker = {
@@ -74,15 +75,11 @@ const appMatcherWorker = {
   autorestart: true,
   max_restarts: 10,
   restart_delay: 5000,
-  env: envBase(
-    DEPLOY_PROFILE === 'local' || DEPLOY_PROFILE === 'local-dev'
-      ? {
-          /** 로컬에선 기본 주기를 조금 짧게(미설정 시 서버와 동일 45s 는 env 로 덮어쓰기 가능) */
-          CRAWLER_MATCHER_TICK_MS:
-            process.env.CRAWLER_MATCHER_TICK_MS || '20000',
-        }
-      : {},
-  ),
+  /** 주기 매칭 기본 약 7분(420000ms). 끄기: CRAWLER_MATCHER_TICK_MS=0 */
+  env: envBase({
+    CRAWLER_MATCHER_TICK_MS:
+      process.env.CRAWLER_MATCHER_TICK_MS || '420000',
+  }),
 };
 
 const appSmsIngest = {
@@ -116,7 +113,7 @@ const appScoreCrawler = {
    * --loop 모드로 주기 실행하며, 사이클마다 헬스체크 + 탭 1개 재사용.
    */
   script: 'bash',
-  args: [SCORE_CRAWLER_RUN, '--loop', '--interval-seconds', '300'],
+  args: [SCORE_CRAWLER_RUN, '--loop', '--interval-seconds', '420'],
   interpreter: 'none',
   cwd: SCORE_CRAWLER_ROOT,
   autorestart: true,

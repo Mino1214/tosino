@@ -2,11 +2,14 @@
 score-crawler CLI entry.
 
 실행 예:
-    # 1회만 실행 (지원 종목, 3개 페이지, 페이지당 5 row, headless)
+    # 1회만 실행 (지원 primary 종목 전부, 종목당 최대 250 경기까지 스크롤 수집, headless)
     python run.py
 
-    # 주기 실행 (5분마다)
-    python run.py --loop --interval-seconds 300
+    # 주기 실행 (기본 INTERVAL_SECONDS=420, 약 7분)
+    python run.py --loop
+
+    # 크롤 없이 sqlite 만 Nest 로 재전송
+    python run.py --push-backend-only
 
     # 모든 종목 순회, headful 디버깅
     python run.py --no-only-supported --headless=false
@@ -47,6 +50,7 @@ if _api_env.is_file():
 
 import db as store
 from backend_ingest import (
+    fetch_asset_hints,
     push_leagues_to_backend,
     push_raw_matches_to_backend,
     push_teams_to_backend,
@@ -61,6 +65,8 @@ from mappings import (
 
 # source-site 별 지원 종목 목록.
 # aiscore 는 livesport 와 slug 체계가 약간 다르므로 여기서 프로파일로 관리.
+# 기본 사이클(--only-supported 기본값)에서 순회하는 종목 = 아래 목록.
+# (aiscore_parser.build_sport_url 과 동일 URL — /ko 가 축구, 나머지는 /ko/{slug})
 AISCORE_SPORTS_PRIMARY = [
     "football",        # /ko
     "baseball",
@@ -78,18 +84,33 @@ AISCORE_SPORTS_PRIMARY = [
 ]
 AISCORE_SPORTS_ALL = list(AISCORE_SPORTS_PRIMARY)
 
+# aiscore 한·영 이중 수집 대상 (동일 source_match_id 로 ko/en raw 분리).
+# 매처가 en raw 를 키로 odds-api 와 매칭하므로, 매칭 원하는 종목은 모두 여기 포함해야 함.
+AISCORE_DUAL_LOCALE_SPORTS = frozenset({
+    "football", "soccer",
+    "baseball", "basketball", "volleyball",
+    "ice-hockey", "american-football", "tennis",
+    "esports",
+})
 
-def _make_parser(source_site: str, **kwargs):
+
+def _make_parser(source_site: str, *, asset_hints: Optional[dict] = None, **kwargs):
     """source_site 별 Playwright 파서 팩토리."""
     if source_site == "aiscore":
+        if asset_hints is not None:
+            kwargs["asset_hints"] = asset_hints
         return AiscoreParser(**kwargs)
+    kwargs.pop("page_locale", None)
+    kwargs.pop("asset_hints", None)
     return LivesportParser(**kwargs)
 
 
-def _page_url_for(source_site: str, slug: str) -> str:
+def _page_url_for(source_site: str, slug: str, page_locale: Optional[str] = None) -> str:
     if source_site == "aiscore":
         from aiscore_parser import build_sport_url
-        return build_sport_url(slug)
+
+        pl = (page_locale or "ko").strip().lower() if page_locale else "ko"
+        return build_sport_url(slug, page_locale=pl if pl in ("ko", "en") else "ko")
     return f"https://www.livesport.com/kr/{slug}/"
 
 
@@ -131,8 +152,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--sports",
-        default=None,
-        help="콤마 구분 livesport slug 목록. 지정 시 ONLY_SUPPORTED_SPORTS 는 무시된다.",
+        default=os.environ.get("SPORTS") or None,
+        help="콤마 구분 sport slug 목록(aiscore 기준). 지정 시 ONLY_SUPPORTED_SPORTS 는 무시된다. env: SPORTS",
     )
     p.add_argument(
         "--only-supported",
@@ -148,14 +169,26 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument(
         "--limit-pages",
         type=int,
-        default=_env_int("LIMIT_PAGES", 3),
-        help="순회할 페이지(종목) 개수 상한. 0/음수면 무제한.",
+        default=_env_int("LIMIT_PAGES", 0),
+        help="순회할 페이지(종목) 개수 상한. 0 이하면 지원(primary) 종목 전부.",
     )
     p.add_argument(
         "--limit-rows",
         type=int,
-        default=_env_int("LIMIT_ROWS_PER_PAGE", 5),
-        help="페이지당 저장할 row 상한",
+        default=_env_int("LIMIT_ROWS_PER_PAGE", 10000),
+        help="종목 페이지당 저장할 경기 상한 (aiscore 는 스크롤 합산 후 잘라냄)",
+    )
+    p.add_argument(
+        "--scroll-passes",
+        type=int,
+        default=_env_int("SCROLL_PASSES", 12),
+        help="aiscore: 초기 워밍 스크롤 횟수(리그 블록 로드)",
+    )
+    p.add_argument(
+        "--scroll-collect-rounds",
+        type=int,
+        default=_env_int("SCROLL_COLLECT_ROUNDS", 160),
+        help="aiscore: 가상 리스트 스크롤·DOM 스캔 최대 라운드",
     )
     p.add_argument(
         "--headless",
@@ -183,8 +216,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument(
         "--interval-seconds",
         type=int,
-        default=_env_int("INTERVAL_SECONDS", 300),
-        help="--loop 모드에서 한 사이클 끝난 뒤 다음 사이클까지 대기 초",
+        default=_env_int("INTERVAL_SECONDS", 420),
+        help="--loop 모드에서 한 사이클 끝난 뒤 다음 사이클까지 대기 초 (기본 420≈7분, 자원 보수적)",
     )
     p.add_argument(
         "--skip-healthcheck",
@@ -209,6 +242,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         action="store_true",
         default=False,
         help="BACKEND_BASE_URL 이 있어도 이번 실행에서는 ingest 를 생략",
+    )
+    p.add_argument(
+        "--push-backend-only",
+        action="store_true",
+        default=False,
+        help="브라우저 크롤 없이 sqlite→Nest ingest 만 실행 (이미 수집된 raw 재전송)",
     )
 
     # 로그 조회 전용
@@ -281,6 +320,67 @@ def print_recent_log(conn, take: int) -> None:
             )
 
 
+def run_backend_ingest_from_sqlite(conn, args: argparse.Namespace) -> None:
+    """sqlite 에 쌓인 리그/팀/경기를 Nest 로만 전송."""
+    if getattr(args, "skip_backend_ingest", False):
+        print("[score-crawler] skip_backend_ingest — Nest push 생략")
+        return
+    for kind, ingest in (
+        (
+            "leagues",
+            push_leagues_to_backend(
+                conn,
+                source_site=args.source_site,
+                backend_base_url=getattr(args, "backend_base_url", ""),
+                integration_key=getattr(args, "backend_integration_key", ""),
+            ),
+        ),
+        (
+            "teams",
+            push_teams_to_backend(
+                conn,
+                source_site=args.source_site,
+                backend_base_url=getattr(args, "backend_base_url", ""),
+                integration_key=getattr(args, "backend_integration_key", ""),
+            ),
+        ),
+        (
+            "matches",
+            push_raw_matches_to_backend(
+                conn,
+                source_site=args.source_site,
+                backend_base_url=getattr(args, "backend_base_url", ""),
+                integration_key=getattr(args, "backend_integration_key", ""),
+            ),
+        ),
+    ):
+        if ingest.get("skipped"):
+            reason = ingest.get("reason") or "unknown"
+            print(f"[score-crawler]   ingest {kind} skipped: {reason}")
+        elif ingest.get("ok"):
+            resp = ingest.get("response") or {}
+            ing_sum = resp.get("ingest") if isinstance(resp.get("ingest"), dict) else resp
+            summary = (
+                f"received={ing_sum.get('received')} upserted={ing_sum.get('upserted')} "
+                f"new={ing_sum.get('newlyAdded')} updated={ing_sum.get('updated')}"
+            )
+            matcher = resp.get("matcher")
+            if isinstance(matcher, dict):
+                summary += (
+                    f" | matcher scanned={matcher.get('scanned')} "
+                    f"auto={matcher.get('auto')} pending={matcher.get('pending')}"
+                )
+            print(
+                f"[score-crawler]   ingest {kind} ok http={ingest.get('http')} "
+                f"items={ingest.get('items')} → {summary}"
+            )
+        else:
+            print(
+                f"[score-crawler]   ingest {kind} FAIL http={ingest.get('http')} "
+                f"items={ingest.get('items')} err={ingest.get('error')}"
+            )
+
+
 # ── 한 사이클 실행 ────────────────────────────────────────────────────────
 def run_one_cycle(conn, args: argparse.Namespace, *, trigger_mode: str) -> dict:
     all_targets = select_target_sports(args)
@@ -307,19 +407,45 @@ def run_one_cycle(conn, args: argparse.Namespace, *, trigger_mode: str) -> dict:
     started_ms = int(time.time() * 1000)
     print(f"[score-crawler]   run#{run_id} started")
 
-    pages_total = len(targets)
+    pages_total = 0
+    for _slug in targets:
+        pages_total += (
+            2 if args.source_site == "aiscore" and _slug in AISCORE_DUAL_LOCALE_SPORTS else 1
+        )
     pages_ok = pages_fail = pages_empty = 0
     total_matches = 0
     total_teams = 0
     run_error: Optional[str] = None
 
-    try:
-        with _make_parser(
+    asset_hints: Optional[dict] = None
+    if (
+        args.source_site == "aiscore"
+        and not args.skip_backend_ingest
+        and (args.backend_base_url or "").strip()
+        and (args.backend_integration_key or "").strip()
+    ):
+        asset_hints = fetch_asset_hints(
+            args.backend_base_url,
+            args.backend_integration_key,
             args.source_site,
+            timeout_seconds=12,
+        )
+        if asset_hints:
+            nt = len(asset_hints.get("teams") or [])
+            nl = len(asset_hints.get("leagues") or [])
+            if nt or nl:
+                print(f"[score-crawler]   asset-hints: teams={nt} leagues={nl}")
+
+    try:
+        parser_kw: dict = dict(
             headless=args.headless,
             nav_timeout_ms=args.nav_timeout_ms,
             wait_after_load_ms=args.wait_after_load_ms,
-        ) as parser:
+        )
+        if args.source_site == "aiscore":
+            parser_kw["scroll_passes"] = args.scroll_passes
+            parser_kw["scroll_collect_max_rounds"] = args.scroll_collect_rounds
+        with _make_parser(args.source_site, asset_hints=asset_hints, **parser_kw) as parser:
 
             # 1) 헬스체크
             if args.skip_healthcheck:
@@ -351,8 +477,14 @@ def run_one_cycle(conn, args: argparse.Namespace, *, trigger_mode: str) -> dict:
                         "matches": 0, "teams": 0, "pages_ok": 0, "pages_fail": 0,
                     }
 
-            # 2) 페이지 순회 (같은 탭 재사용)
+            # 2) 페이지 순회 (aiscore 축구는 ko → en 컨텍스트 전환 후 두 번 수집)
             for slug in targets:
+                # 축구 이후 Playwright 가 en 에 남는 경우(비정상 종료 등) 다음 종목 URL 이 /ko 가 아닌 영어 경로로 갈 수 있음 → 비축구 전에 ko 로 복귀
+                if args.source_site == "aiscore" and slug not in AISCORE_DUAL_LOCALE_SPORTS:
+                    loc_guard = getattr(parser, "reload_context_for_locale", None)
+                    if callable(loc_guard) and getattr(parser, "_active_page_locale", None) == "en":
+                        loc_guard("ko")
+
                 mapping = store.resolve_mapping(
                     conn,
                     source_site=args.source_site,
@@ -364,108 +496,131 @@ def run_one_cycle(conn, args: argparse.Namespace, *, trigger_mode: str) -> dict:
                 is_supported = bool((mapping or {}).get("is_supported"))
 
                 tag = "SUPPORTED" if is_supported else "raw-only"
-                page_started_ms = int(time.time() * 1000)
-                page_url = _page_url_for(args.source_site, slug)
-                page_status = "ok"
-                page_err: Optional[str] = None
-                rows_found = rows_saved = teams_saved = 0
-
-                print(
-                    f"[score-crawler]   · {slug:<18s} ({tag}) "
-                    f"internal={internal_sport_slug or '-'} "
-                    f"provider={provider_sport_slug or '-'}"
+                locales = (
+                    ["ko", "en"]
+                    if args.source_site == "aiscore" and slug in AISCORE_DUAL_LOCALE_SPORTS
+                    else ["ko"]
                 )
 
-                try:
-                    source_url, rows = parser.fetch_sport_page(slug, limit_rows=args.limit_rows)
-                    page_url = source_url
-                    rows_found = len(rows)
+                for page_locale in locales:
+                    page_started_ms = int(time.time() * 1000)
+                    page_url = _page_url_for(
+                        args.source_site,
+                        slug,
+                        page_locale=page_locale if args.source_site == "aiscore" else None,
+                    )
+                    page_status = "ok"
+                    page_err: Optional[str] = None
+                    rows_found = rows_saved = teams_saved = 0
 
-                    if rows_found == 0:
-                        page_status = "empty"
-                        pages_empty += 1
+                    loc_fn = getattr(parser, "reload_context_for_locale", None)
+                    if callable(loc_fn):
+                        loc_fn(page_locale)
 
-                    for m in rows:
-                        store.upsert_match_raw(
-                            conn,
-                            source_site=args.source_site,
-                            source_sport_slug=slug,
-                            source_url=source_url,
-                            source_match_id=m.source_match_id,
-                            source_match_href=m.source_match_href,
-                            raw_sport_label=m.raw_sport_label,
-                            internal_sport_slug=internal_sport_slug,
-                            provider_name=args.provider_name,
-                            provider_sport_slug=provider_sport_slug,
-                            raw_home_name=m.raw_home_name,
-                            raw_home_slug=m.raw_home_slug,
-                            raw_home_logo=m.raw_home_logo,
-                            raw_away_name=m.raw_away_name,
-                            raw_away_slug=m.raw_away_slug,
-                            raw_away_logo=m.raw_away_logo,
-                            raw_league_label=m.raw_league_label,
-                            raw_league_slug=m.raw_league_slug,
-                            raw_league_logo=getattr(m, "raw_league_logo", None),
-                            raw_country_label=m.raw_country_label,
-                            raw_country_flag=getattr(m, "raw_country_flag", None),
-                            raw_kickoff_text=m.raw_kickoff_text,
-                            raw_kickoff_utc=m.raw_kickoff_utc,
-                            raw_score_text=m.raw_score_text,
-                            raw_status_text=m.raw_status_text,
-                            raw_payload=m.raw_payload,
+                    print(
+                        f"[score-crawler]   · {slug:<18s} [{page_locale}] ({tag}) "
+                        f"internal={internal_sport_slug or '-'} "
+                        f"provider={provider_sport_slug or '-'}"
+                    )
+
+                    try:
+                        source_url, rows = parser.fetch_sport_page(
+                            slug, limit_rows=args.limit_rows
                         )
-                        rows_saved += 1
-                        for (name, logo) in (
-                            (m.raw_home_name, m.raw_home_logo),
-                            (m.raw_away_name, m.raw_away_logo),
-                        ):
-                            if not name:
-                                continue
-                            store.upsert_team_raw(
+                        page_url = source_url
+                        rows_found = len(rows)
+
+                        if rows_found == 0:
+                            page_status = "empty"
+                            pages_empty += 1
+
+                        for m in rows:
+                            store.upsert_match_raw(
                                 conn,
                                 source_site=args.source_site,
                                 source_sport_slug=slug,
+                                source_locale=page_locale,
+                                source_url=source_url,
+                                source_match_id=m.source_match_id,
+                                source_match_href=m.source_match_href,
+                                raw_sport_label=m.raw_sport_label,
                                 internal_sport_slug=internal_sport_slug,
-                                raw_team_name=name,
-                                source_team_slug=None,
-                                raw_team_href=None,
-                                raw_team_logo=logo,
+                                provider_name=args.provider_name,
+                                provider_sport_slug=provider_sport_slug,
+                                raw_home_name=m.raw_home_name,
+                                raw_home_slug=m.raw_home_slug,
+                                raw_home_logo=m.raw_home_logo,
+                                raw_away_name=m.raw_away_name,
+                                raw_away_slug=m.raw_away_slug,
+                                raw_away_logo=m.raw_away_logo,
+                                raw_league_label=m.raw_league_label,
+                                raw_league_slug=m.raw_league_slug,
+                                raw_league_logo=getattr(m, "raw_league_logo", None),
+                                raw_country_label=m.raw_country_label,
+                                raw_country_flag=getattr(m, "raw_country_flag", None),
+                                raw_kickoff_text=m.raw_kickoff_text,
+                                raw_kickoff_utc=m.raw_kickoff_utc,
+                                raw_score_text=m.raw_score_text,
+                                raw_status_text=m.raw_status_text,
+                                raw_payload=m.raw_payload,
                             )
-                            teams_saved += 1
-                    conn.commit()
+                            rows_saved += 1
+                            for (name, logo) in (
+                                (m.raw_home_name, m.raw_home_logo),
+                                (m.raw_away_name, m.raw_away_logo),
+                            ):
+                                if not name:
+                                    continue
+                                store.upsert_team_raw(
+                                    conn,
+                                    source_site=args.source_site,
+                                    source_sport_slug=slug,
+                                    internal_sport_slug=internal_sport_slug,
+                                    raw_team_name=name,
+                                    source_team_slug=None,
+                                    raw_team_href=None,
+                                    raw_team_logo=logo,
+                                )
+                                teams_saved += 1
+                        conn.commit()
 
-                    if page_status == "ok":
-                        pages_ok += 1
-                    total_matches += rows_saved
-                    total_teams += teams_saved
+                        if page_status == "ok":
+                            pages_ok += 1
+                        total_matches += rows_saved
+                        total_teams += teams_saved
 
-                except Exception as e:
-                    page_status = "fail"
-                    page_err = f"{type(e).__name__}: {e}"
-                    pages_fail += 1
-                    print(f"[score-crawler]     ! fetch 실패: {page_err}")
+                    except Exception as e:
+                        page_status = "fail"
+                        page_err = f"{type(e).__name__}: {e}"
+                        pages_fail += 1
+                        print(f"[score-crawler]     ! fetch 실패: {page_err}")
 
-                finally:
-                    store.log_page_fetch(
-                        conn,
-                        run_id=run_id,
-                        source_site=args.source_site,
-                        source_sport_slug=slug,
-                        source_url=page_url,
-                        internal_sport_slug=internal_sport_slug,
-                        provider_sport_slug=provider_sport_slug,
-                        is_supported=is_supported,
-                        status=page_status,
-                        rows_found=rows_found,
-                        rows_saved=rows_saved,
-                        teams_saved=teams_saved,
-                        duration_ms=int(time.time() * 1000) - page_started_ms,
-                        error_text=page_err,
-                    )
-                    print(
-                        f"[score-crawler]     status={page_status} "
-                        f"found={rows_found} saved={rows_saved} teams={teams_saved}"
-                    )
+                    finally:
+                        store.log_page_fetch(
+                            conn,
+                            run_id=run_id,
+                            source_site=args.source_site,
+                            source_sport_slug=slug,
+                            source_url=page_url,
+                            internal_sport_slug=internal_sport_slug,
+                            provider_sport_slug=provider_sport_slug,
+                            is_supported=is_supported,
+                            status=page_status,
+                            rows_found=rows_found,
+                            rows_saved=rows_saved,
+                            teams_saved=teams_saved,
+                            duration_ms=int(time.time() * 1000) - page_started_ms,
+                            error_text=page_err,
+                        )
+                        print(
+                            f"[score-crawler]     status={page_status} "
+                            f"found={rows_found} saved={rows_saved} teams={teams_saved}"
+                        )
+
+                if args.source_site == "aiscore" and locales == ["ko", "en"]:
+                    loc_reset = getattr(parser, "reload_context_for_locale", None)
+                    if callable(loc_reset):
+                        loc_reset("ko")
 
     except Exception as e:
         run_error = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
@@ -501,63 +656,7 @@ def run_one_cycle(conn, args: argparse.Namespace, *, trigger_mode: str) -> dict:
     )
 
     # 4) 백엔드로 리그/팀/경기 목록 push (옵션)
-    if not getattr(args, "skip_backend_ingest", False):
-        for kind, ingest in (
-            (
-                "leagues",
-                push_leagues_to_backend(
-                    conn,
-                    source_site=args.source_site,
-                    backend_base_url=getattr(args, "backend_base_url", ""),
-                    integration_key=getattr(args, "backend_integration_key", ""),
-                ),
-            ),
-            (
-                "teams",
-                push_teams_to_backend(
-                    conn,
-                    source_site=args.source_site,
-                    backend_base_url=getattr(args, "backend_base_url", ""),
-                    integration_key=getattr(args, "backend_integration_key", ""),
-                ),
-            ),
-            (
-                "matches",
-                push_raw_matches_to_backend(
-                    conn,
-                    source_site=args.source_site,
-                    backend_base_url=getattr(args, "backend_base_url", ""),
-                    integration_key=getattr(args, "backend_integration_key", ""),
-                ),
-            ),
-        ):
-            if ingest.get("skipped"):
-                reason = ingest.get("reason")
-                if reason and "not set" not in reason:
-                    print(f"[score-crawler]   ingest {kind} skipped: {reason}")
-            elif ingest.get("ok"):
-                resp = ingest.get("response") or {}
-                # matches 는 {ingest:{...}, matcher:{...}} 구조, 그 외는 {received,upserted,...}
-                ing_sum = resp.get("ingest") if isinstance(resp.get("ingest"), dict) else resp
-                summary = (
-                    f"received={ing_sum.get('received')} upserted={ing_sum.get('upserted')} "
-                    f"new={ing_sum.get('newlyAdded')} updated={ing_sum.get('updated')}"
-                )
-                matcher = resp.get("matcher")
-                if isinstance(matcher, dict):
-                    summary += (
-                        f" | matcher scanned={matcher.get('scanned')} "
-                        f"auto={matcher.get('auto')} pending={matcher.get('pending')}"
-                    )
-                print(
-                    f"[score-crawler]   ingest {kind} ok http={ingest.get('http')} "
-                    f"items={ingest.get('items')} → {summary}"
-                )
-            else:
-                print(
-                    f"[score-crawler]   ingest {kind} FAIL http={ingest.get('http')} "
-                    f"items={ingest.get('items')} err={ingest.get('error')}"
-                )
+    run_backend_ingest_from_sqlite(conn, args)
 
     return {
         "run_id": run_id,
@@ -582,6 +681,25 @@ def main(argv: Optional[list[str]] = None) -> int:
         provider_name=args.provider_name,
     )
     print(f"[score-crawler] sport_mappings upserted: {mapping_count}")
+
+    if getattr(args, "push_backend_only", False):
+        print("[score-crawler] ▶ push-backend-only (sqlite → Nest)")
+        run_backend_ingest_from_sqlite(conn, args)
+        print_recent_log(conn, take=3)
+        return 0
+
+    if not args.skip_backend_ingest:
+        bu = (args.backend_base_url or "").strip()
+        bk = bool((args.backend_integration_key or "").strip())
+        print(
+            f"[score-crawler] nest ingest: BACKEND_BASE_URL_set={bool(bu)} "
+            f"BACKEND_INTEGRATION_KEY_set={bk}"
+            + (
+                "  (둘 다 필요: …/api + ODDS_API_INTEGRATION_KEYS 중 하나와 동일 키)"
+                if not (bu and bk)
+                else ""
+            ),
+        )
 
     # 로그 조회 모드
     if args.show_log:

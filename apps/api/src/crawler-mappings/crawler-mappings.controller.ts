@@ -71,7 +71,94 @@ export class CrawlerMappingsIntegrationController {
 @Controller('integrations/crawler/matches')
 @UseGuards(OddsApiIntegrationKeyGuard)
 export class CrawlerMatchesIntegrationController {
-  constructor(private readonly svc: CrawlerMappingsService) {}
+  constructor(
+    private readonly svc: CrawlerMappingsService,
+    private readonly matcher: CrawlerMatcherService,
+  ) {}
+
+  /**
+   * 매핑 목록 읽기(HQ `GET /hq/crawler/matches` 와 동일 payload: pairedLocaleRaw·로고 보강 포함).
+   * ingest 와 동일하게 `x-integration-key` 또는 `Authorization: Integration <key>`.
+   * `sourceSite` 필수 — 전역 테이블 범위를 사이트로 한정.
+   * `platformId` + `includeOdds`(기본 true) 이면 해당 플랫폼 odds 스냅샷에서 `providerExternalEventId` 매칭 배당(`providerOdds`)을 붙인다.
+   */
+  @Get('mapping-overlays')
+  async mappingOverlays(
+    @Query('sourceSite') sourceSite?: string,
+    @Query('platformId') platformId?: string,
+    @Query('includeOdds') includeOdds?: string,
+    @Query('sportSlug') sportSlug?: string,
+    @Query('leagueSlug') leagueSlug?: string,
+    @Query('status') status?: string,
+    @Query('q') q?: string,
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+    @Query('kickoffScope') kickoffScope?: 'upcoming' | 'past' | 'all',
+    @Query('oddsPayload') oddsPayload?: string,
+  ) {
+    const site = (sourceSite || '').trim();
+    if (!site) throw new BadRequestException('sourceSite is required');
+    const rawTake = take ? Number.parseInt(take, 10) : 50;
+    const takeN = Number.isFinite(rawTake)
+      ? Math.min(200, Math.max(1, rawTake))
+      : 50;
+    const rawSkip = skip ? Number.parseInt(skip, 10) : 0;
+    const skipN = Number.isFinite(rawSkip) ? Math.max(0, rawSkip) : 0;
+    const ks = kickoffScope?.trim();
+    const scope =
+      ks === 'upcoming' || ks === 'past' || ks === 'all' ? ks : undefined;
+    const st = (status || '').trim();
+    const allowed =
+      st === '' ||
+      st === 'pending' ||
+      st === 'auto' ||
+      st === 'confirmed' ||
+      st === 'rejected' ||
+      st === 'ignored' ||
+      st === 'all' ||
+      st === 'matched' ||
+      st === 'misc';
+    if (!allowed) {
+      throw new BadRequestException(
+        'status must be pending|auto|confirmed|rejected|ignored|all|matched|misc',
+      );
+    }
+    const pid = (platformId || '').trim();
+    const wantOdds =
+      Boolean(pid) &&
+      includeOdds !== '0' &&
+      includeOdds !== 'false' &&
+      includeOdds !== 'no';
+
+    const op = (oddsPayload || 'full').trim().toLowerCase();
+    const oddsPayloadNorm: 'full' | 'preview' =
+      op === 'preview' ? 'preview' : 'full';
+
+    return this.matcher.listMappingOverlays({
+      listParams: {
+        sourceSite: site,
+        status: (st || 'matched') as
+          | 'pending'
+          | 'auto'
+          | 'confirmed'
+          | 'rejected'
+          | 'ignored'
+          | 'all'
+          | 'matched'
+          | 'misc',
+        sportSlug: sportSlug?.trim() || undefined,
+        leagueSlug: leagueSlug?.trim() || undefined,
+        q: q?.trim() || undefined,
+        take: takeN,
+        skip: skipN,
+        kickoffScope: scope,
+      },
+      platformId: wantOdds ? pid : null,
+      includeOdds: wantOdds,
+      oddsPayload: oddsPayloadNorm,
+      omitRawMatch: false,
+    });
+  }
 
   @Post('ingest')
   async ingest(
@@ -114,6 +201,22 @@ export class CrawlerTeamsIntegrationController {
   @Get('stats')
   async stats(@Query('sourceSite') sourceSite?: string) {
     return this.svc.teamStats(sourceSite);
+  }
+}
+
+/**
+ * score-crawler 가 사이클 시작 시 호출 — 확정 매핑에 묶인 로컬 `/assets/` 만 반환.
+ */
+@Controller('integrations/crawler/asset-hints')
+@UseGuards(OddsApiIntegrationKeyGuard)
+export class CrawlerAssetHintsIntegrationController {
+  constructor(private readonly svc: CrawlerMappingsService) {}
+
+  @Get()
+  async hints(@Query('sourceSite') sourceSite?: string) {
+    const site = (sourceSite || '').trim();
+    if (!site) throw new BadRequestException('sourceSite is required');
+    return this.svc.listAssetHintsForCrawlerSite(site);
   }
 }
 
@@ -327,6 +430,26 @@ export class CrawlerMatchesAdminController {
   }
 
   /**
+   * 매핑 행이 없는 CrawlerRawMatch 에 대해 pending CrawlerMatchMapping 을 만든다.
+   * (과거 ingest 버전 이후 쌓인 고아 raw 용 — 새 ingest 는 자동 생성)
+   */
+  @Post('sync-mapping-rows-from-raw')
+  async syncMappingRowsFromRaw(
+    @Body() body?: { sourceSite?: string; limit?: number },
+  ) {
+    return this.svc.backfillOrphanCrawlerMatchMappings({
+      sourceSite: body?.sourceSite?.trim() || undefined,
+      limit: body?.limit,
+    });
+  }
+
+  /** aiscore 축구 ko/en raw 를 sourceMatchId 로 양방향 pairedRawMatchId 연결 */
+  @Post('link-aiscore-football-locale-pairs')
+  async linkAiscoreFootballLocalePairs() {
+    return this.svc.linkAiscoreFootballLocalePairs();
+  }
+
+  /**
    * 선택 provider team alias 의 한글명/로고/국가를 upsert.
    * alias row 가 없으면 originalName 을 힌트로 새로 만든다.
    */
@@ -422,6 +545,7 @@ export class CrawlerMatchesAdminController {
       onlyStatuses?: Array<
         'pending' | 'rejected' | 'auto' | 'confirmed' | 'ignored'
       >;
+      onlyWithoutStoredCandidates?: boolean;
     },
   ) {
     const job = await this.matcherQueue.add(
@@ -430,6 +554,8 @@ export class CrawlerMatchesAdminController {
         sourceSite: body?.sourceSite?.trim() || undefined,
         limit: body?.limit,
         onlyStatuses: body?.onlyStatuses,
+        onlyWithoutStoredCandidates:
+          body?.onlyWithoutStoredCandidates === true,
       },
       {
         removeOnComplete: 40,

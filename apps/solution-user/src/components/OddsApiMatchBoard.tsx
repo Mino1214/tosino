@@ -47,6 +47,10 @@ export function OddsApiMatchBoard({
       ? slipTemplate.marketPriority
       : (["moneyline", "handicap", "totals"] as const);
 
+  /**
+   * 서버에는 sport 필터를 넘기지 않고 항상 전체(크롤 매칭된 것 한정)를 받는다.
+   * 종목 탭 카운트를 정확히 보여주고, 탭 전환 시 재요청 없이 즉시 반응하게 하기 위함.
+   */
   const load = useCallback(async () => {
     try {
       const [s, m] = await Promise.all([
@@ -54,8 +58,8 @@ export function OddsApiMatchBoard({
         fetchOddsApiMatches({
           host: requestHost,
           status: mode,
-          sport: activeSport || undefined,
-          limit: 200,
+          limit: 500,
+          crawlerMatched: true,
         }),
       ]);
       setStatus(s);
@@ -66,7 +70,7 @@ export function OddsApiMatchBoard({
     } finally {
       setLoading(false);
     }
-  }, [mode, activeSport, requestHost]);
+  }, [mode, requestHost]);
 
   useEffect(() => {
     void load();
@@ -76,15 +80,40 @@ export function OddsApiMatchBoard({
     return () => clearInterval(id);
   }, [load, mode]);
 
-  useEffect(() => {
-    if (status && status.filters.sports.length > 0 && !activeSport) {
-      setActiveSport(status.filters.sports[0]);
-    }
-  }, [status, activeSport]);
+  /**
+   * 기본은 "전체" (activeSport="") — 실시간/프리매치 탭을 열면 바로 다 보이게 한다.
+   * 종목 탭을 눌렀을 때만 해당 sport 로 좁힌다.
+   */
 
   const isLight = (b?.theme.ui?.background ?? "dark") === "light";
 
-  const matchesByLeague = useMemo(() => groupByLeague(matches), [matches]);
+  /**
+   * kickoff 이 지난 prematch 는 숨긴다 (서버도 필터링하지만 클라이언트에서도 한 번 더).
+   * 라이브는 status === 'live' 인 동안 유지.
+   */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const visibleMatches = useMemo(() => {
+    const bySport = activeSport
+      ? matches.filter((m) => m.sport === activeSport)
+      : matches;
+    return bySport.filter((m) => {
+      if (m.status === 'live') return true;
+      if (!m.startTime) return true;
+      const t = Date.parse(m.startTime);
+      if (!Number.isFinite(t)) return true;
+      return t > nowMs;
+    });
+  }, [matches, activeSport, nowMs]);
+
+  const matchesByLeague = useMemo(
+    () => groupByLeague(visibleMatches),
+    [visibleMatches],
+  );
 
   const sportCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -155,7 +184,7 @@ export function OddsApiMatchBoard({
 
   if (!b) return null;
 
-  const totalMatches = matches.length;
+  const totalMatches = visibleMatches.length;
 
   return (
     <section className="mt-4" id="odds-api-match-board">
@@ -204,14 +233,20 @@ export function OddsApiMatchBoard({
         </EmptyBox>
       ) : (
         <>
-          {/* 종목 탭 */}
+          {/* 종목 탭 — 맨 앞 "전체" 는 필터 해제 */}
           <div className="mb-3 flex flex-wrap gap-2">
-            {status.filters.sports.map((sp) => {
+            {[
+              { sp: "", label: "전체", count: matches.length },
+              ...status.filters.sports.map((sp) => ({
+                sp,
+                label: prettySport(sp),
+                count: sportCounts.get(sp) ?? 0,
+              })),
+            ].map(({ sp, label, count }) => {
               const active = activeSport === sp;
-              const n = sportCounts.get(sp) ?? 0;
               return (
                 <button
-                  key={sp}
+                  key={sp || "__all__"}
                   type="button"
                   onClick={() => setActiveSport(sp)}
                   className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition md:px-4 ${
@@ -222,8 +257,8 @@ export function OddsApiMatchBoard({
                         : "border-white/10 bg-zinc-900/50 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
                   }`}
                 >
-                  <span className="font-semibold capitalize">{prettySport(sp)}</span>
-                  <span className="text-[11px] opacity-80">({n})</span>
+                  <span className="font-semibold capitalize">{label}</span>
+                  <span className="text-[11px] opacity-80">({count})</span>
                 </button>
               );
             })}

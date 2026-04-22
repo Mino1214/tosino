@@ -25,10 +25,12 @@ import { useOddsHostProxySecret } from "@/lib/useOddsHostProxySecret";
 import { OddsHostDiagnosticPanel } from "@/components/OddsHostDiagnosticPanel";
 import { OddsApiLivePanel } from "@/components/OddsApiLivePanel";
 import { OddsApiMatchBoard } from "@/components/OddsApiMatchBoard";
+import { CrawlerMatchOverlaysPanel } from "@/components/CrawlerMatchOverlaysPanel";
 
 const HUB_TABS = [
   { id: "live" as const, label: "실시간" },
   { id: "prematch" as const, label: "프리매치" },
+  { id: "crawlmap" as const, label: "크롤 매칭" },
   { id: "pmspecial" as const, label: "프리매치(스페셜)" },
   { id: "ozmarkets" as const, label: "오즈마켓" },
 ] as const;
@@ -50,6 +52,7 @@ const PM_DB_TAB_NOTICE =
 
 function parseHubSection(tab: string | null): HubSection {
   if (tab === "prematch") return "prematch";
+  if (tab === "crawlmap") return "crawlmap";
   if (tab === "pmspecial") return "pmspecial";
   if (tab === "ozmarkets") return "ozmarkets";
   // 프리매치 우선 정책: 쿼리가 없으면 prematch를 기본 탭으로 사용
@@ -103,9 +106,12 @@ export function SportsHubClient() {
 
   const setSection = useCallback(
     (next: HubSection) => {
-      router.replace(`/lobby/sports?tab=${next}`);
+      const params = new URLSearchParams(sp.toString());
+      params.set("tab", next);
+      if (next !== "crawlmap") params.delete("crawlMatch");
+      router.replace(`/lobby/sports?${params.toString()}`);
     },
-    [router],
+    [router, sp],
   );
 
   const [liveGames, setLiveGames] = useState<SportsLiveGameDto[]>([]);
@@ -323,6 +329,7 @@ export function SportsHubClient() {
       if (!useOddsProxy) return [];
       return ozLeagues;
     }
+    if (section === "crawlmap") return [];
     return liveLeagues;
   }, [
     section,
@@ -366,6 +373,9 @@ export function SportsHubClient() {
     if (section === "pmspecial") {
       return [{ id: "spec", label: "스페셜", count: pmSpecialGames.length }];
     }
+    if (section === "crawlmap") {
+      return [{ id: "crawl", label: "크롤 매칭", count: 0 }];
+    }
     return [{ id: "oz", label: "마켓", count: ozExtractedGames.length }];
   }, [
     section,
@@ -380,6 +390,7 @@ export function SportsHubClient() {
   const title = useMemo(() => {
     if (section === "live") return "인게임 · 실시간";
     if (section === "prematch") return "프리매치";
+    if (section === "crawlmap") return "크롤 매칭";
     if (section === "pmspecial") return "프리매치 · 스페셜 플랜";
     return "오즈마켓";
   }, [section]);
@@ -388,6 +399,9 @@ export function SportsHubClient() {
     if (section === "ozmarkets") return OZ_TAB_NOTICE;
     if (section === "pmspecial") return PM_SPECIAL_NOTICE;
     if (section === "prematch") return PM_DB_TAB_NOTICE;
+    if (section === "crawlmap") {
+      return "GET /public/crawler/match-overlays — 호스트로 플랫폼을 식별하고 매칭·짝 로케일·배당을 함께 받습니다.";
+    }
     return undefined;
   }, [section]);
 
@@ -433,6 +447,9 @@ export function SportsHubClient() {
         return "스페셜 플랜 응답에 표시할 경기가 없습니다. 플랜·키·종목(sport)을 확인하거나 아래 JSON 을 확인하세요.";
       }
       return "등록된 경기가 없습니다.";
+    }
+    if (section === "crawlmap") {
+      return "위 패널에서 크롤 매칭 목록을 확인하세요.";
     }
     if (!useOddsProxy) {
       return "데모 카드 모드에서는 OddsHost 프록시를 호출하지 않습니다. 「API 데이터」로 전환하세요.";
@@ -542,18 +559,22 @@ export function SportsHubClient() {
       ? liveErr
       : section === "prematch"
         ? pmErr
-        : section === "pmspecial"
-          ? pmSpecErr
-          : ozErr;
+        : section === "crawlmap"
+          ? null
+          : section === "pmspecial"
+            ? pmSpecErr
+            : ozErr;
 
   const operatorLoading =
     section === "live"
       ? loadingLive
       : section === "prematch"
         ? loadingPm
-        : section === "pmspecial"
-          ? loadingPmSpec
-          : loadingOz;
+        : section === "crawlmap"
+          ? false
+          : section === "pmspecial"
+            ? loadingPmSpec
+            : loadingOz;
 
   const operatorPanel =
     showOperatorTools ? (
@@ -677,6 +698,11 @@ export function SportsHubClient() {
               <span className="text-amber-400/95">오류: {pmErr}</span>
             ) : null}
           </>
+        ) : section === "crawlmap" ? (
+          <>
+            <span className="text-zinc-500">public/crawler/match-overlays</span>
+            <span className="text-zinc-400">aiscore 매칭·짝 로케일·배당</span>
+          </>
         ) : section === "pmspecial" ? (
           <>
             <span className="text-zinc-500">OddsHost prematch special=1</span>
@@ -745,6 +771,8 @@ export function SportsHubClient() {
           <OddsApiMatchBoard mode={section} />
         </div>
       ) : null}
+
+      {section === "crawlmap" ? <CrawlerMatchOverlaysPanel /> : null}
 
       {/* 운영자 모드에서는 기존 OddsHost/DB 스냅샷 도구도 함께 노출 */}
       {showOperatorTools ? (

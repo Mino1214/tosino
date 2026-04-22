@@ -50,6 +50,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     sql = SCHEMA_FILE.read_text(encoding="utf-8")
     conn.executescript(sql)
     _migrate_add_missing_columns(conn)
+    _migrate_crawler_matches_raw_locale(conn)
     conn.commit()
 
 
@@ -78,6 +79,63 @@ def _migrate_add_missing_columns(conn: sqlite3.Connection) -> None:
         for col, ddl in cols.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+
+
+def _migrate_crawler_matches_raw_locale(conn: sqlite3.Connection) -> None:
+    """UNIQUE 에 source_locale 을 넣기 위해 테이블 재작성 (기존 row 는 모두 ko)."""
+    cur = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='crawler_matches_raw'"
+    ).fetchone()
+    if not cur:
+        return
+    cols = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(crawler_matches_raw)").fetchall()
+    }
+    if "source_locale" in cols:
+        return
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("ALTER TABLE crawler_matches_raw RENAME TO crawler_matches_raw_old")
+    old_info = conn.execute("PRAGMA table_info(crawler_matches_raw_old)").fetchall()
+    col_defs: list[str] = []
+    for _cid, name, ctype, notnull, dflt, pk in old_info:
+        t = (ctype or "TEXT").strip() or "TEXT"
+        if int(pk or 0) == 1:
+            col_defs.append(f'    "{name}" INTEGER PRIMARY KEY AUTOINCREMENT')
+        else:
+            nn = " NOT NULL" if notnull else ""
+            dcl = ""
+            if dflt is not None and str(dflt).strip() != "":
+                dcl = f" DEFAULT {dflt}"
+            col_defs.append(f'    "{name}" {t}{nn}{dcl}')
+    col_defs.append('    source_locale TEXT NOT NULL DEFAULT \'ko\'')
+    cols_sql = ",\n".join(col_defs)
+    conn.executescript(
+        f"""
+CREATE TABLE crawler_matches_raw (
+{cols_sql},
+    UNIQUE (source_site, source_sport_slug, source_match_id, source_locale)
+);
+"""
+    )
+    old_names = [r[1] for r in old_info]
+    qold = ", ".join(f'"{n}"' for n in old_names)
+    conn.execute(
+        f'INSERT INTO crawler_matches_raw ({qold}, "source_locale") '
+        f"SELECT {qold}, 'ko' FROM crawler_matches_raw_old"
+    )
+    conn.execute("DROP TABLE crawler_matches_raw_old")
+    conn.executescript(
+        """
+CREATE INDEX IF NOT EXISTS idx_matches_raw_source_sport
+  ON crawler_matches_raw (source_site, source_sport_slug);
+CREATE INDEX IF NOT EXISTS idx_matches_raw_internal_sport
+  ON crawler_matches_raw (internal_sport_slug);
+CREATE INDEX IF NOT EXISTS idx_matches_raw_fetched_at
+  ON crawler_matches_raw (fetched_at);
+"""
+    )
+    conn.execute("PRAGMA foreign_keys=ON")
 
 
 def seed_sport_mappings(
@@ -160,6 +218,7 @@ def upsert_match_raw(
     *,
     source_site: str,
     source_sport_slug: str,
+    source_locale: str = "ko",
     source_url: str,
     source_match_id: Optional[str],
     source_match_href: Optional[str],
@@ -184,11 +243,14 @@ def upsert_match_raw(
     raw_status_text: Optional[str],
     raw_payload: Optional[dict],
 ) -> None:
+    loc = (source_locale or "ko").strip().lower()
+    if loc != "en":
+        loc = "ko"
     payload_json = json.dumps(raw_payload, ensure_ascii=False) if raw_payload else None
     conn.execute(
         """
         INSERT INTO crawler_matches_raw (
-            source_site, source_sport_slug, source_url,
+            source_site, source_sport_slug, source_locale, source_url,
             source_match_id, source_match_href, raw_sport_label,
             internal_sport_slug, provider_name, provider_sport_slug,
             raw_home_name, raw_home_slug, raw_home_logo,
@@ -198,8 +260,8 @@ def upsert_match_raw(
             raw_kickoff_text, raw_kickoff_utc,
             raw_score_text, raw_status_text,
             raw_payload_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(source_site, source_sport_slug, source_match_id)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_site, source_sport_slug, source_match_id, source_locale)
         DO UPDATE SET
             source_url           = excluded.source_url,
             source_match_href    = excluded.source_match_href,
@@ -214,7 +276,8 @@ def upsert_match_raw(
             raw_away_slug        = excluded.raw_away_slug,
             raw_away_logo        = COALESCE(excluded.raw_away_logo, crawler_matches_raw.raw_away_logo),
             raw_league_label     = excluded.raw_league_label,
-            raw_league_slug      = COALESCE(excluded.raw_league_slug, crawler_matches_raw.raw_league_slug),
+            -- 매 수집값으로 덮어씀 (COALESCE 시 크롤러가 NULL을내면 잘못된 예전 슬러그 `;` 등이 영구 잔존)
+            raw_league_slug      = excluded.raw_league_slug,
             raw_league_logo      = COALESCE(excluded.raw_league_logo, crawler_matches_raw.raw_league_logo),
             raw_country_label    = COALESCE(excluded.raw_country_label, crawler_matches_raw.raw_country_label),
             raw_country_flag     = COALESCE(excluded.raw_country_flag, crawler_matches_raw.raw_country_flag),
@@ -226,7 +289,7 @@ def upsert_match_raw(
             fetched_at           = CURRENT_TIMESTAMP
         """,
         (
-            source_site, source_sport_slug, source_url,
+            source_site, source_sport_slug, loc, source_url,
             source_match_id, source_match_href, raw_sport_label,
             internal_sport_slug, provider_name, provider_sport_slug,
             raw_home_name, raw_home_slug, raw_home_logo,

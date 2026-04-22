@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { CrawlerRawMatch } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 function parseIsoDate(v: string | null | undefined): Date | null {
@@ -28,11 +29,15 @@ export interface CrawlerLeagueIngestResult {
   newlyAdded: number;
   updated: number;
   invalid: number;
+  /** aiscore 축구 en ingest 직후 자동 ko↔en 페어링 건수 (없으면 생략) */
+  linkedPairs?: number;
 }
 
 export interface CrawlerRawMatchIngestItem {
   sourceMatchId: string;
   sourceSportSlug: string;
+  /** aiscore 이중 로케일: ko | en (미입력 시 ko) */
+  sourceLocale?: string | null;
   sourceUrl?: string | null;
   sourceMatchHref?: string | null;
   internalSportSlug?: string | null;
@@ -68,6 +73,21 @@ export interface CrawlerTeamIngestItem {
 }
 
 export type CrawlerTeamIngestResult = CrawlerLeagueIngestResult;
+
+/** 확정 매핑 + OddsApi*Alias 의 로컬 `/assets/` 경로만 — score-crawler 가 원격 fetch 를 건너뛸 때 사용 */
+export type CrawlerAssetHintsForSite = {
+  teams: Array<{
+    sourceSportSlug: string;
+    sourceTeamName: string;
+    logoUrl: string;
+  }>;
+  leagues: Array<{
+    sourceSportSlug: string;
+    sourceLeagueSlug: string;
+    leagueLogo: string | null;
+    countryFlag: string | null;
+  }>;
+};
 
 @Injectable()
 export class CrawlerMappingsService {
@@ -324,6 +344,82 @@ export class CrawlerMappingsService {
   //  raw match ingest (CrawlerRawMatch)
   // ────────────────────────────────────────────────────────────────────────
 
+  /**
+   * HQ 목록·통계는 CrawlerMatchMapping 기준이므로, raw ingest 직후 pending 행을 반드시 둔다.
+   * (매처를 돌리기 전에도 슈퍼어드민에서 카드가 보이게)
+   */
+  private async ensureCrawlerMatchMappingRow(raw: CrawlerRawMatch): Promise<void> {
+    const loc = (raw.sourceLocale || 'ko').trim().toLowerCase();
+    const sport = (raw.internalSportSlug || raw.sourceSportSlug || '').toLowerCase();
+    if (
+      raw.sourceSite === 'aiscore' &&
+      loc === 'ko' &&
+      (sport === 'football' || sport === 'soccer')
+    ) {
+      // odds 매핑 파이프라인은 영어 raw(en) 한 줄만 유지 — 한국어 raw 는 paired 로만 연결
+      return;
+    }
+    await this.prisma.crawlerMatchMapping.upsert({
+      where: { rawMatchId: raw.id },
+      create: {
+        rawMatchId: raw.id,
+        sourceSite: raw.sourceSite,
+        sourceSportSlug: raw.sourceSportSlug,
+        internalSportSlug: raw.internalSportSlug,
+        rawLeagueSlug: raw.rawLeagueSlug,
+        rawHomeName: raw.rawHomeName,
+        rawAwayName: raw.rawAwayName,
+        rawKickoffUtc: raw.rawKickoffUtc,
+        status: 'pending',
+        reason: 'ingest: 매처·수동 매칭 대기',
+      },
+      update: {
+        sourceSportSlug: raw.sourceSportSlug,
+        internalSportSlug: raw.internalSportSlug,
+        rawLeagueSlug: raw.rawLeagueSlug,
+        rawHomeName: raw.rawHomeName,
+        rawAwayName: raw.rawAwayName,
+        rawKickoffUtc: raw.rawKickoffUtc,
+      },
+    });
+  }
+
+  /**
+   * 과거에 매핑 행 없이 쌓인 raw 백필. 매처 run 시작 시에도 호출 가능.
+   */
+  async backfillOrphanCrawlerMatchMappings(opts?: {
+    sourceSite?: string;
+    limit?: number;
+  }): Promise<{ upserted: number }> {
+    const limit = Math.max(1, Math.min(5000, opts?.limit ?? 2000));
+    const site = opts?.sourceSite?.trim();
+    const orphans = await this.prisma.crawlerRawMatch.findMany({
+      where: {
+        mapping: null,
+        ...(site ? { sourceSite: site } : {}),
+        NOT: {
+          AND: [
+            { sourceSite: 'aiscore' },
+            { sourceLocale: 'ko' },
+            {
+              OR: [
+                { internalSportSlug: 'football' },
+                { sourceSportSlug: 'football' },
+                { sourceSportSlug: 'soccer' },
+              ],
+            },
+          ],
+        },
+      },
+      orderBy: [{ lastSeenAt: 'desc' }],
+      take: limit,
+    });
+    for (const raw of orphans) {
+      await this.ensureCrawlerMatchMappingRow(raw);
+    }
+    return { upserted: orphans.length };
+  }
+
   async ingestRawMatchesFromCrawler(
     sourceSite: string,
     items: CrawlerRawMatchIngestItem[],
@@ -336,19 +432,33 @@ export class CrawlerMappingsService {
     let invalid = 0;
     let newlyAdded = 0;
     let updated = 0;
+    let touchEnFootball = false;
     for (const raw of list) {
       const sourceMatchId = (raw?.sourceMatchId || '').trim();
       const sourceSportSlug = (raw?.sourceSportSlug || '').trim();
+      const sourceLocaleRaw = (raw?.sourceLocale ?? 'ko').toString().trim().toLowerCase();
+      const sourceLocale = sourceLocaleRaw === 'en' ? 'en' : 'ko';
       if (!sourceMatchId || !sourceSportSlug) {
         invalid++;
         continue;
       }
+      const intSp = ((raw?.internalSportSlug ?? '') as string).trim().toLowerCase();
+      if (
+        site === 'aiscore' &&
+        sourceLocale === 'en' &&
+        (intSp === 'football' ||
+          sourceSportSlug.toLowerCase() === 'football' ||
+          sourceSportSlug.toLowerCase() === 'soccer')
+      ) {
+        touchEnFootball = true;
+      }
       const existing = await this.prisma.crawlerRawMatch.findUnique({
         where: {
-          sourceSite_sourceSportSlug_sourceMatchId: {
+          sourceSite_sourceSportSlug_sourceMatchId_sourceLocale: {
             sourceSite: site,
             sourceSportSlug,
             sourceMatchId,
+            sourceLocale,
           },
         },
       });
@@ -357,6 +467,7 @@ export class CrawlerMappingsService {
         sourceSite: site,
         sourceSportSlug,
         sourceMatchId,
+        sourceLocale,
         sourceUrl: raw.sourceUrl ?? null,
         sourceMatchHref: raw.sourceMatchHref ?? null,
         internalSportSlug: raw.internalSportSlug ?? null,
@@ -375,10 +486,11 @@ export class CrawlerMappingsService {
         rawStatusText: raw.rawStatusText ?? null,
       };
       if (!existing) {
-        await this.prisma.crawlerRawMatch.create({ data: payload });
+        const created = await this.prisma.crawlerRawMatch.create({ data: payload });
         newlyAdded++;
+        await this.ensureCrawlerMatchMappingRow(created);
       } else {
-        await this.prisma.crawlerRawMatch.update({
+        const saved = await this.prisma.crawlerRawMatch.update({
           where: { id: existing.id },
           data: {
             ...payload,
@@ -386,6 +498,7 @@ export class CrawlerMappingsService {
           },
         });
         updated++;
+        await this.ensureCrawlerMatchMappingRow(saved);
       }
     }
     const upserted = newlyAdded + updated;
@@ -394,13 +507,63 @@ export class CrawlerMappingsService {
         `[crawler-mappings] raw matches ingest site=${site} received=${list.length} upserted=${upserted} (new=${newlyAdded} updated=${updated} invalid=${invalid})`,
       );
     }
+    let linkedPairs: number | undefined;
+    if (site === 'aiscore' && touchEnFootball) {
+      const r = await this.linkAiscoreFootballLocalePairs();
+      linkedPairs = r.linkedPairs;
+    }
     return {
       received: list.length,
       upserted,
       newlyAdded,
       updated,
       invalid,
+      ...(linkedPairs !== undefined ? { linkedPairs } : {}),
     };
+  }
+
+  /**
+   * aiscore 축구(football) ko/en raw 를 sourceMatchId 기준으로 양방향 페어링한다.
+   * ingest 후 HQ·배치에서 호출해 [한국어]↔[영어] 브릿지를 만든다.
+   */
+  async linkAiscoreFootballLocalePairs(): Promise<{ linkedPairs: number }> {
+    const enRows = await this.prisma.crawlerRawMatch.findMany({
+      where: {
+        sourceSite: 'aiscore',
+        sourceLocale: 'en',
+        OR: [{ internalSportSlug: 'football' }, { sourceSportSlug: 'football' }],
+      },
+      select: { id: true, sourceSportSlug: true, sourceMatchId: true },
+    });
+    let linkedPairs = 0;
+    for (const en of enRows) {
+      const ko = await this.prisma.crawlerRawMatch.findFirst({
+        where: {
+          sourceSite: 'aiscore',
+          sourceLocale: 'ko',
+          sourceSportSlug: en.sourceSportSlug,
+          sourceMatchId: en.sourceMatchId,
+          OR: [{ internalSportSlug: 'football' }, { sourceSportSlug: 'football' }],
+        },
+        select: { id: true },
+      });
+      if (!ko) continue;
+      await this.prisma.$transaction([
+        this.prisma.crawlerRawMatch.update({
+          where: { id: en.id },
+          data: { pairedRawMatchId: ko.id },
+        }),
+        this.prisma.crawlerRawMatch.update({
+          where: { id: ko.id },
+          data: { pairedRawMatchId: en.id },
+        }),
+      ]);
+      linkedPairs++;
+    }
+    if (linkedPairs > 0) {
+      this.logger.log(`[crawler-mappings] linkAiscoreFootballLocalePairs linked=${linkedPairs}`);
+    }
+    return { linkedPairs };
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -502,6 +665,157 @@ export class CrawlerMappingsService {
       updated,
       invalid,
     };
+  }
+
+  /**
+   * HQ 에서 확정해 둔 팀/리그의 **이미 로컬 캐시된** 이미지 경로만 내려준다.
+   * score-crawler 가 사이클마다 GET 해서 동일 팀의 원격 로고 URL fetch 를 줄인다.
+   */
+  async listAssetHintsForCrawlerSite(sourceSite: string): Promise<CrawlerAssetHintsForSite> {
+    const site = (sourceSite || '').trim();
+    if (!site) {
+      return { teams: [], leagues: [] };
+    }
+
+    const isLocalAsset = (v: string | null | undefined): v is string =>
+      Boolean(v && v.startsWith('/assets/'));
+
+    const tabKey = (a: string, b: string) => `${a}\t${b}`;
+
+    const teamRows = await this.prisma.crawlerTeamMapping.findMany({
+      where: {
+        sourceSite: site,
+        status: 'confirmed',
+        providerTeamExternalId: { not: null },
+        providerSportSlug: { not: null },
+      },
+      select: {
+        sourceSportSlug: true,
+        sourceTeamName: true,
+        sourceTeamLogo: true,
+        providerSportSlug: true,
+        providerTeamExternalId: true,
+      },
+    });
+
+    const pairTuples = new Map<
+      string,
+      { sport: string; externalId: string }
+    >();
+    for (const t of teamRows) {
+      const sport = t.providerSportSlug as string;
+      const ext = t.providerTeamExternalId as string;
+      pairTuples.set(tabKey(sport, ext), { sport, externalId: ext });
+    }
+    const aliasLogoByPair = new Map<string, string | null>();
+    const tuples = [...pairTuples.values()];
+    const chunkSize = 200;
+    for (let i = 0; i < tuples.length; i += chunkSize) {
+      const chunk = tuples.slice(i, i + chunkSize);
+      if (!chunk.length) continue;
+      const found = await this.prisma.oddsApiTeamAlias.findMany({
+        where: {
+          OR: chunk.map((c) => ({
+            sport: c.sport,
+            externalId: c.externalId,
+          })),
+        },
+        select: { sport: true, externalId: true, logoUrl: true },
+      });
+      for (const a of found) {
+        aliasLogoByPair.set(tabKey(a.sport, a.externalId), a.logoUrl);
+      }
+    }
+
+    const teams: CrawlerAssetHintsForSite['teams'] = [];
+    const seenTeam = new Set<string>();
+    for (const t of teamRows) {
+      const sport = t.providerSportSlug as string;
+      const ext = t.providerTeamExternalId as string;
+      const aliasLogo = aliasLogoByPair.get(tabKey(sport, ext)) ?? null;
+      const logo = isLocalAsset(aliasLogo)
+        ? aliasLogo
+        : isLocalAsset(t.sourceTeamLogo)
+          ? t.sourceTeamLogo
+          : null;
+      if (!logo) continue;
+      const dedupe = tabKey(t.sourceSportSlug, t.sourceTeamName);
+      if (seenTeam.has(dedupe)) continue;
+      seenTeam.add(dedupe);
+      teams.push({
+        sourceSportSlug: t.sourceSportSlug,
+        sourceTeamName: t.sourceTeamName,
+        logoUrl: logo,
+      });
+    }
+
+    const leagueRows = await this.prisma.crawlerLeagueMapping.findMany({
+      where: {
+        sourceSite: site,
+        status: 'confirmed',
+        providerLeagueSlug: { not: null },
+        providerSportSlug: { not: null },
+      },
+      select: {
+        sourceSportSlug: true,
+        sourceLeagueSlug: true,
+        sourceLeagueLogo: true,
+        sourceCountryFlag: true,
+        providerSportSlug: true,
+        providerLeagueSlug: true,
+      },
+    });
+
+    const leaguePairTuples = new Map<string, { sport: string; slug: string }>();
+    for (const L of leagueRows) {
+      const sport = L.providerSportSlug as string;
+      const slug = L.providerLeagueSlug as string;
+      leaguePairTuples.set(tabKey(sport, slug), { sport, slug });
+    }
+    const leagueAliasLogoByPair = new Map<string, string | null>();
+    const ltuples = [...leaguePairTuples.values()];
+    for (let i = 0; i < ltuples.length; i += chunkSize) {
+      const chunk = ltuples.slice(i, i + chunkSize);
+      if (!chunk.length) continue;
+      const found = await this.prisma.oddsApiLeagueAlias.findMany({
+        where: {
+          OR: chunk.map((c) => ({
+            sport: c.sport,
+            slug: c.slug,
+          })),
+        },
+        select: { sport: true, slug: true, logoUrl: true },
+      });
+      for (const a of found) {
+        leagueAliasLogoByPair.set(tabKey(a.sport, a.slug), a.logoUrl);
+      }
+    }
+
+    const leagues: CrawlerAssetHintsForSite['leagues'] = [];
+    const seenLeague = new Set<string>();
+    for (const L of leagueRows) {
+      const sport = L.providerSportSlug as string;
+      const pslug = L.providerLeagueSlug as string;
+      const aliasLogo = leagueAliasLogoByPair.get(tabKey(sport, pslug)) ?? null;
+      const leagueLogo = isLocalAsset(aliasLogo)
+        ? aliasLogo
+        : isLocalAsset(L.sourceLeagueLogo)
+          ? L.sourceLeagueLogo
+          : null;
+      const countryFlag = isLocalAsset(L.sourceCountryFlag) ? L.sourceCountryFlag : null;
+      if (!leagueLogo && !countryFlag) continue;
+      const dedupe = tabKey(L.sourceSportSlug, L.sourceLeagueSlug);
+      if (seenLeague.has(dedupe)) continue;
+      seenLeague.add(dedupe);
+      leagues.push({
+        sourceSportSlug: L.sourceSportSlug,
+        sourceLeagueSlug: L.sourceLeagueSlug,
+        leagueLogo,
+        countryFlag,
+      });
+    }
+
+    return { teams, leagues };
   }
 
   async listTeams(params: {

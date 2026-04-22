@@ -10,6 +10,10 @@ import {
   useState,
 } from "react";
 import { apiFetch, publicAssetUrl } from "@/lib/api";
+import {
+  crawlerLeagueContextTitle,
+  resolveCrawlerCountryKo,
+} from "@/lib/crawler-country-ko";
 
 // ────────────────────────────────────────────────────────────
 // 타입
@@ -27,6 +31,8 @@ type RawMatch = {
   sourceSportSlug: string;
   sourceMatchId: string;
   internalSportSlug: string | null;
+  /** aiscore 이중 로케일 (있으면) */
+  sourceLocale?: string | null;
   rawHomeName: string | null;
   rawAwayName: string | null;
   rawLeagueLabel: string | null;
@@ -75,6 +81,18 @@ type MatchMapping = {
   providerAwayLogo: string | null;
   providerHomeKoreanName: string | null;
   providerAwayKoreanName: string | null;
+  /** OddsApiLeagueAlias.country (Nest enrich) */
+  oddsLeagueAliasCountry: string | null;
+  /** (sport, leagueSlug) → odds alias + slug 맵 기반 한글 국가 힌트 */
+  providerCountryKo: string | null;
+  /** Nest enrich: 짝 로케일 raw (예 en 카드 + ko 한글 라벨) */
+  pairedLocaleRaw?: {
+    sourceLocale: string;
+    rawHomeName: string | null;
+    rawAwayName: string | null;
+    rawLeagueLabel: string | null;
+    rawCountryLabel: string | null;
+  } | null;
 };
 
 type ListResponse = {
@@ -151,6 +169,9 @@ type ProviderPoolResponse = {
   totalBeforeFilter?: number;
   hasMore?: boolean;
   skip?: number;
+  /** 최근 스냅샷에서 읽은 카탈로그 이벤트 총량(종목 필터 전) */
+  catalogTotalEvents?: number;
+  catalogSportSlugs?: string[];
 };
 
 type CrawlSuggestSide = {
@@ -256,66 +277,168 @@ function fmtDelta(sec: number | null | undefined) {
   return `${Math.round(sec / 60)}m`;
 }
 
-/** 왼쪽 매칭 리스트를 국가별로 묶는다. rawCountryLabel 이 있으면 그 값, 없으면 '기타'. */
-function groupByCountry(items: MatchMapping[]): {
-  key: string;
-  label: string;
-  flag: string | null;
-  items: MatchMapping[];
-}[] {
-  const groups = new Map<
-    string,
-    { label: string; flag: string | null; items: MatchMapping[] }
-  >();
-  for (const m of items) {
-    const label = m.rawMatch?.rawCountryLabel?.trim() || "기타";
-    const key = label;
-    let g = groups.get(key);
-    if (!g) {
-      g = { label, flag: m.sourceCountryFlag, items: [] };
-      groups.set(key, g);
-    } else if (!g.flag && m.sourceCountryFlag) {
-      g.flag = m.sourceCountryFlag;
-    }
-    g.items.push(m);
-  }
-  // "기타" 는 맨 뒤, 나머지는 건수 많은 순 -> 라벨 오름차순
-  return Array.from(groups.entries())
-    .map(([key, g]) => ({ key, ...g }))
-    .sort((a, b) => {
-      if (a.label === "기타" && b.label !== "기타") return 1;
-      if (b.label === "기타" && a.label !== "기타") return -1;
-      if (a.items.length !== b.items.length)
-        return b.items.length - a.items.length;
-      return a.label.localeCompare(b.label, "ko");
-    });
+/** 킥오프 미정은 목록 맨 뒤(오른쪽 provider 풀과 동일한 감각). */
+function kickoffSortMs(iso: string | null | undefined): number {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
 }
 
-/** provider pool 을 country 별로 묶는다. country 없으면 '기타'. */
-function groupProviderByCountry(events: ProviderEvent[]): {
-  key: string;
-  label: string;
-  items: ProviderEvent[];
-}[] {
-  const groups = new Map<string, { label: string; items: ProviderEvent[] }>();
-  for (const ev of events) {
-    const label = ev.country?.trim() || "기타";
-    let g = groups.get(label);
-    if (!g) {
-      g = { label, items: [] };
-      groups.set(label, g);
-    }
-    g.items.push(ev);
+/** 크롤/픽스처 페이지에 가깝게: kickoff → 리그 slug → sourceMatchId */
+function compareMappingsCrawlOrder(a: MatchMapping, b: MatchMapping): number {
+  const ka = kickoffSortMs(a.rawKickoffUtc ?? a.rawMatch?.rawKickoffUtc ?? null);
+  const kb = kickoffSortMs(b.rawKickoffUtc ?? b.rawMatch?.rawKickoffUtc ?? null);
+  if (ka !== kb) return ka - kb;
+  const la = (a.rawLeagueSlug || a.rawMatch?.rawLeagueSlug || "").toLowerCase();
+  const lb = (b.rawLeagueSlug || b.rawMatch?.rawLeagueSlug || "").toLowerCase();
+  const lc = la.localeCompare(lb, "ko");
+  if (lc !== 0) return lc;
+  const ida = (a.rawMatch?.sourceMatchId || "").trim();
+  const idb = (b.rawMatch?.sourceMatchId || "").trim();
+  return ida.localeCompare(idb, undefined, { numeric: true, sensitivity: "base" });
+}
+
+/** 왼쪽: 종목 → 리그 계층 (크롤 원본·매핑 카드) */
+type CrawlerLeagueGroup = {
+  leagueKey: string;
+  leagueLabel: string;
+  items: MatchMapping[];
+};
+
+type CrawlerSportGroup = {
+  sportKey: string;
+  sportLabel: string;
+  leagues: CrawlerLeagueGroup[];
+  itemCount: number;
+};
+
+function groupMappingsBySportThenLeague(items: MatchMapping[]): CrawlerSportGroup[] {
+  const sportMap = new Map<string, Map<string, MatchMapping[]>>();
+  for (const m of items) {
+    const sk =
+      (m.internalSportSlug || m.sourceSportSlug || "").trim() || "__sport__";
+    const raw = m.rawMatch;
+    const lk = (
+      (m.rawLeagueSlug || raw?.rawLeagueSlug || raw?.rawLeagueLabel || "") as string
+    ).trim() || "__league__";
+    if (!sportMap.has(sk)) sportMap.set(sk, new Map());
+    const lm = sportMap.get(sk)!;
+    if (!lm.has(lk)) lm.set(lk, []);
+    lm.get(lk)!.push(m);
   }
-  return Array.from(groups.entries())
-    .map(([key, g]) => ({ key, ...g }))
-    .sort((a, b) => {
-      if (a.label === "기타" && b.label !== "기타") return 1;
-      if (b.label === "기타" && a.label !== "기타") return -1;
-      if (a.items.length !== b.items.length)
-        return b.items.length - a.items.length;
-      return a.label.localeCompare(b.label, "ko");
+
+  const minKickoffMs = (arr: MatchMapping[]) =>
+    arr.reduce(
+      (acc, m) => Math.min(acc, kickoffSortMs(m.rawKickoffUtc ?? m.rawMatch?.rawKickoffUtc ?? null)),
+      Number.POSITIVE_INFINITY,
+    );
+
+  const sportGroups: CrawlerSportGroup[] = [];
+  for (const [sportKey, leagueMap] of sportMap) {
+    const leagues: CrawlerLeagueGroup[] = [];
+    let itemCount = 0;
+    for (const [leagueKey, leagueItems] of leagueMap) {
+      const ordered = [...leagueItems].sort(compareMappingsCrawlOrder);
+      const sample = ordered[0];
+      const raw = sample?.rawMatch;
+      const leagueLabel =
+        leagueKey === "__league__"
+          ? "리그 미정"
+          : (raw?.rawLeagueLabel?.trim() ||
+              sample?.rawLeagueSlug?.trim() ||
+              leagueKey) as string;
+      itemCount += ordered.length;
+      leagues.push({ leagueKey, leagueLabel, items: ordered });
+    }
+    leagues.sort((a, b) => {
+      const ta = minKickoffMs(a.items);
+      const tb = minKickoffMs(b.items);
+      if (ta !== tb) return ta - tb;
+      return a.leagueLabel.localeCompare(b.leagueLabel, "ko");
     });
+    const sportLabel = sportKey === "__sport__" ? "종목 미정" : sportKey;
+    sportGroups.push({ sportKey, sportLabel, leagues, itemCount });
+  }
+  sportGroups.sort((a, b) => {
+    const ta = minKickoffMs(a.leagues.flatMap((l) => l.items));
+    const tb = minKickoffMs(b.leagues.flatMap((l) => l.items));
+    if (ta !== tb) return ta - tb;
+    return a.sportLabel.localeCompare(b.sportLabel, "ko");
+  });
+  return sportGroups;
+}
+
+/** 오른쪽: 종목 → 리그 (provider 카탈로그 카드) */
+type ProviderLeagueGroup = {
+  leagueKey: string;
+  leagueLabel: string;
+  items: ProviderEvent[];
+};
+
+type ProviderSportGroup = {
+  sportKey: string;
+  sportLabel: string;
+  leagues: ProviderLeagueGroup[];
+  itemCount: number;
+};
+
+function compareProviderCrawlOrder(a: ProviderEvent, b: ProviderEvent): number {
+  const ka = kickoffSortMs(a.date);
+  const kb = kickoffSortMs(b.date);
+  if (ka !== kb) return ka - kb;
+  const la = (a.leagueSlug || "").toLowerCase();
+  const lb = (b.leagueSlug || "").toLowerCase();
+  const lc = la.localeCompare(lb, "ko");
+  if (lc !== 0) return lc;
+  return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function groupProviderBySportThenLeague(events: ProviderEvent[]): ProviderSportGroup[] {
+  const sportMap = new Map<string, Map<string, ProviderEvent[]>>();
+  for (const ev of events) {
+    const sk = (ev.sport || "").trim() || "__sport__";
+    const lk = (ev.leagueSlug || "").trim() || "__league__";
+    if (!sportMap.has(sk)) sportMap.set(sk, new Map());
+    const lm = sportMap.get(sk)!;
+    if (!lm.has(lk)) lm.set(lk, []);
+    lm.get(lk)!.push(ev);
+  }
+
+  const minKickoffEv = (arr: ProviderEvent[]) =>
+    arr.reduce((acc, ev) => Math.min(acc, kickoffSortMs(ev.date)), Number.POSITIVE_INFINITY);
+
+  const out: ProviderSportGroup[] = [];
+  for (const [sportKey, leagueMap] of sportMap) {
+    const leagues: ProviderLeagueGroup[] = [];
+    let itemCount = 0;
+    for (const [leagueKey, leagueItems] of leagueMap) {
+      const ordered = [...leagueItems].sort(compareProviderCrawlOrder);
+      const sample = ordered[0];
+      const leagueLabel =
+        leagueKey === "__league__"
+          ? "리그 미정"
+          : (sample.leagueKoreanName?.trim() ||
+              sample.leagueSlug?.trim() ||
+              leagueKey) as string;
+      itemCount += ordered.length;
+      leagues.push({ leagueKey, leagueLabel, items: ordered });
+    }
+    leagues.sort((a, b) => {
+      const ta = minKickoffEv(a.items);
+      const tb = minKickoffEv(b.items);
+      if (ta !== tb) return ta - tb;
+      return a.leagueLabel.localeCompare(b.leagueLabel, "ko");
+    });
+    const sportLabel = sportKey === "__sport__" ? "종목 미정" : sportKey;
+    out.push({ sportKey, sportLabel, leagues, itemCount });
+  }
+  out.sort((a, b) => {
+    const ta = minKickoffEv(a.leagues.flatMap((l) => l.items));
+    const tb = minKickoffEv(b.leagues.flatMap((l) => l.items));
+    if (ta !== tb) return ta - tb;
+    return a.sportLabel.localeCompare(b.sportLabel, "ko");
+  });
+  return out;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -334,15 +457,21 @@ export default function CrawlerMatchesPage() {
   const [leagueFilter, setLeagueFilter] = useState("");
   const [query, setQuery] = useState("");
   const [runBusy, setRunBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncHint, setSyncHint] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<
     RunMatcherQueuedResponse | RunMatcherDoneResponse | null
   >(null);
   const [confirmTarget, setConfirmTarget] = useState<MatchMapping | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [quickConfirming, setQuickConfirming] = useState<string | null>(null);
-  /** 기본: 예정·진행만 (과거 kickoff 는 실시간 변동·노이즈 분리) */
-  const [kickoffScope, setKickoffScope] = useState<"upcoming" | "past">(
-    "upcoming",
+  /**
+   * upcoming: kickoff ≥ 지금 또는 미정만 (라이브 작업용)
+   * past: 이미 지난 kickoff
+   * all: 무관 — 스코어 크롤이 과거 경기만 넣는 경우 기본이 upcoming 이면 목록이 비어 보임
+   */
+  const [kickoffScope, setKickoffScope] = useState<"upcoming" | "past" | "all">(
+    "all",
   );
 
   // ── 데이터 로드 ────────────────────────────────────────────
@@ -376,7 +505,7 @@ export default function CrawlerMatchesPage() {
       if (leagueFilter.trim()) qp.set("leagueSlug", leagueFilter.trim());
       if (query.trim()) qp.set("q", query.trim());
       qp.set("kickoffScope", kickoffScope);
-      qp.set("take", "200");
+      qp.set("take", "500");
       const r = await apiFetch<ListResponse>(
         `/hq/crawler/matches?${qp.toString()}`,
       );
@@ -415,6 +544,28 @@ export default function CrawlerMatchesPage() {
       facets.sports[0].sourceSport;
     if (pick) setSportFilter(pick);
   }, [facets, sportFilter]);
+
+  const syncMappingRowsFromRaw = useCallback(async () => {
+    setSyncBusy(true);
+    setError(null);
+    setSyncHint(null);
+    try {
+      const r = await apiFetch<{ upserted: number }>(
+        "/hq/crawler/matches/sync-mapping-rows-from-raw",
+        { method: "POST", body: JSON.stringify({ limit: 5000 }) },
+      );
+      await Promise.all([refresh(), refreshStats(), refreshFacets()]);
+      setSyncHint(
+        r.upserted > 0
+          ? `raw → 매핑 행 ${r.upserted.toLocaleString()}건 생성·갱신(고아 백필)`
+          : "생성할 고아 raw 없음(이미 매핑 행 있음)",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "매핑 행 동기화 실패");
+    } finally {
+      setSyncBusy(false);
+    }
+  }, [refresh, refreshStats, refreshFacets]);
 
   const runMatcher = useCallback(async () => {
     setRunBusy(true);
@@ -546,15 +697,70 @@ export default function CrawlerMatchesPage() {
   };
 
   return (
-    <div style={{ padding: 20, maxWidth: 1800, margin: "0 auto" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: "1 1 0%",
+        minHeight: 0,
+        minWidth: 0,
+        width: "100%",
+        gap: 0,
+      }}
+    >
+      <div style={{ flexShrink: 0 }}>
       <h1 style={{ marginBottom: 4 }}>크롤러 경기 매칭</h1>
       <p style={{ color: "#666", marginBottom: 12, fontSize: 12, lineHeight: 1.5 }}>
-        <strong>strict 매칭·DB 스캔</strong>은{" "}
-        <code style={{ fontSize: 11 }}>crawler-matcher-worker</code> 큐에서 처리하고,
-        이 화면은 <strong>선택 종목·탭 기준 매칭 결과만 조회</strong>합니다. 오른쪽
-        catalog 카드를 왼쪽 카드로 드래그하면 즉시 확정됩니다. kickoff 구간은
-        아래에서 고릅니다.
+        크롤 원본은 ingest 시 DB에 저장되고, 같은 시점에{" "}
+        <strong>대기(pending) 매핑 행</strong>이 만들어져 이 목록에 나타납니다.{" "}
+        <strong>매처(Bull <code style={{ fontSize: 11 }}>crawler-matcher</code>)</strong>는
+        선택적 유틸입니다. 서버에서 주기 잡을 켜도 기본은{" "}
+        <strong>후보 JSON이 아직 없는 pending</strong>만 소량 선작업합니다. 주기는{" "}
+        <code style={{ fontSize: 11 }}>CRAWLER_MATCHER_TICK_MS</code>(ms, 운영 기본 약 7분).
+        비프로덕션·미설정 시에도 약 7분 기본, 끄려면 0. HQ의
+        「매칭 큐에 넣기」는 전체 재검사입니다. 최종 확정은 드래그·수동으로 합니다.
       </p>
+
+      {(counts?.rawTotal ?? 0) === 0 && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: "12px 14px",
+            borderRadius: 10,
+            background: "#fff1f2",
+            border: "1px solid #fecdd3",
+            fontSize: 12,
+            lineHeight: 1.55,
+            color: "#881337",
+          }}
+        >
+          <strong>Postgres에 크롤 원시 경기(CrawlerRawMatch)가 0건입니다.</strong>{" "}
+          스코어 크롤러는 기본적으로 sqlite에만 쌓고, <strong>Nest DB로 넣으려면</strong>{" "}
+          <code style={{ fontSize: 11 }}>apps/score-crawler/.env</code>에 다음이 있어야
+          합니다.
+          <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+            <li>
+              <code style={{ fontSize: 11 }}>BACKEND_BASE_URL=http://127.0.0.1:4001/api</code>{" "}
+              — 반드시 <strong>/api</strong> 포함, 이 HQ가 붙은 Nest와 호스트·포트 동일
+            </li>
+            <li>
+              <code style={{ fontSize: 11 }}>BACKEND_INTEGRATION_KEY</code> = Nest{" "}
+              <code style={{ fontSize: 11 }}>ODDS_API_INTEGRATION_KEYS</code> 콤마 목록{" "}
+              <strong>중 하나와 완전 동일</strong> (키 비면 Nest는 401)
+            </li>
+            <li>
+              한 사이클 끝나면 터미널에{" "}
+              <code style={{ fontSize: 11 }}>ingest matches skipped: …</code> /{" "}
+              <code style={{ fontSize: 11 }}>ingest matches ok …</code> 로그 확인
+            </li>
+          </ul>
+          수동 검증:{" "}
+          <code style={{ fontSize: 11 }}>POST /api/integrations/crawler/matches/ingest</code> +{" "}
+          <code style={{ fontSize: 11 }}>x-integration-key</code>. HQ{" "}
+          <code style={{ fontSize: 11 }}>NEXT_PUBLIC_API_URL</code>이 지금 보는 Nest와
+          같은 DB를 가리키는지도 확인하세요.
+        </div>
+      )}
 
       {/* 상태 카운터 */}
       <div
@@ -628,10 +834,11 @@ export default function CrawlerMatchesPage() {
         <select
           value={kickoffScope}
           onChange={(e) =>
-            setKickoffScope(e.target.value as "upcoming" | "past")
+            setKickoffScope(e.target.value as "upcoming" | "past" | "all")
           }
-          style={{ ...inputStyle, minWidth: 200 }}
+          style={{ ...inputStyle, minWidth: 220 }}
         >
+          <option value="all">전체 (kickoff 예정·과거)</option>
           <option value="upcoming">예정·진행 (kickoff ≥ 지금 또는 미정)</option>
           <option value="past">미처리(과거) · kickoff 시각 경과</option>
         </select>
@@ -641,9 +848,22 @@ export default function CrawlerMatchesPage() {
           onClick={() => void runMatcher()}
           disabled={runBusy}
           style={btnPrimary}
+          title="전체(또는 탭에 맞는 status) 재검사 — 운영 부담이 크면 limit 를 줄이세요"
         >
-          {runBusy ? "요청 중…" : "매칭 큐에 넣기"}
+          {runBusy ? "요청 중…" : "매칭 큐에 넣기(전체 검사)"}
         </button>
+        <button
+          type="button"
+          onClick={() => void syncMappingRowsFromRaw()}
+          disabled={syncBusy}
+          style={btnGhost}
+          title="CrawlerRawMatch 에만 있고 CrawlerMatchMapping 이 없는 행에 pending 매핑 생성"
+        >
+          {syncBusy ? "동기화…" : "raw→매핑 행 동기화"}
+        </button>
+        {syncHint && (
+          <span style={{ fontSize: 11, color: "#15803d", fontWeight: 600 }}>{syncHint}</span>
+        )}
         {runResult && (
           <span style={{ fontSize: 11, color: "#444" }}>
             {isRunMatcherQueued(runResult) ? (
@@ -825,21 +1045,25 @@ export default function CrawlerMatchesPage() {
           {error}
         </div>
       )}
+      </div>
 
-      {/* 2-pane: 왼쪽(크롤 raw) / 오른쪽(provider) — 각 열 독립 스크롤 */}
+      {/* 2-pane: 부모 flex 높이 안에서만 자라며, 각 열은 내부 overflow 로만 스크롤 (dvh 고정 금지) */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-          gap: 0,
+          /** 좌(크롤) 조금 더 넓게 — 카드 가로 여유 */
+          gridTemplateColumns: "minmax(300px, 1.18fr) minmax(280px, 1fr)",
+          /** auto 행이면 콘텐츠 높이로만 커져 flex 안에서 스크롤이 안 생김 */
+          gridTemplateRows: "minmax(0, 1fr)",
+          gap: 10,
           alignItems: "stretch",
           borderRadius: 14,
           overflow: "hidden",
           border: "1px solid #e2e8f0",
           boxShadow: "0 1px 3px rgba(15,23,42,0.06)",
-          height: "calc(100dvh - 220px)",
-          maxHeight: "calc(100dvh - 220px)",
-          minHeight: 360,
+          flex: "1 1 0%",
+          minHeight: 0,
+          minWidth: 0,
         }}
       >
         {/* 왼쪽: 크롤러 매칭 — 밝은 패널 */}
@@ -847,8 +1071,10 @@ export default function CrawlerMatchesPage() {
           style={{
             display: "flex",
             flexDirection: "column",
+            flex: "1 1 0%",
             minHeight: 0,
             minWidth: 0,
+            overflow: "hidden",
             background: "#fff",
             borderRight: "1px solid #e2e8f0",
           }}
@@ -864,22 +1090,24 @@ export default function CrawlerMatchesPage() {
             <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
               크롤러 원본 · 매핑
             </div>
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-              드롭 타겟: 대기·거부 카드에 provider 카드를 놓으면 확정
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, lineHeight: 1.45 }}>
+              <strong>종목 → 리그</strong>로 묶고, 안에서는 <strong>kickoff → 리그 → 경기 id</strong> 순(크롤
+              픽스처 목록에 가깝게)입니다. 한 줄은 <strong>매핑 행</strong>(raw + 매칭 상태)입니다. 대기·거부
+              카드에 오른쪽 provider 카드를 놓으면 확정됩니다.
             </div>
           </div>
+          {/* 스크롤 루트는 flex 자식이 아닌 단일 overflow 블록이어야 긴 리스트가 확실히 스크롤됨 */}
           <div
             style={{
-              flex: 1,
+              flex: "1 1 0%",
               minHeight: 0,
-              overflowY: "auto",
+              overflow: "auto",
+              overscrollBehavior: "contain",
               WebkitOverflowScrolling: "touch",
-              padding: 12,
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
+              padding: "10px 12px 12px",
             }}
           >
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
           {items.length === 0 && !loading && (
             <div
               style={{
@@ -891,55 +1119,92 @@ export default function CrawlerMatchesPage() {
                 borderRadius: 10,
               }}
             >
-              표시할 경기가 없습니다. 필터를 조정하거나 매처를 실행해 보세요.
+              표시할 경기가 없습니다. 종목·구간·검색 필터를 바꾸거나, 위의{" "}
+              <strong>raw→매핑 행 동기화</strong> 후 새로고침 해 보세요.
+              {(counts?.rawTotal ?? 0) > 0 &&
+                (counts?.total ?? 0) === 0 &&
+                listStatusTab === "pending" && (
+                  <>
+                    <br />
+                    <span style={{ fontSize: 12, color: "#b45309" }}>
+                      raw 합계는 있는데 대기 탭이 비면: 과거 ingest 는 매핑 행을 안
+                      만들었을 수 있습니다. 동기화 버튼으로 pending 행을 만든 뒤 다시
+                      조회하세요.
+                    </span>
+                  </>
+                )}
               {kickoffScope === "upcoming" && (
                 <>
                   <br />
                   <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                    과거 kickoff 매칭은 위 구간에서 「미처리(과거)」를 선택하세요.
+                    과거에 열린 경기만 크롤되었다면, 위 구간을「전체」또는「미처리(과거)」로
+                    바꾸면 보입니다.
                   </span>
                 </>
               )}
             </div>
           )}
-          {groupByCountry(items).map((g) => (
+          {groupMappingsBySportThenLeague(items).map((sg) => (
             <CountrySection
-              key={g.key}
-              label={g.label}
-              flag={g.flag}
-              count={g.items.length}
+              key={sg.sportKey}
+              label={sg.sportLabel}
+              flag={null}
+              count={sg.itemCount}
               defaultOpen={true}
             >
-              {g.items.map((r) => (
-                <MappingCard
-                  key={r.id}
-                  row={r}
-                  dragOver={dragOverId === r.id}
-                  onDragEnter={() => setDragOverId(r.id)}
-                  onDragLeave={() => setDragOverId(null)}
-                  onDrop={(ev) => void handleDropConfirm(r, ev)}
-                  quickConfirming={quickConfirming === r.id}
-                  onOpenConfirm={() => setConfirmTarget(r)}
-                  onReject={() => void actionReject(r)}
-                  onReopen={() => void actionReopen(r)}
-                  onSaveRawLabel={saveRawLabel}
-                />
+              {sg.leagues.map((lg) => (
+                <div key={lg.leagueKey}>
+                  <ProviderCountryGroup
+                    label={lg.leagueLabel}
+                    count={lg.items.length}
+                    nestLevel={1}
+                  >
+                    {lg.items.map((r) => (
+                      <MappingCard
+                        key={r.id}
+                        row={r}
+                        dragOver={dragOverId === r.id}
+                        onDragEnter={() => setDragOverId(r.id)}
+                        onDragLeave={() => setDragOverId(null)}
+                        onDrop={(ev) => void handleDropConfirm(r, ev)}
+                        quickConfirming={quickConfirming === r.id}
+                        onOpenConfirm={() => setConfirmTarget(r)}
+                        onReject={() => void actionReject(r)}
+                        onReopen={() => void actionReopen(r)}
+                        onSaveRawLabel={saveRawLabel}
+                      />
+                    ))}
+                  </ProviderCountryGroup>
+                </div>
               ))}
             </CountrySection>
           ))}
-          <div style={{ fontSize: 11, color: "#888", marginTop: "auto", paddingTop: 4 }}>
+          <div style={{ fontSize: 11, color: "#888", paddingTop: 4 }}>
             {items.length.toLocaleString()} / {total.toLocaleString()} 건
           </div>
+            </div>
           </div>
         </div>
 
-        {/* 오른쪽: provider 카탈로그 카드 */}
-        <ProviderPoolPanel
-          sport={sportFilter}
-          leagueSlug={leagueFilter}
-          kickoffScope={kickoffScope}
-          searchQuery={query}
-        />
+        {/* 오른쪽: provider 카탈로그 — 열마다 스크롤 루트 분리 */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            flex: "1 1 0%",
+            minHeight: 0,
+            minWidth: 0,
+            overflow: "hidden",
+            background: "#fff",
+          }}
+        >
+          <ProviderPoolPanel
+            sport={sportFilter}
+            leagueSlug={leagueFilter}
+            kickoffScope={kickoffScope}
+            searchQuery={query}
+          />
+        </div>
       </div>
 
       {confirmTarget && (
@@ -1020,6 +1285,18 @@ function MappingCard({
     }
   };
   const canDrop = row.status === "pending" || row.status === "rejected";
+  const countryKo =
+    row.providerCountryKo ??
+    resolveCrawlerCountryKo(
+      row.rawMatch?.rawCountryLabel,
+      row.rawMatch?.rawLeagueSlug ?? row.rawLeagueSlug,
+    );
+  const leagueLineTitle = crawlerLeagueContextTitle(
+    row.providerCountryKo,
+    row.rawMatch?.rawCountryLabel,
+    row.rawMatch?.rawLeagueSlug ?? row.rawLeagueSlug,
+    row.rawMatch?.rawLeagueLabel ?? row.rawLeagueSlug,
+  );
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     if (!canDrop) return;
     if (Array.from(e.dataTransfer.types).includes(DND_MIME)) {
@@ -1055,7 +1332,7 @@ function MappingCard({
         // status 는 컨텐츠에 맞추고, raw 팀은 최대한 넓게(2fr), provider 는 좁게(minmax),
         // 작업 컬럼은 자동. 이렇게 하면 긴 팀 이름이 잘려서 연필만 보이는 현상이 사라짐.
         gridTemplateColumns:
-          "minmax(96px, auto) minmax(0, 2fr) minmax(0, 1fr) minmax(110px, auto)",
+          "minmax(88px, auto) minmax(0, 3fr) minmax(140px, 1.25fr) minmax(104px, auto)",
         gap: 12,
         alignItems: "start",
         transition: "background .12s, border .12s",
@@ -1102,7 +1379,8 @@ function MappingCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={publicAssetUrl(row.sourceCountryFlag) ?? ""}
-              alt=""
+              alt={countryKo ? `${countryKo} 국기` : "국가 국기"}
+              title={countryKo ?? undefined}
               width={18}
               height={12}
               style={{
@@ -1123,6 +1401,28 @@ function MappingCard({
             />
           ) : (
             <>
+              {countryKo ? (
+                <span
+                  style={{
+                    color: "#334155",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    flexShrink: 0,
+                    maxWidth: "42%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={leagueLineTitle}
+                >
+                  {countryKo}
+                </span>
+              ) : null}
+              {countryKo ? (
+                <span style={{ color: "#cbd5e1", fontSize: 11, flexShrink: 0 }} aria-hidden>
+                  ·
+                </span>
+              ) : null}
               <span
                 style={{
                   color: "#666",
@@ -1132,7 +1432,7 @@ function MappingCard({
                   whiteSpace: "nowrap",
                   minWidth: 0,
                 }}
-                title={row.rawLeagueSlug ?? undefined}
+                title={leagueLineTitle}
               >
                 {row.rawMatch?.rawLeagueLabel ?? row.rawLeagueSlug ?? "-"}
               </span>
@@ -1230,6 +1530,38 @@ function MappingCard({
             />
           </div>
         </div>
+        {row.pairedLocaleRaw ? (
+          <div
+            style={{
+              marginTop: 6,
+              padding: "6px 8px",
+              borderRadius: 6,
+              background: "#f1f5f9",
+              fontSize: 11,
+              color: "#334155",
+              lineHeight: 1.45,
+            }}
+            title="동일 경기의 다른 로케일 크롤(한글 표시용)"
+          >
+            <span style={{ fontWeight: 700, color: "#64748b" }}>
+              [{row.pairedLocaleRaw.sourceLocale}]
+            </span>{" "}
+            {row.pairedLocaleRaw.rawHomeName ?? "—"} vs{" "}
+            {row.pairedLocaleRaw.rawAwayName ?? "—"}
+            {row.pairedLocaleRaw.rawLeagueLabel ? (
+              <>
+                {" "}
+                · {row.pairedLocaleRaw.rawLeagueLabel}
+              </>
+            ) : null}
+            {row.pairedLocaleRaw.rawCountryLabel ? (
+              <>
+                {" "}
+                · {row.pairedLocaleRaw.rawCountryLabel}
+              </>
+            ) : null}
+          </div>
+        ) : null}
         <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
           kickoff {fmtDate(row.rawKickoffUtc)}
           {row.rawMatch?.rawStatusText
@@ -1413,6 +1745,7 @@ function CountrySection({
             flexDirection: "column",
             gap: 6,
             padding: 8,
+            minWidth: 0,
           }}
         >
           {children}
@@ -1882,11 +2215,15 @@ function ProviderPoolPanel({
 }: {
   sport: string;
   leagueSlug: string;
-  kickoffScope: "upcoming" | "past";
+  kickoffScope: "upcoming" | "past" | "all";
   searchQuery: string;
 }) {
   const [events, setEvents] = useState<ProviderEvent[]>([]);
   const [poolTotal, setPoolTotal] = useState(0);
+  const [catalogTotalEvents, setCatalogTotalEvents] = useState<number | null>(
+    null,
+  );
+  const [catalogSportSlugs, setCatalogSportSlugs] = useState<string[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [onlyUnused, setOnlyUnused] = useState(true);
@@ -1919,6 +2256,12 @@ function ProviderPoolPanel({
           `/hq/crawler/matches/provider-pool?${qp.toString()}`,
         );
         setPoolTotal(r.total);
+        setCatalogTotalEvents(
+          typeof r.catalogTotalEvents === "number" ? r.catalogTotalEvents : null,
+        );
+        setCatalogSportSlugs(
+          Array.isArray(r.catalogSportSlugs) ? r.catalogSportSlugs : [],
+        );
         setHasMore(Boolean(r.hasMore));
         if (fromSkip === 0) {
           setEvents(r.events);
@@ -2024,9 +2367,10 @@ function ProviderPoolPanel({
       style={{
         display: "flex",
         flexDirection: "column",
+        flex: "1 1 0%",
         minHeight: 0,
         minWidth: 0,
-        height: "100%",
+        overflow: "hidden",
         background: "#fff",
       }}
     >
@@ -2069,11 +2413,31 @@ function ProviderPoolPanel({
             lineHeight: 1.45,
           }}
         >
-          왼쪽과 동일한 구간·종목·리그·검색어로 풀을 불러옵니다. 카드를 왼쪽으로 드래그하면
-          확정됩니다.
+          <strong>종목 → 리그</strong>로 묶고, 안에서는 <strong>kickoff 순</strong>(왼쪽과 같은 기준)입니다.
+          왼쪽과 동일한 구간·종목·리그·검색어로 풀을 불러오며, 카드를 왼쪽으로 드래그하면 확정됩니다.
           {kickoffScope === "upcoming"
             ? " 예정·진행 이벤트만."
-            : " 과거 kickoff 이벤트만."}
+            : kickoffScope === "past"
+              ? " 과거 kickoff 이벤트만."
+              : " 예정·과거 이벤트 전체."}
+          {catalogTotalEvents !== null && catalogTotalEvents === 0 && (
+            <span style={{ color: "#b45309", display: "block", marginTop: 4 }}>
+              최근 24h 카탈로그 스냅샷에 이벤트가 없습니다. odds-api 스냅샷·bookmakers 설정을
+              확인하세요.
+            </span>
+          )}
+          {catalogTotalEvents !== null &&
+            catalogTotalEvents > 0 &&
+            sport.trim() &&
+            !catalogSportSlugs.includes(sport.trim()) && (
+              <span style={{ color: "#b45309", display: "block", marginTop: 4 }}>
+                선택 종목「{sport}」는 카탈로그 sport 키에 없습니다. 축구는{" "}
+                <code style={{ fontSize: 10 }}>soccer</code> /{" "}
+                <code style={{ fontSize: 10 }}>football</code> 등 표기 차이가 있을 수 있습니다. (
+                {catalogSportSlugs.slice(0, 8).join(", ")}
+                {catalogSportSlugs.length > 8 ? "…" : ""})
+              </span>
+            )}
           {!sport.trim() && (
             <span style={{ color: "#b45309", display: "block", marginTop: 4 }}>
               종목이 「전체」이면 여러 스포츠가 섞여 앞쪽 일부만 보일 수 있습니다.
@@ -2146,16 +2510,15 @@ function ProviderPoolPanel({
 
       <div
         style={{
-          flex: 1,
+          flex: "1 1 0%",
           minHeight: 0,
-          overflowY: "auto",
+          overflow: "auto",
+          overscrollBehavior: "contain",
           WebkitOverflowScrolling: "touch",
-          padding: 12,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
+          padding: "10px 12px 12px",
         }}
       >
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
         {loading && events.length === 0 && (
           <div style={{ fontSize: 12, color: "#888", textAlign: "center", padding: 16 }}>
             loading…
@@ -2170,21 +2533,48 @@ function ProviderPoolPanel({
               padding: 24,
               border: "1px dashed #ddd",
               borderRadius: 10,
+              lineHeight: 1.55,
             }}
           >
-            카드 없음 — 위에서 종목·필터를 조정하거나 &apos;미사용만&apos; 을 꺼보세요.
+            카드 없음 — 종목·구간·리그·검색어를 조정하거나{" "}
+            <strong>미사용만</strong> 체크를 해제해 보세요.
+            {catalogTotalEvents !== null &&
+              catalogTotalEvents > 0 &&
+              poolTotal === 0 && (
+                <>
+                  <br />
+                  <span style={{ color: "#64748b" }}>
+                    (카탈로그 원본은 {catalogTotalEvents.toLocaleString()}건 있으나 현재 필터
+                    조합에선 0건입니다.)
+                  </span>
+                </>
+              )}
           </div>
         )}
-        {groupProviderByCountry(events).map((g) => (
-          <ProviderCountryGroup key={g.key} label={g.label} count={g.items.length}>
-            {g.items.map((ev) => (
-              <ProviderCard
-                key={ev.id}
-                ev={ev}
-                onSaveTeamKorean={saveTeamKorean}
-                onSaveLeagueKorean={saveLeagueKorean}
-                onCrawlSuggest={() => setCrawlSuggestEv(ev)}
-              />
+        {groupProviderBySportThenLeague(events).map((sg) => (
+          <ProviderCountryGroup
+            key={sg.sportKey}
+            label={sg.sportLabel}
+            count={sg.itemCount}
+            nestLevel={0}
+          >
+            {sg.leagues.map((lg) => (
+              <ProviderCountryGroup
+                key={`${sg.sportKey}|${lg.leagueKey}`}
+                label={lg.leagueLabel}
+                count={lg.items.length}
+                nestLevel={1}
+              >
+                {lg.items.map((ev) => (
+                  <ProviderCard
+                    key={ev.id}
+                    ev={ev}
+                    onSaveTeamKorean={saveTeamKorean}
+                    onSaveLeagueKorean={saveLeagueKorean}
+                    onCrawlSuggest={() => setCrawlSuggestEv(ev)}
+                  />
+                ))}
+              </ProviderCountryGroup>
             ))}
           </ProviderCountryGroup>
         ))}
@@ -2204,6 +2594,7 @@ function ProviderPoolPanel({
             {loading ? "불러오는 중…" : "더 불러오기 (최대 400건씩)"}
           </button>
         )}
+        </div>
       </div>
       {crawlSuggestEv && (
         <CrawlSuggestModal
@@ -2220,19 +2611,25 @@ function ProviderCountryGroup({
   label,
   count,
   children,
+  nestLevel = 0,
 }: {
   label: string;
   count: number;
   children: React.ReactNode;
+  /** 0=종목, 1=리그(안쪽) */
+  nestLevel?: 0 | 1;
 }) {
   const [open, setOpen] = useState(true);
+  const isNested = nestLevel === 1;
   return (
     <div
       style={{
-        border: "1px solid #dbe1ef",
-        borderRadius: 8,
+        border: `1px solid ${isNested ? "#e2e8f0" : "#dbe1ef"}`,
+        borderRadius: isNested ? 6 : 8,
         background: "#fff",
         overflow: "hidden",
+        marginBottom: isNested ? 6 : 10,
+        marginLeft: isNested ? 4 : 0,
       }}
     >
       <button
@@ -2243,14 +2640,14 @@ function ProviderCountryGroup({
           display: "flex",
           alignItems: "center",
           gap: 6,
-          padding: "6px 8px",
-          background: "#eef2ff",
+          padding: isNested ? "5px 7px" : "6px 8px",
+          background: isNested ? "#f8fafc" : "#eef2ff",
           border: "none",
-          borderBottom: open ? "1px solid #dbe1ef" : "none",
+          borderBottom: open ? `1px solid ${isNested ? "#e2e8f0" : "#dbe1ef"}` : "none",
           cursor: "pointer",
-          fontSize: 12,
+          fontSize: isNested ? 11 : 12,
           fontWeight: 600,
-          color: "#1e3a8a",
+          color: isNested ? "#334155" : "#1e3a8a",
           textAlign: "left",
         }}
       >
@@ -2268,7 +2665,7 @@ function ProviderCountryGroup({
           ▶
         </span>
         <span>{label}</span>
-        <span style={{ color: "#94a3b8", fontSize: 11, fontWeight: 500 }}>
+        <span style={{ color: "#94a3b8", fontSize: isNested ? 10 : 11, fontWeight: 500 }}>
           {count}
         </span>
       </button>
@@ -2278,7 +2675,8 @@ function ProviderCountryGroup({
             display: "flex",
             flexDirection: "column",
             gap: 4,
-            padding: 6,
+            padding: isNested ? 5 : 6,
+            minWidth: 0,
           }}
         >
           {children}
@@ -2385,7 +2783,8 @@ function ProviderCard({
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              maxWidth: 120,
+              minWidth: 0,
+              maxWidth: 220,
             }}
             title={ev.country}
           >
@@ -2393,7 +2792,15 @@ function ProviderCard({
           </span>
         ) : null}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          minWidth: 0,
+          flexWrap: "wrap",
+        }}
+      >
         <EditableTeamChip
           logo={ev.homeLogo}
           original={ev.home}
@@ -2789,6 +3196,7 @@ type CandidatesResponse = {
     homeExternalId: string | null;
     awayExternalId: string | null;
     kickoffUtc: string | null;
+    countrySlugHints?: string[];
   };
 };
 
@@ -2955,6 +3363,14 @@ function ConfirmCandidateModal({
           </button>
           {err && (
             <span style={{ color: "#c00", fontSize: 12 }}>{err}</span>
+          )}
+          {data?.hints?.countrySlugHints && data.hints.countrySlugHints.length > 0 && (
+            <span style={{ fontSize: 11, color: "#64748b" }}>
+              catalog 국가 접두:{" "}
+              <code style={{ fontSize: 10 }}>
+                {data.hints.countrySlugHints.join(", ")}
+              </code>
+            </span>
           )}
         </div>
 

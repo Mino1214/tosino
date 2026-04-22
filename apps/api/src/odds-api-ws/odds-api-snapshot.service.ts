@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   OddsApiAggregatorService,
   classifyOddsApiMatchStatus,
+  type AggregatedMatch,
   type MatchStatus,
   type MatchesResponse,
   type OddsApiCatalogItem,
@@ -84,6 +85,14 @@ function shouldFetchSportThisTick(sport: string, tickIndex: number): boolean {
 /** 현재 분(0–59) 을 2분 단위 tickIndex 로 변환. cron 매 2분 tick 과 자연스럽게 정렬된다. */
 function currentTickIndex(now: Date = new Date()): number {
   return Math.floor(now.getUTCMinutes() / 2);
+}
+
+/** 스냅샷 JSON·DB 값 혼선(숫자/공백) 방지 — eventId / matchId 비교 시 사용 */
+export function normalizeOddsEventId(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' && Number.isFinite(v)) return String(Math.trunc(v));
+  return String(v).trim();
 }
 
 type SnapshotFilters = {
@@ -881,6 +890,95 @@ export class OddsApiSnapshotService {
           ? ODDS_API_FINISHED_SNAPSHOT_FEED_ID
           : ODDS_API_LIVE_SNAPSHOT_FEED_ID;
     return this.readLegacySnapshot(platformId, legacyFeedId, snapshotType);
+  }
+
+  /**
+   * 플랫폼별 최신 가공 스냅샷(레거시 테이블 폴백 포함)에서 odds-api `matchId` → 배당 payload.
+   * 동일 경기가 여러 스냅에 있으면 finished → prematch → live 순으로 덮어, 마지막에 live 가 우선한다.
+   */
+  async lookupAggregatedMatchesByEventIds(
+    platformId: string,
+    eventIds: ReadonlySet<string>,
+  ): Promise<Map<string, AggregatedMatch>> {
+    const out = new Map<string, AggregatedMatch>();
+    if (eventIds.size === 0) return out;
+    const pid = platformId.trim();
+    if (!pid) return out;
+
+    const wanted = new Set<string>();
+    for (const id of eventIds) {
+      const n = normalizeOddsEventId(id);
+      if (n) wanted.add(n);
+    }
+    if (wanted.size === 0) return out;
+
+    const [finishedPl, prematchPl, livePl] = await Promise.all([
+      this.readProcessedSnapshot(pid, 'finished'),
+      this.readProcessedSnapshot(pid, 'prematch'),
+      this.readProcessedSnapshot(pid, 'live'),
+    ]);
+    const apply = (payload: SnapshotPayload | null) => {
+      if (!payload) return;
+      for (const m of payload.matches) {
+        const mid = normalizeOddsEventId(m.matchId);
+        if (mid && wanted.has(mid)) out.set(mid, m);
+      }
+    };
+    apply(finishedPl);
+    apply(prematchPl);
+    apply(livePl);
+
+    const missing = [...wanted].filter((id) => !out.has(id));
+    if (missing.length > 0) {
+      await this.hydrateMissingMatchesFromCatalog(pid, missing, out);
+    }
+    return out;
+  }
+
+  /**
+   * 가공 스냅샷(live/prematch/finished)에 아직 없는 eventId(주로 카탈로그 strict 매칭 직후)에 대해
+   * 최신 REST 카탈로그 행으로 AggregatedMatch 를 만들어 붙인다.
+   */
+  private async hydrateMissingMatchesFromCatalog(
+    platformId: string,
+    missingIds: string[],
+    out: Map<string, AggregatedMatch>,
+  ): Promise<void> {
+    const cap = 120;
+    const ids = missingIds.slice(0, cap);
+    if (!ids.length) return;
+
+    const config = await this.getPlatformConfig(platformId);
+    if (!config?.enabled) return;
+
+    const catalog = await this.getLatestCatalog(platformId);
+    if (!catalog?.items?.length) return;
+
+    const want = new Set(ids.map((x) => normalizeOddsEventId(x)).filter(Boolean));
+    const picked: OddsApiCatalogItem[] = [];
+    for (const it of catalog.items) {
+      const id = normalizeOddsEventId(it.id);
+      if (id && want.has(id)) picked.push(it);
+      if (picked.length >= want.size) break;
+    }
+    if (!picked.length) return;
+
+    const sportsArg = config.sports?.length ? config.sports : undefined;
+    // 스냅샷에 없는 id 보강이므로 prematch 만이 아니라 live / finished 도 포함해야 한다.
+    const resp = this.aggregator.listMatchesFromCatalog(picked, {
+      status: 'all',
+      sports: sportsArg,
+      bookmakers: config.bookmakers,
+      limit: picked.length,
+      allowEmptyBookies: false,
+    });
+    const enriched = await this.aliases.enrichMatches(resp.matches);
+    for (const m of enriched) {
+      const mid = normalizeOddsEventId(m.matchId);
+      if (mid && want.has(mid) && !out.has(mid)) {
+        out.set(mid, m);
+      }
+    }
   }
 
   private async readLegacyCatalogSnapshot(

@@ -669,6 +669,8 @@ model CrawlerRawMatch {
   sourceSite          String
   sourceSportSlug     String
   sourceMatchId       String
+  /// 이중 로케일 수집(aiscore ko 루트 vs 영어 루트 등). 기본 ko.
+  sourceLocale        String   @default("ko")
   sourceUrl           String?
   sourceMatchHref     String?
   internalSportSlug   String?
@@ -689,12 +691,18 @@ model CrawlerRawMatch {
   lastSeenAt          DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
+  /// 동일 sourceMatchId 의 다른 로케일 raw (예: ko ↔ en). 양방향으로 같은 id 를 가리키게 맞춘다.
+  pairedRawMatchId    String?
+  pairedRawMatch      CrawlerRawMatch?  @relation("CrawlerRawMatchLocalePair", fields: [pairedRawMatchId], references: [id], onDelete: SetNull)
+  localePairOf        CrawlerRawMatch[] @relation("CrawlerRawMatchLocalePair")
+
   mapping             CrawlerMatchMapping?
 
-  @@unique([sourceSite, sourceSportSlug, sourceMatchId])
+  @@unique([sourceSite, sourceSportSlug, sourceMatchId, sourceLocale])
   @@index([sourceSite, rawKickoffUtc])
   @@index([internalSportSlug, rawKickoffUtc])
   @@index([rawLeagueSlug])
+  @@index([pairedRawMatchId])
 }
 
 /// livesport raw match ↔ odds-api.io event 의 매칭 결과.

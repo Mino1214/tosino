@@ -65,6 +65,9 @@ importers:
       class-validator:
         specifier: ^0.14.1
         version: 0.14.4
+      dotenv:
+        specifier: ^17.4.1
+        version: 17.4.1
       express:
         specifier: ^4.21.2
         version: 4.22.1

@@ -35,12 +35,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/console/sales", label: "청구 / 정산", hint: "전체 · 솔루션별" },
       { href: "/console/credits", label: "알값 · 크레딧", hint: "HQ 크레딧 허브" },
       { href: "/console/semi-virtual-accounts", label: "반가상 번들", hint: "전 솔루션 집계" },
-      { href: "/console/odds-api-ws", label: "Live Odds", hint: "피드 · WS 안내" },
-      { href: "/console/odds-api-aliases", label: "Odds 매핑", hint: "리그 · 팀 한글명/로고" },
-      { href: "/console/odds-api-whitelist", label: "Odds 화이트리스트", hint: "스코어 크롤러 연동" },
-      { href: "/console/crawler-leagues", label: "크롤러 리그 매핑", hint: "livesport ↔ odds-api" },
-      { href: "/console/crawler-teams", label: "크롤러 팀 매핑", hint: "한글명 역학습" },
-      { href: "/console/crawler-matches", label: "크롤러 경기 매칭", hint: "strict 자동 + 수동 검수" },
+      { href: "/console/crawler-console", label: "크롤 콘솔", hint: "상태·마지막 크롤·매칭 리스트·북메이커" },
     ],
   },
   {
@@ -214,6 +209,9 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
   }
 
   const selected = platforms.find((p) => p.id === selectedPlatformId);
+
+  /** 이 페이지는 2열 내부 스크롤이 있어 메인을 flex+overflow-hidden 으로 잡아야 높이 체인이 성립함 */
+  const isCrawlerMatchesPage = pathname === "/console/crawler-matches";
 
   const sidebar = (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -461,8 +459,22 @@ export function ConsoleChrome({ children }: { children: React.ReactNode }) {
             {error ? (
               <div className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">{error}</div>
             ) : null}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">{children}</div>
+            <div
+              className={
+                isCrawlerMatchesPage
+                  ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                  : "min-h-0 flex-1 overflow-y-auto"
+              }
+            >
+              <div
+                className={
+                  isCrawlerMatchesPage
+                    ? "mx-auto flex min-h-0 w-full max-w-[min(100%,2200px)] flex-1 flex-col px-4 py-3 md:px-8 md:py-4 lg:px-12"
+                    : "mx-auto max-w-6xl px-4 py-6 md:px-8"
+                }
+              >
+                {children}
+              </div>
             </div>
           </div>
         </div>

@@ -14,10 +14,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import urllib.error
+import urllib.parse
 import urllib.request
-from typing import Optional
+from typing import Any, Optional
 
 
 def _collect_distinct_leagues(
@@ -252,6 +254,43 @@ def _post_ingest_chunked(
     }
 
 
+def fetch_asset_hints(
+    backend_base_url: Optional[str],
+    integration_key: Optional[str],
+    source_site: str,
+    *,
+    timeout_seconds: int = 12,
+) -> Optional[dict[str, Any]]:
+    """확정 매핑 기준 로컬 `/assets/` 로고·국기 힌트. 실패 시 None (크롤은 계속)."""
+    base = (backend_base_url or "").rstrip("/")
+    key = (integration_key or "").strip()
+    site = (source_site or "").strip()
+    if not base or not key or not site:
+        return None
+    q = urllib.parse.urlencode({"sourceSite": site})
+    url = f"{base}/integrations/crawler/asset-hints?{q}"
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"x-integration-key": key},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            raw = resp.read()
+            text = raw.decode("utf-8", errors="replace") if raw else ""
+            if not text:
+                return None
+            return json.loads(text)
+    except urllib.error.HTTPError as e:
+        try:
+            _ = e.read()
+        except Exception:
+            pass
+        return None
+    except Exception:
+        return None
+
+
 def push_leagues_to_backend(
     conn: sqlite3.Connection,
     *,
@@ -280,17 +319,17 @@ def _collect_recent_raw_matches(
     conn: sqlite3.Connection,
     source_site: str,
     *,
-    max_items: int = 1500,
+    max_items: int = 8000,
 ) -> list[dict]:
     """최근 fetched 된 raw 경기들을 CrawlerRawMatchIngestItem 형태로 반환.
 
     - source_match_id 가 비어 있는 row 는 매칭 불가능하므로 제외.
-    - raw_league_slug / raw_home_name / raw_away_name 중 하나라도 없으면 제외 (strict 매처가 버림).
-    - 최신 fetched_at 순으로 max_items 개만.
+    - 홈/원정 팀명이 비어 있으면 제외.
+    - 최신 fetched_at 순으로 max_items 개만 (한 번에 너무 크면 Nest/타임아웃 위험).
     """
     rows = conn.execute(
         """
-        SELECT source_match_id, source_sport_slug, source_url, source_match_href,
+        SELECT source_match_id, source_sport_slug, source_locale, source_url, source_match_href,
                internal_sport_slug, provider_name, provider_sport_slug,
                raw_home_name, raw_home_slug, raw_away_name, raw_away_slug,
                raw_league_label, raw_league_slug, raw_country_label,
@@ -312,6 +351,7 @@ def _collect_recent_raw_matches(
             {
                 "sourceMatchId": r["source_match_id"],
                 "sourceSportSlug": r["source_sport_slug"],
+                "sourceLocale": r["source_locale"] or "ko",
                 "sourceUrl": r["source_url"],
                 "sourceMatchHref": r["source_match_href"],
                 "internalSportSlug": r["internal_sport_slug"],
@@ -340,7 +380,7 @@ def push_raw_matches_to_backend(
     backend_base_url: Optional[str],
     integration_key: Optional[str],
     timeout_seconds: int = 30,
-    max_items: int = 1500,
+    max_items: int = 8000,
 ) -> dict:
     base = (backend_base_url or "").rstrip("/")
     key = (integration_key or "").strip()
@@ -349,10 +389,18 @@ def push_raw_matches_to_backend(
     if not key:
         return {"skipped": True, "reason": "BACKEND_INTEGRATION_KEY not set"}
 
+    push_max = max_items
+    env_cap = os.environ.get("BACKEND_PUSH_RAW_MAX", "").strip()
+    if env_cap:
+        try:
+            push_max = max(1, int(env_cap))
+        except ValueError:
+            pass
+
     items = _collect_recent_raw_matches(
         conn,
         source_site=source_site,
-        max_items=max_items,
+        max_items=push_max,
     )
     if not items:
         return {"skipped": True, "reason": "no raw matches to push", "items": 0}

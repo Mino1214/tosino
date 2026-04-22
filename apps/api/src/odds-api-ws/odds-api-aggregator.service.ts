@@ -264,9 +264,32 @@ export class OddsApiAggregatorService {
     normalized: NormalizedListOptions,
     opts: { allowEmptyBookies?: boolean } = {},
   ): MatchesResponse {
+    const nowMs = Date.now();
     const all: AggregatedMatch[] = [];
     for (const acc of map.values()) {
       if (acc.bookies.size === 0 && !opts.allowEmptyBookies) continue;
+      /**
+       * "마감 땡치면 닫힌다" — kickoff 이 지난 prematch 는 즉시 제외.
+       * 라이브/인플레이는 그대로 유지. settled/cancelled 는 REST 단계에서도 제외되지만
+       * snapshot 에 남은 stale row 방어용으로 한 번 더 거른다.
+       */
+      const evStatusLower = (acc.eventStatus ?? '').trim().toLowerCase();
+      if (evStatusLower === 'settled' || evStatusLower === 'cancelled') {
+        continue;
+      }
+      const startMs = acc.startTime ? Date.parse(acc.startTime) : NaN;
+      const isExplicitLive = evStatusLower === 'live' || evStatusLower === 'inplay';
+      /**
+       * strict: kickoff 이 "지금" 보다 이전이면 라이브가 아닌 한 제외.
+       * (grace=0 — 네트워크 지연을 감안해도 사용자가 마감 직전 선택을 클릭하지 못하도록)
+       */
+      if (
+        Number.isFinite(startMs) &&
+        startMs <= nowMs &&
+        !isExplicitLive
+      ) {
+        continue;
+      }
       const status = classifyStatus(acc);
       if (normalized.wantStatus !== 'all' && status !== normalized.wantStatus) {
         continue;

@@ -3,7 +3,7 @@
 # 예)
 #   ./scripts/run.sh                               # 1회 실행
 #   ./scripts/run.sh --show-log --log-take 20      # 로그 조회
-#   ./scripts/run.sh --loop --interval-seconds 300 # 주기 실행
+#   ./scripts/run.sh --loop --interval-seconds 420 # 주기 실행
 #   ./scripts/run.sh --sports soccer --headless=false --limit-rows 3
 #
 # venv 가 아직 없으면 자동으로 setup.sh 를 부른다.

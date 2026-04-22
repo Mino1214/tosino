@@ -16,3 +16,14 @@ export function schedulerUsesDevDefaults(): boolean {
   const raw = (process.env.TOSINO_LOCAL_SCHEDULERS ?? '').trim().toLowerCase();
   return ['1', 'true', 'yes', 'on'].includes(raw);
 }
+
+/**
+ * API(main) 프로세스 안에서 크롤 매처 Bull 스케줄+소비를 돌릴지.
+ * - 기본 **켬**: 로컬에서 `pnpm dev:api` 만 켜도 매칭이 돌게 함.
+ * - 끄기만 명시: `CRAWLER_MATCHER_IN_API=0` (ecosystem 의 api 가 운영에서 이렇게 둠 → worker 전용).
+ * - 강제 켬: `CRAWLER_MATCHER_IN_API=1` (이미 기본이 켜짐이라 거의 동일).
+ */
+export function crawlerMatcherRunsInApiProcess(): boolean {
+  const raw = (process.env.CRAWLER_MATCHER_IN_API ?? '').trim().toLowerCase();
+  return !['0', 'false', 'off', 'no', 'disabled'].includes(raw);
+}

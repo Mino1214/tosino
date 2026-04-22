@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS crawler_matches_raw (
   -- source 원본
   source_site           TEXT NOT NULL,
   source_sport_slug     TEXT NOT NULL,
+  source_locale         TEXT NOT NULL DEFAULT 'ko',
   source_url            TEXT NOT NULL,
   source_match_id       TEXT,             -- ex) g_1_ABC123XY (livesport 내부 id)
   source_match_href     TEXT,             -- 상세 페이지 href
@@ -71,7 +72,7 @@ CREATE TABLE IF NOT EXISTS crawler_matches_raw (
 
   fetched_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-  UNIQUE (source_site, source_sport_slug, source_match_id)
+  UNIQUE (source_site, source_sport_slug, source_match_id, source_locale)
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_raw_source_sport

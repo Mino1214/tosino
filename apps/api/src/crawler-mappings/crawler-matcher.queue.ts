@@ -13,4 +13,9 @@ export type CrawlerMatcherJobPayload = {
   onlyStatuses?: Array<
     'pending' | 'rejected' | 'auto' | 'confirmed' | 'ignored'
   >;
+  /**
+   * true 이면 후보 JSON(candidatesJson)이 아직 없는 건만 스캔(주기 잡·기동 선작업용).
+   * HQ 수동 실행은 기본 생략 → 전체(또는 onlyStatuses) 재검사.
+   */
+  onlyWithoutStoredCandidates?: boolean;
 };

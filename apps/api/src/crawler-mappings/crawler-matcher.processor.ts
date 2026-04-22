@@ -54,6 +54,7 @@ export class CrawlerMatcherProcessor extends WorkerHost {
       sourceSite,
       limit,
       onlyStatuses,
+      onlyWithoutStoredCandidates: job.data?.onlyWithoutStoredCandidates === true,
     });
     this.log.log(
       `[${job.name}] 완료 scanned=${out.scanned} auto=${out.auto} pending=${out.pending} unchanged=${out.unchanged} err=${out.error} ${out.durationMs}ms`,

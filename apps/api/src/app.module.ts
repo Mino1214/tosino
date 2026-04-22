@@ -67,7 +67,7 @@ import { IpAccessModule } from './ip-access/ip-access.module';
     TestScenarioModule,
     CreditsModule,
     OddsApiWsModule,
-    CrawlerMappingsModule,
+    CrawlerMappingsModule.forRoot(),
     SemiVirtualModule,
     BlacklistModule,
     ReserveBalanceModule,

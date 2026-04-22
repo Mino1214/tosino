@@ -49,7 +49,27 @@ export class OddsApiWsPublicController {
     private readonly aggregator: OddsApiAggregatorService,
     private readonly snapshots: OddsApiSnapshotService,
     private readonly resolver: PublicPlatformResolveService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * CrawlerMatchMapping 에서 providerExternalEventId 가 확정된 이벤트 id 집합.
+   * 스포츠 허브(실시간·프리매치 탭)에서 "크롤 매칭된 경기만 노출" 용도.
+   * 성능상 소규모(최근 N일 + non-null) 만 로드한다.
+   */
+  private async loadCrawlerMatchedEventIds(): Promise<Set<string>> {
+    const rows = await this.prisma.crawlerMatchMapping.findMany({
+      where: { providerExternalEventId: { not: null } },
+      select: { providerExternalEventId: true },
+      take: 50_000,
+    });
+    const set = new Set<string>();
+    for (const r of rows) {
+      const id = (r.providerExternalEventId ?? '').trim();
+      if (id) set.add(id);
+    }
+    return set;
+  }
 
   @Get('status')
   async status(
@@ -131,8 +151,15 @@ export class OddsApiWsPublicController {
     @Query('host') host?: string,
     @Query('port') port?: string,
     @Query('previewSecret') previewSecret?: string,
+    @Query('crawlerMatched') crawlerMatched?: string,
   ) {
     const parsedStatus = parseMatchStatus(status);
+    const wantCrawlerOnly =
+      (crawlerMatched ?? '').toString().trim().toLowerCase() === 'true' ||
+      crawlerMatched === '1';
+    const crawlerSet = wantCrawlerOnly
+      ? await this.loadCrawlerMatchedEventIds()
+      : null;
     const platform = await this.resolvePlatformFromQuery(
       host,
       port,
@@ -145,9 +172,12 @@ export class OddsApiWsPublicController {
         limit && Number.isFinite(parseInt(limit, 10))
           ? Math.min(parseInt(limit, 10), 500)
           : 200;
-      const filtered = wantSport
+      const sportFiltered = wantSport
         ? snap.matches.filter((m) => m.sport === wantSport)
         : snap.matches;
+      const filtered = crawlerSet
+        ? sportFiltered.filter((m) => crawlerSet.has(m.matchId))
+        : sportFiltered;
       return {
         status: parsedStatus,
         sport: wantSport ?? snap.sport,
@@ -155,13 +185,24 @@ export class OddsApiWsPublicController {
         matches: filtered.slice(0, max),
         fetchedAt: snap.fetchedAt,
         filters: snap.filters,
+        crawlerMatched: wantCrawlerOnly,
       };
     }
-    return this.aggregator.listMatches({
+    const res = await this.aggregator.listMatches({
       status: parsedStatus,
       sport: sport?.trim() || undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+    if (crawlerSet) {
+      const filtered = res.matches.filter((m) => crawlerSet.has(m.matchId));
+      return {
+        ...res,
+        total: filtered.length,
+        matches: filtered,
+        crawlerMatched: true,
+      };
+    }
+    return res;
   }
 
   private async resolvePlatformFromQuery(
@@ -366,6 +407,177 @@ export class OddsApiWsAdminController {
       throw new BadRequestException('platformId is required');
     }
     return this.snapshots.refreshPlatform(id);
+  }
+
+  /**
+   * "크롤 콘솔" 전용: 한 Platform 의 odds-api.io bookmakers 를 저장하고
+   * 런타임 WS 에도 즉시 적용한다.
+   *
+   * - Platform.integrationsJson.oddsApi.bookmakers 덮어쓰기
+   * - OddsApiWsService.applyConfig({ bookmakers }) 호출 → WS 재연결
+   * - snapshots.refreshPlatform(platformId) 로 플랫폼별 스냅샷도 다시 집계
+   */
+  @Post('bookmakers')
+  async saveBookmakers(
+    @Body()
+    body: { platformId?: string; bookmakers?: string[] },
+  ) {
+    const platformId = (body.platformId || '').trim();
+    const bookmakers = Array.isArray(body.bookmakers)
+      ? body.bookmakers
+          .map((x) => (typeof x === 'string' ? x.trim() : ''))
+          .filter(Boolean)
+      : null;
+    if (!platformId) {
+      throw new BadRequestException('platformId is required');
+    }
+    if (!bookmakers) {
+      throw new BadRequestException('bookmakers[] is required');
+    }
+
+    const platform = await this.prisma.platform.findUnique({
+      where: { id: platformId },
+      select: { id: true, integrationsJson: true },
+    });
+    if (!platform) {
+      throw new BadRequestException(`platform not found: ${platformId}`);
+    }
+
+    const integrations =
+      (platform.integrationsJson as Record<string, unknown>) ?? {};
+    const oddsApi =
+      (integrations.oddsApi as Record<string, unknown>) ?? {};
+    const nextOddsApi = { ...oddsApi, bookmakers };
+    const nextIntegrations = { ...integrations, oddsApi: nextOddsApi };
+
+    await this.prisma.platform.update({
+      where: { id: platformId },
+      data: { integrationsJson: nextIntegrations as never },
+    });
+
+    // 런타임 WS 갱신 (재연결 동반)
+    this.svc.applyConfig({ bookmakers });
+    await this.snapshots.refreshPlatform(platformId).catch(() => undefined);
+
+    return {
+      platformId,
+      bookmakers,
+      appliedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * "크롤 콘솔" 전용 요약 — 한 페이지에 필요한 상태를 한 번에.
+   *  - WS 상태(연결·최근수신·카운트)
+   *  - 최근 catalog/processed 스냅샷 시각·건수
+   *  - 최근 crawler raw 수집 시각·건수(sport 별)
+   *  - 현재 저장된 bookmakers (플랫폼 기준)
+   */
+  @Get('crawler-console/summary')
+  async crawlerConsoleSummary(@Query('platformId') platformId?: string) {
+    const pid = (platformId || '').trim() || null;
+
+    const status = this.svc.getStatus();
+
+    const [catalogSnap, processedSnap] = await Promise.all([
+      this.prisma.oddsApiCatalogSnapshot.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, totalItems: true, filtersJson: true },
+      }),
+      this.prisma.oddsApiProcessedSnapshot.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          createdAt: true,
+          totalMatches: true,
+          snapshotType: true,
+          filtersJson: true,
+        },
+      }),
+    ]);
+    const catalogSport =
+      extractSportFromFilters(catalogSnap?.filtersJson) ?? '—';
+    const processedSport =
+      extractSportFromFilters(processedSnap?.filtersJson) ?? '—';
+
+    const recentCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const rawGroups = await this.prisma.crawlerRawMatch.groupBy({
+      by: ['internalSportSlug', 'sourceLocale'],
+      where: { lastSeenAt: { gte: recentCutoff } },
+      _count: { _all: true },
+      _max: { lastSeenAt: true },
+    });
+    const lastRawSeen = rawGroups.reduce<Date | null>((acc, g) => {
+      const t = g._max.lastSeenAt;
+      if (!t) return acc;
+      if (!acc || t > acc) return t;
+      return acc;
+    }, null);
+
+    const matchedCount = await this.prisma.crawlerMatchMapping.count({
+      where: { providerExternalEventId: { not: null } },
+    });
+
+    let bookmakers: string[] = [];
+    if (pid) {
+      const platform = await this.prisma.platform.findUnique({
+        where: { id: pid },
+        select: { integrationsJson: true },
+      });
+      const oddsApi =
+        ((platform?.integrationsJson as Record<string, unknown>) ?? {})
+          .oddsApi as Record<string, unknown> | undefined;
+      const list = Array.isArray(oddsApi?.bookmakers)
+        ? (oddsApi!.bookmakers as unknown[])
+        : [];
+      bookmakers = list
+        .map((x) => (typeof x === 'string' ? x.trim() : ''))
+        .filter(Boolean);
+    } else {
+      bookmakers = [...(status.filters?.bookmakers ?? [])];
+    }
+
+    return {
+      ws: {
+        connected: status.connectionState === 'open',
+        connectionState: status.connectionState,
+        lastMessageAt: status.lastMessageAt ?? null,
+        sports: status.filters?.sports ?? [],
+        stateCount: status.stateCount ?? 0,
+        autoConnect: status.autoConnectEnabled ?? false,
+      },
+      snapshots: {
+        catalog: catalogSnap
+          ? {
+              at: catalogSnap.createdAt.toISOString(),
+              sport: catalogSport,
+              count: catalogSnap.totalItems,
+            }
+          : null,
+        processed: processedSnap
+          ? {
+              at: processedSnap.createdAt.toISOString(),
+              sport: processedSport,
+              count: processedSnap.totalMatches,
+            }
+          : null,
+      },
+      crawler: {
+        lastRawSeenAt: lastRawSeen ? lastRawSeen.toISOString() : null,
+        bySport: rawGroups
+          .map((g) => ({
+            sport: g.internalSportSlug ?? 'unknown',
+            locale: g.sourceLocale,
+            count: g._count._all,
+          }))
+          .sort((a, b) =>
+            a.sport === b.sport
+              ? a.locale.localeCompare(b.locale)
+              : a.sport.localeCompare(b.sport),
+          ),
+        matchedCount,
+      },
+      bookmakers,
+    };
   }
 
   @Get('category-odds')
@@ -672,6 +884,25 @@ export class OddsApiWsAdminController {
       },
     };
   }
+}
+
+/**
+ * 스냅샷에 저장된 filtersJson 에서 sport 힌트를 꺼낸다.
+ * (모델에 명시적 sport 컬럼은 없고, 플래트 JSON 에 filters: { sports: [...] } 로 들어감.)
+ */
+function extractSportFromFilters(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const j = raw as Record<string, unknown>;
+  const direct = typeof j.sport === 'string' ? (j.sport as string) : null;
+  if (direct) return direct;
+  const sports = Array.isArray(j.sports) ? (j.sports as unknown[]) : null;
+  if (sports && sports.length) {
+    const first = sports[0];
+    if (typeof first === 'string') return first;
+  }
+  const nested = j.filters as Record<string, unknown> | undefined;
+  if (nested) return extractSportFromFilters(nested);
+  return null;
 }
 
 function pickBestOdds(bookmakers: Record<string, unknown>): {

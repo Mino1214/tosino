@@ -651,17 +651,125 @@ export async function fetchOddsApiMatches(opts: {
   status?: AggregatedMatchStatus | "all";
   sport?: string;
   limit?: number;
+  /** true 면 CrawlerMatchMapping 에 확정된 providerExternalEventId 만 반환 */
+  crawlerMatched?: boolean;
 } = {}): Promise<AggregatedMatchesResponse> {
   const q = opts.host ? buildPublicApiQuery(opts.host) : new URLSearchParams();
   if (opts.status) q.set("status", opts.status);
   if (opts.sport) q.set("sport", opts.sport);
   if (opts.limit) q.set("limit", String(opts.limit));
+  if (opts.crawlerMatched) q.set("crawlerMatched", "true");
   const res = await fetch(
     `${getApiBase()}/public/odds-api-ws/matches?${q}`,
     { cache: "no-store" },
   );
   if (!res.ok) throw new Error(`odds-api-ws matches (${res.status})`);
   return res.json();
+}
+
+/** GET /public/crawler/match-overlays — 크롤 매칭 + 짝 로케일 + 플랫폼 배당 */
+export type CrawlerPairedLocaleRaw = {
+  sourceLocale: string;
+  rawHomeName: string | null;
+  rawAwayName: string | null;
+  rawLeagueLabel: string | null;
+  rawCountryLabel: string | null;
+};
+
+/** 목록용 경량 odds (전체 `AggregatedMatch` 대신) */
+export type ProviderOddsPreviewDto = {
+  matchId: string;
+  sport: string;
+  status: AggregatedMatchStatus;
+  league: AggregatedMatch["league"];
+  home: AggregatedMatch["home"];
+  away: AggregatedMatch["away"];
+  scores: AggregatedMatch["scores"] | null;
+  primaryMarkets: {
+    moneyline?: AggregatedMatch["markets"]["moneyline"];
+    handicap?: AggregatedMatch["markets"]["handicap"];
+    totals?: AggregatedMatch["markets"]["totals"];
+  };
+  expandableMarketCount: number;
+};
+
+export type CrawlerMatchOverlayItem = {
+  id: string;
+  sourceSite: string;
+  sourceSportSlug: string;
+  /** 리그 표시용 우선 문자열 (한글 alias·짝 로케일·크롤 라벨 등 API 에서 계산) */
+  displayLeagueName?: string | null;
+  rawLeagueSlug?: string | null;
+  status: string;
+  rawHomeName: string | null;
+  rawAwayName: string | null;
+  rawKickoffUtc: string | null;
+  providerExternalEventId: string | null;
+  providerSportSlug: string | null;
+  providerHomeName: string | null;
+  providerAwayName: string | null;
+  pairedLocaleRaw: CrawlerPairedLocaleRaw | null;
+  providerOddsPreview?: ProviderOddsPreviewDto | null;
+  sourceHomeLogo?: string | null;
+  sourceAwayLogo?: string | null;
+  sourceLeagueLogo?: string | null;
+  sourceCountryFlag?: string | null;
+  providerHomeLogo?: string | null;
+  providerAwayLogo?: string | null;
+};
+
+export type CrawlerMatchOverlaysResponse = {
+  total: number;
+  take: number;
+  skip: number;
+  platformId?: string;
+  items: CrawlerMatchOverlayItem[];
+};
+
+export async function fetchCrawlerMatchOverlays(opts: {
+  host: string;
+  sourceSite?: string;
+  sportSlug?: string;
+  leagueSlug?: string;
+  status?: string;
+  take?: number;
+  skip?: number;
+  kickoffScope?: "upcoming" | "past" | "all";
+  includeOdds?: boolean;
+}): Promise<CrawlerMatchOverlaysResponse> {
+  const q = buildPublicApiQuery(opts.host);
+  if (opts.sourceSite) q.set("sourceSite", opts.sourceSite);
+  if (opts.sportSlug) q.set("sportSlug", opts.sportSlug);
+  if (opts.leagueSlug) q.set("leagueSlug", opts.leagueSlug);
+  if (opts.status) q.set("status", opts.status);
+  if (opts.take != null) q.set("take", String(opts.take));
+  if (opts.skip != null) q.set("skip", String(opts.skip));
+  if (opts.kickoffScope) q.set("kickoffScope", opts.kickoffScope);
+  if (opts.includeOdds === false) q.set("includeOdds", "0");
+  const res = await fetch(
+    `${getApiBase()}/public/crawler/match-overlays?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`crawler match-overlays (${res.status})`);
+  return res.json() as Promise<CrawlerMatchOverlaysResponse>;
+}
+
+export type CrawlerMatchOverlayDetail = CrawlerMatchOverlayItem & {
+  providerOdds: AggregatedMatch | null;
+};
+
+export async function fetchCrawlerMatchOverlayDetail(opts: {
+  host: string;
+  mappingId: string;
+}): Promise<CrawlerMatchOverlayDetail> {
+  const q = buildPublicApiQuery(opts.host);
+  q.set("mappingId", opts.mappingId);
+  const res = await fetch(
+    `${getApiBase()}/public/crawler/match-overlay-detail?${q}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`crawler match-overlay-detail (${res.status})`);
+  return res.json() as Promise<CrawlerMatchOverlayDetail>;
 }
 
 function appendOddsHostSecret(

@@ -2,10 +2,7 @@
 
 /*
   ─── AppShell ────────────────────────────────────────────────────
-  · SiteHeader, MobileDrawer, BottomNav 를 하나로 묶어
-    드로어 open 상태를 공유
-  · 홈(/)에서 헤더 투명 → <main> pt-0 (콘텐츠가 헤더 뒤로 들어감)
-  · 다른 페이지   → pt-20 (모바일 h-20 · 데스크톱 단일 행 헤더 h-20)
+  · 스포츠 데스크톱: 우측 배팅카트 w-56 고정 — main 은 md:mr-56 (huracan prematch 레이아웃과 동일 개념)
   ─────────────────────────────────────────────────────────────────
 */
 
@@ -28,54 +25,37 @@ import { HomeQuickAction } from "@/components/HomeQuickAction";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
-  const isHome      = pathname === "/";
-  const isSports    = isSportsBettingPath(pathname);
-  const isUserOnly  = isUserOnlyRoute(pathname);
+  const isHome = pathname === "/";
+  const isSports = isSportsBettingPath(pathname);
+  const isUserOnly = isUserOnlyRoute(pathname);
 
   return (
     <BettingCartProvider>
       <AppModalsProvider>
-      <MandatoryAnnouncementGate />
-      {/* 헤더 */}
-      <SiteHeader onDrawerOpen={() => setDrawerOpen(true)} />
+        <MandatoryAnnouncementGate />
+        <SiteHeader onDrawerOpen={() => setDrawerOpen(true)} />
+        <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      {/* 모바일 드로어 */}
-      <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+        <main
+          className={[
+            "max-md:box-border",
+            "max-md:pb-[var(--app-mobile-nav-total)]",
+            isHome
+              ? "max-md:h-[100svh] max-md:max-h-[100svh] max-md:overflow-hidden max-md:overscroll-none"
+              : "max-md:app-main-mobile-scroll",
+            "md:overflow-visible md:pb-0",
+            isHome ? "" : "pt-[var(--app-mobile-header)] md:pt-[var(--app-desktop-header)]",
+            isSports ? "md:mr-56" : "",
+          ].join(" ")}
+        >
+          {isUserOnly ? <AuthRequiredGate>{children}</AuthRequiredGate> : children}
+        </main>
 
-      {/* 메인 콘텐츠
-          · 모바일: 높이 100svh + 하단 safe까지 pb — 스크롤은 main 내부만 (탭바는 고정)
-          · 홈: pt-0 / 그 외: pt-20
-          · 스포츠 데스크톱: 우측 배팅카트 mr-72
-      */}
-      <main
-        className={[
-          "max-md:box-border",
-          "max-md:pb-[var(--app-mobile-nav-total)]",
-          /* 홈 모바일: 히어로만 고정, 세로 스크롤 없음 */
-          isHome
-            ? "max-md:h-[100svh] max-md:max-h-[100svh] max-md:overflow-hidden max-md:overscroll-none"
-            : "max-md:app-main-mobile-scroll",
-          "md:overflow-visible md:pb-0",
-          isHome ? "" : "pt-[var(--app-mobile-header)] md:pt-[var(--app-desktop-header)]",
-          isSports ? "md:mr-72" : "",
-        ].join(" ")}
-      >
-        {isUserOnly ? <AuthRequiredGate>{children}</AuthRequiredGate> : children}
-      </main>
-
-      {/* 스포츠 전용 배팅카트 (데스크톱: 우측 고정 패널 / 모바일: 슬라이드업) */}
-      {isSports && <BettingCartDock />}
-
-      {/* 배팅내역 슬라이드업 패널 (모바일 전용) */}
-      <BettingHistoryPanel />
-
-      {/* 하단 탭바 */}
-      <BottomNav />
-
-      {/* 데스크톱 전용: 홈 우측 퀵 액션 카드 */}
-      {isHome && <HomeQuickAction />}
-
-      <AppModalsRoot />
+        {isSports && <BettingCartDock />}
+        <BettingHistoryPanel />
+        <BottomNav />
+        {isHome && <HomeQuickAction />}
+        <AppModalsRoot />
       </AppModalsProvider>
     </BettingCartProvider>
   );

@@ -14,12 +14,16 @@ function readTickMs(config: ConfigService): number {
   const raw =
     config.get<string>('CRAWLER_MATCHER_TICK_MS')?.trim() ??
     process.env.CRAWLER_MATCHER_TICK_MS ??
-    '45000';
+    '';
   if (['0', 'false', 'off', 'disabled'].includes(raw.toLowerCase())) {
     return 0;
   }
+  if (!raw) {
+    /** 비프로덕션·스케줄 개발 프로필: 미설정 시 약 7분(자원 보수적). 운영은 ecosystem 에서 ms 명시. */
+    return schedulerUsesDevDefaults() ? 420_000 : 0;
+  }
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? Math.min(3_600_000, Math.max(5_000, n)) : 45_000;
+  return Number.isFinite(n) && n > 0 ? Math.min(3_600_000, Math.max(5_000, n)) : 0;
 }
 
 function readBatchLimit(config: ConfigService): number {
@@ -91,7 +95,8 @@ export class CrawlerMatcherSchedulerService implements OnModuleInit {
   private async enqueueBootMatcher(bootLimit: number): Promise<void> {
     const payload: CrawlerMatcherJobPayload = {
       limit: bootLimit,
-      onlyStatuses: ['pending', 'rejected'],
+      onlyStatuses: ['pending'],
+      onlyWithoutStoredCandidates: true,
     };
     try {
       await this.queue.add(MATCHER_JOB_MANUAL, payload, {
@@ -127,14 +132,18 @@ export class CrawlerMatcherSchedulerService implements OnModuleInit {
           '크롤러 매처 주기 잡 비활성(CRAWLER_MATCHER_TICK_MS=0). 수동·기동 1회 큐만 사용.',
         );
       } else {
-        const payload: CrawlerMatcherJobPayload = { limit: batchLimit };
+        const payload: CrawlerMatcherJobPayload = {
+          limit: batchLimit,
+          onlyStatuses: ['pending'],
+          onlyWithoutStoredCandidates: true,
+        };
         await this.queue.add(MATCHER_JOB_PERIODIC, payload, {
           repeat: { every: tickMs },
           removeOnComplete: 25,
           removeOnFail: 15,
         });
         this.log.log(
-          `크롤러 매처 주기 잡 등록: every=${tickMs}ms batchLimit=${batchLimit} (큐 ${CRAWLER_MATCHER_QUEUE})`,
+          `크롤러 매처 주기 잡 등록: every=${tickMs}ms batchLimit=${batchLimit} onlyUnhinted=true (큐 ${CRAWLER_MATCHER_QUEUE})`,
         );
       }
 
