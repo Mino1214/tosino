@@ -54,9 +54,19 @@ type MatchingRow = {
     id: string;
     rawLeagueLabel: string | null;
     rawLeagueSlug: string | null;
+    rawCountryLabel: string | null;
     rawHomeName: string | null;
     rawAwayName: string | null;
   };
+  // enrichMappingsWithLogos 가 넣어주는 필드
+  sourceHomeLogo: string | null;
+  sourceAwayLogo: string | null;
+  sourceLeagueLogo: string | null;
+  sourceCountryFlag: string | null;
+  providerHomeLogo: string | null;
+  providerAwayLogo: string | null;
+  providerCountryKo: string | null;
+  displayLeagueName: string | null;
 };
 
 type MatchingListResp = {
@@ -64,6 +74,47 @@ type MatchingListResp = {
   items?: MatchingRow[];
   rows?: MatchingRow[];
 };
+
+function TeamLogo({ src }: { src: string | null }) {
+  if (!src) {
+    return (
+      <span className="inline-block h-5 w-5 flex-none rounded-full bg-gray-100" />
+    );
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return (
+    <img
+      src={src}
+      alt=""
+      className="h-5 w-5 flex-none rounded-full object-contain ring-1 ring-gray-200"
+    />
+  );
+}
+
+function CountryCell({
+  flag,
+  label,
+}: {
+  flag: string | null;
+  label: string | null;
+}) {
+  if (!flag && !label) {
+    return <span className="text-xs text-gray-400">—</span>;
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      {flag ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={flag}
+          alt=""
+          className="h-4 w-5 flex-none rounded-sm object-cover ring-1 ring-gray-200"
+        />
+      ) : null}
+      <span className="truncate text-xs text-gray-700">{label ?? "—"}</span>
+    </div>
+  );
+}
 
 function fmtDt(s: string | null | undefined): string {
   if (!s) return "—";
@@ -431,6 +482,7 @@ export default function CrawlerConsolePage() {
             <thead>
               <tr className="border-b border-gray-100 text-left text-[11px] uppercase tracking-wider text-gray-500">
                 <th className="py-2 pr-3">종목</th>
+                <th className="py-2 pr-3">국가</th>
                 <th className="py-2 pr-3">리그</th>
                 <th className="py-2 pr-3">경기</th>
                 <th className="py-2 pr-3">킥오프(UTC)</th>
@@ -441,19 +493,28 @@ export default function CrawlerConsolePage() {
             <tbody>
               {loadingRows ? (
                 <tr>
-                  <td colSpan={6} className="py-4 text-center text-gray-400">
+                  <td colSpan={7} className="py-4 text-center text-gray-400">
                     불러오는 중…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-4 text-center text-gray-400">
+                  <td colSpan={7} className="py-4 text-center text-gray-400">
                     매칭된 경기가 없습니다.
                   </td>
                 </tr>
               ) : (
                 rows.map((r) => {
                   const ed = editing[r.id];
+                  const countryLabel =
+                    r.providerCountryKo ??
+                    r.rawMatch?.rawCountryLabel ??
+                    null;
+                  const leagueLabel =
+                    r.displayLeagueName ??
+                    r.rawMatch?.rawLeagueLabel ??
+                    r.rawLeagueSlug ??
+                    "—";
                   if (ed) {
                     return (
                       <tr
@@ -464,46 +525,73 @@ export default function CrawlerConsolePage() {
                           {r.internalSportSlug ?? "—"}
                         </td>
                         <td className="py-2 pr-3">
-                          <input
-                            value={ed.league}
-                            onChange={(e) =>
-                              setEditing((prev) => ({
-                                ...prev,
-                                [r.id]: { ...prev[r.id], league: e.target.value },
-                              }))
-                            }
-                            className="w-52 rounded border border-gray-200 px-2 py-1 text-xs"
+                          <CountryCell
+                            flag={r.sourceCountryFlag}
+                            label={countryLabel}
                           />
                         </td>
                         <td className="py-2 pr-3">
+                          <div className="flex items-center gap-2">
+                            {r.sourceLeagueLogo ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={r.sourceLeagueLogo}
+                                alt=""
+                                className="h-5 w-5 flex-none rounded-sm object-contain"
+                              />
+                            ) : null}
+                            <input
+                              value={ed.league}
+                              onChange={(e) =>
+                                setEditing((prev) => ({
+                                  ...prev,
+                                  [r.id]: {
+                                    ...prev[r.id],
+                                    league: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-52 rounded border border-gray-200 px-2 py-1 text-xs"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3">
                           <div className="flex flex-col gap-1">
-                            <input
-                              value={ed.home}
-                              onChange={(e) =>
-                                setEditing((prev) => ({
-                                  ...prev,
-                                  [r.id]: {
-                                    ...prev[r.id],
-                                    home: e.target.value,
-                                  },
-                                }))
-                              }
-                              className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
-                            />
-                            <span className="text-[10px] text-gray-400">vs</span>
-                            <input
-                              value={ed.away}
-                              onChange={(e) =>
-                                setEditing((prev) => ({
-                                  ...prev,
-                                  [r.id]: {
-                                    ...prev[r.id],
-                                    away: e.target.value,
-                                  },
-                                }))
-                              }
-                              className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
-                            />
+                            <div className="flex items-center gap-2">
+                              <TeamLogo src={r.sourceHomeLogo} />
+                              <input
+                                value={ed.home}
+                                onChange={(e) =>
+                                  setEditing((prev) => ({
+                                    ...prev,
+                                    [r.id]: {
+                                      ...prev[r.id],
+                                      home: e.target.value,
+                                    },
+                                  }))
+                                }
+                                className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
+                              />
+                            </div>
+                            <span className="ml-7 text-[10px] text-gray-400">
+                              vs
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <TeamLogo src={r.sourceAwayLogo} />
+                              <input
+                                value={ed.away}
+                                onChange={(e) =>
+                                  setEditing((prev) => ({
+                                    ...prev,
+                                    [r.id]: {
+                                      ...prev[r.id],
+                                      away: e.target.value,
+                                    },
+                                  }))
+                                }
+                                className="w-48 rounded border border-gray-200 px-2 py-1 text-xs"
+                              />
+                            </div>
                           </div>
                         </td>
                         <td className="py-2 pr-3 font-mono text-[11px] text-gray-500">
@@ -537,15 +625,36 @@ export default function CrawlerConsolePage() {
                       <td className="py-2 pr-3 text-xs text-gray-600">
                         {r.internalSportSlug ?? "—"}
                       </td>
-                      <td className="py-2 pr-3 text-sm text-black">
-                        {r.rawMatch?.rawLeagueLabel ??
-                          r.rawLeagueSlug ??
-                          "—"}
+                      <td className="py-2 pr-3">
+                        <CountryCell
+                          flag={r.sourceCountryFlag}
+                          label={countryLabel}
+                        />
                       </td>
                       <td className="py-2 pr-3 text-sm text-black">
-                        {r.rawHomeName ?? "—"}{" "}
-                        <span className="text-gray-400">vs</span>{" "}
-                        {r.rawAwayName ?? "—"}
+                        <div className="flex items-center gap-2">
+                          {r.sourceLeagueLogo ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={r.sourceLeagueLogo}
+                              alt=""
+                              className="h-5 w-5 flex-none rounded-sm object-contain"
+                            />
+                          ) : null}
+                          <span className="truncate">{leagueLabel}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3 text-sm text-black">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <TeamLogo src={r.sourceHomeLogo} />
+                            <span>{r.rawHomeName ?? "—"}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <TeamLogo src={r.sourceAwayLogo} />
+                            <span>{r.rawAwayName ?? "—"}</span>
+                          </div>
+                        </div>
                       </td>
                       <td className="py-2 pr-3 font-mono text-[11px] text-gray-500">
                         {fmtDt(r.rawKickoffUtc)}
