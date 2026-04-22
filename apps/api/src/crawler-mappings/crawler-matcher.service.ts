@@ -1189,21 +1189,20 @@ export class CrawlerMatcherService {
       });
     }
 
-    // 사용 중(이미 어떤 mapping 이 providerExternalEventId 로 잡고있는) 이벤트 식별
+    // 사용 중 = auto/confirmed 로 잡힌 provider event id 집합.
+    // 과거: pool 전체 id 를 IN (...) 에 넣어 수만 건이면 쿼리·메모리 폭주로 API 가 죽을 수 있음(크롤러 매칭 탭).
     const usedSet = new Set<string>();
     if (pool.length > 0) {
-      const rows = await this.prisma.crawlerMatchMapping.findMany({
+      const usedRows = await this.prisma.crawlerMatchMapping.findMany({
         where: {
-          providerExternalEventId: { in: pool.map((e) => e.id) },
+          status: { in: ['auto', 'confirmed'] },
+          providerExternalEventId: { not: null },
         },
-        select: { providerExternalEventId: true, status: true },
+        distinct: ['providerExternalEventId'],
+        select: { providerExternalEventId: true },
       });
-      for (const r of rows) {
-        if (!r.providerExternalEventId) continue;
-        // 사용 중 = auto/confirmed 로 잡혀있는 것만. pending/rejected 는 아직 후보 단계이므로 드롭 가능.
-        if (r.status === 'auto' || r.status === 'confirmed') {
-          usedSet.add(r.providerExternalEventId);
-        }
+      for (const r of usedRows) {
+        if (r.providerExternalEventId) usedSet.add(r.providerExternalEventId);
       }
     }
 
