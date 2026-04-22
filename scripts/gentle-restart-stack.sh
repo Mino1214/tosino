@@ -2,7 +2,7 @@
 # Docker(Redis/Postgres) + PM2 를 한꺼번에 재시작할 때, 부하·원격 끊김을 줄이기 위한 순서.
 #  - 먼저 score-crawler(Playwright) 중지
 #  - Redis → 잠시 대기 → Postgres
-#  - PM2 는 api → sms-ingest → 정적앱 → cloudflared → score-crawler
+#  - PM2 는 api → crawler-matcher-worker → sms-ingest → 정적앱 → cloudflared → score-crawler
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -19,6 +19,8 @@ sleep 4
 
 echo "[gentle-restart] PM2 (순차)"
 pm2 restart api
+sleep 2
+pm2 restart crawler-matcher-worker 2>/dev/null || env TOSINO_DEPLOY_PROFILE=server pm2 start ecosystem.config.js --only crawler-matcher-worker
 sleep 2
 pm2 restart sms-ingest
 sleep 2

@@ -92,7 +92,14 @@ type StatsResponse = {
   unmatched: number;
 };
 
-type RunMatcherResponse = {
+type RunMatcherQueuedResponse = {
+  queued: true;
+  jobId?: string;
+  message: string;
+};
+
+/** (과거) 동기 실행 응답 — 현재 API는 큐 응답만 반환 */
+type RunMatcherDoneResponse = {
   scanned: number;
   auto: number;
   pending: number;
@@ -101,6 +108,12 @@ type RunMatcherResponse = {
   durationMs: number;
   reasonBreakdown: Record<string, number>;
 };
+
+function isRunMatcherQueued(
+  r: RunMatcherQueuedResponse | RunMatcherDoneResponse,
+): r is RunMatcherQueuedResponse {
+  return "queued" in r && r.queued === true;
+}
 
 type FacetsResponse = {
   sports: { sourceSport: string; internalSport: string | null; count: number }[];
@@ -282,7 +295,9 @@ export default function CrawlerMatchesPage() {
   const [leagueFilter, setLeagueFilter] = useState("");
   const [query, setQuery] = useState("");
   const [runBusy, setRunBusy] = useState(false);
-  const [runResult, setRunResult] = useState<RunMatcherResponse | null>(null);
+  const [runResult, setRunResult] = useState<
+    RunMatcherQueuedResponse | RunMatcherDoneResponse | null
+  >(null);
   const [confirmTarget, setConfirmTarget] = useState<MatchMapping | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [quickConfirming, setQuickConfirming] = useState<string | null>(null);
@@ -346,12 +361,16 @@ export default function CrawlerMatchesPage() {
     setRunBusy(true);
     setRunResult(null);
     try {
-      const r = await apiFetch<RunMatcherResponse>(
+      const r = await apiFetch<RunMatcherQueuedResponse | RunMatcherDoneResponse>(
         "/hq/crawler/matches/run-matcher",
         { method: "POST", body: JSON.stringify({ limit: 2000 }) },
       );
       setRunResult(r);
-      await Promise.all([refresh(), refreshStats(), refreshFacets()]);
+      if (!isRunMatcherQueued(r)) {
+        await Promise.all([refresh(), refreshStats(), refreshFacets()]);
+      } else {
+        void Promise.all([refresh(), refreshStats(), refreshFacets()]);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "매처 실행 실패");
     } finally {
@@ -544,12 +563,21 @@ export default function CrawlerMatchesPage() {
           disabled={runBusy}
           style={btnPrimary}
         >
-          {runBusy ? "실행 중…" : "매처 다시 실행"}
+          {runBusy ? "요청 중…" : "매칭 큐에 넣기"}
         </button>
         {runResult && (
           <span style={{ fontSize: 11, color: "#444" }}>
-            scanned={runResult.scanned} auto={runResult.auto} pending=
-            {runResult.pending} ({runResult.durationMs}ms)
+            {isRunMatcherQueued(runResult) ? (
+              <>
+                {runResult.message}
+                {runResult.jobId ? ` · job ${runResult.jobId}` : ""}
+              </>
+            ) : (
+              <>
+                scanned={runResult.scanned} auto={runResult.auto} pending=
+                {runResult.pending} ({runResult.durationMs}ms)
+              </>
+            )}
           </span>
         )}
 

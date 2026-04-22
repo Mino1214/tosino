@@ -9,7 +9,7 @@ pnpm db:generate
 pnpm --filter @tosino/sms-ingest build
 
 if pm2 describe sms-ingest >/dev/null 2>&1; then
-  pm2 reload ecosystem.config.js --only sms-ingest
+  env TOSINO_DEPLOY_PROFILE=server pm2 reload ecosystem.config.js --only sms-ingest
 else
-  pm2 start ecosystem.config.js --only sms-ingest
+  env TOSINO_DEPLOY_PROFILE=server pm2 start ecosystem.config.js --only sms-ingest
 fi

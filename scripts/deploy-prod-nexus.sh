@@ -52,7 +52,7 @@ if ! command -v pm2 >/dev/null 2>&1; then
 fi
 
 echo "==> PM2 reload"
-pm2 reload ecosystem.config.js --update-env || pm2 start ecosystem.config.js
+env TOSINO_DEPLOY_PROFILE=server pm2 reload ecosystem.config.js --update-env || env TOSINO_DEPLOY_PROFILE=server pm2 start ecosystem.config.js
 pm2 save || true
 
 echo ""

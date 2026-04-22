@@ -4,6 +4,12 @@ const os = require('os');
 const ROOT = __dirname;
 const API_ROOT = path.join(ROOT, 'apps', 'api');
 const API_ENTRY = path.join(API_ROOT, 'dist', 'src', 'main.js');
+const CRAWLER_MATCHER_WORKER_ENTRY = path.join(
+  API_ROOT,
+  'dist',
+  'src',
+  'crawler-matcher-worker.main.js',
+);
 const SMS_INGEST_ROOT = path.join(ROOT, 'apps', 'sms-ingest');
 const SMS_INGEST_ENTRY = path.join(SMS_INGEST_ROOT, 'dist', 'index.js');
 const SCORE_CRAWLER_ROOT = path.join(ROOT, 'apps', 'score-crawler');
@@ -23,6 +29,9 @@ const CLOUDFLARED = [
 ].find(p => { try { require('fs').accessSync(p, require('fs').constants.X_OK); return true; } catch { return false; } }) || 'cloudflared';
 const CF_CONFIG = path.join(ROOT, 'deploy', 'cloudflared', 'config.yml');
 
+/** server | local | local-dev — `pnpm deploy:apps` 가 local / local-dev 로 설정 */
+const DEPLOY_PROFILE = (process.env.TOSINO_DEPLOY_PROFILE || 'server').trim();
+
 function serveStaticApp(outDir, port) {
   return {
     /** bash 로 직접 실행. PM2 가 node interpreter 를 강제로 붙여 .sh 를 못 돌리는 사고 회피. */
@@ -38,78 +47,113 @@ function serveStaticApp(outDir, port) {
   };
 }
 
+const envBase = (extra = {}) => ({
+  NODE_ENV: 'production',
+  TOSINO_DEPLOY_PROFILE: DEPLOY_PROFILE,
+  ...extra,
+});
+
+const appApi = {
+  name: 'api',
+  /** 확장자 없는 경로(dist/src/main)는 PM2/일부 환경에서 엔트리 인식 실패 가능 → main.js 고정 */
+  script: API_ENTRY,
+  cwd: API_ROOT,
+  interpreter: 'node',
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 3000,
+  env: envBase(),
+};
+
+const appMatcherWorker = {
+  name: 'crawler-matcher-worker',
+  /** BullMQ `crawler-matcher` 큐만 소비. strict 매처는 API 와 프로세스 분리 */
+  script: CRAWLER_MATCHER_WORKER_ENTRY,
+  cwd: API_ROOT,
+  interpreter: 'node',
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 5000,
+  env: envBase(
+    DEPLOY_PROFILE === 'local' || DEPLOY_PROFILE === 'local-dev'
+      ? {
+          /** 로컬에선 기본 주기를 조금 짧게(미설정 시 서버와 동일 45s 는 env 로 덮어쓰기 가능) */
+          CRAWLER_MATCHER_TICK_MS:
+            process.env.CRAWLER_MATCHER_TICK_MS || '20000',
+        }
+      : {},
+  ),
+};
+
+const appSmsIngest = {
+  name: 'sms-ingest',
+  /** POST /webhook/sms — apps/sms-ingest/.env (DATABASE_URL, SMS_INGEST_PORT, SMS_INGEST_SECRET) */
+  script: SMS_INGEST_ENTRY,
+  cwd: SMS_INGEST_ROOT,
+  interpreter: 'node',
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 3000,
+  env: envBase(),
+};
+
+const staticApps = [
+  { name: 'super-admin', ...serveStaticApp('apps/super-admin/out', 3000) },
+  { name: 'solution-admin', ...serveStaticApp('apps/solution-admin/out', 3001) },
+  { name: 'solution-user', ...serveStaticApp('apps/solution-user/out', 3002) },
+  { name: 'solution-agent', ...serveStaticApp('apps/solution-agent/out', 3003) },
+  { name: 'solution-main', ...serveStaticApp('apps/solution-main/out', 3010) },
+].map((row) => ({
+  ...row,
+  env: envBase(row.env || {}),
+}));
+
+const appScoreCrawler = {
+  name: 'score-crawler',
+  /**
+   * livesport 기반 스코어 크롤러 (Python MVP).
+   * scripts/run.sh 가 venv 를 자동 활성 후 run.py 를 실행.
+   * --loop 모드로 주기 실행하며, 사이클마다 헬스체크 + 탭 1개 재사용.
+   */
+  script: 'bash',
+  args: [SCORE_CRAWLER_RUN, '--loop', '--interval-seconds', '300'],
+  interpreter: 'none',
+  cwd: SCORE_CRAWLER_ROOT,
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 5000,
+  /** Ctrl+C 처리 여유를 두기 위해 살짝 길게 */
+  kill_timeout: 10000,
+  env: envBase({ PYTHONUNBUFFERED: '1' }),
+};
+
+const appCloudflared = {
+  name: 'cloudflared',
+  script: CLOUDFLARED,
+  args: ['tunnel', '--config', CF_CONFIG, 'run'],
+  cwd: ROOT,
+  interpreter: 'none',
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 5000,
+  env: envBase({ NO_COLOR: '1' }),
+};
+
+const appsServer = [
+  appApi,
+  appMatcherWorker,
+  appSmsIngest,
+  ...staticApps,
+  appScoreCrawler,
+  appCloudflared,
+];
+
+/** 로컬 prod: API + 매처 워커 + 정적 5종 (sms-ingest / score-crawler / cloudflared 제외) */
+const appsLocal = [appApi, appMatcherWorker, ...staticApps];
+
+const isLocalProfile =
+  DEPLOY_PROFILE === 'local' || DEPLOY_PROFILE === 'local-dev';
+
 module.exports = {
-  apps: [
-    {
-      name: 'api',
-      /** 확장자 없는 경로(dist/src/main)는 PM2/일부 환경에서 엔트리 인식 실패 가능 → main.js 고정 */
-      script: API_ENTRY,
-      cwd: API_ROOT,
-      interpreter: 'node',
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 3000,
-      env: { NODE_ENV: 'production' },
-    },
-    {
-      name: 'sms-ingest',
-      /** POST /webhook/sms — apps/sms-ingest/.env (DATABASE_URL, SMS_INGEST_PORT, SMS_INGEST_SECRET) */
-      script: SMS_INGEST_ENTRY,
-      cwd: SMS_INGEST_ROOT,
-      interpreter: 'node',
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 3000,
-      env: { NODE_ENV: 'production' },
-    },
-    {
-      name: 'super-admin',
-      ...serveStaticApp('apps/super-admin/out', 3000),
-    },
-    {
-      name: 'solution-admin',
-      ...serveStaticApp('apps/solution-admin/out', 3001),
-    },
-    {
-      name: 'solution-user',
-      ...serveStaticApp('apps/solution-user/out', 3002),
-    },
-    {
-      name: 'solution-agent',
-      ...serveStaticApp('apps/solution-agent/out', 3003),
-    },
-    {
-      name: 'solution-main',
-      ...serveStaticApp('apps/solution-main/out', 3010),
-    },
-    {
-      name: 'score-crawler',
-      /**
-       * livesport 기반 스코어 크롤러 (Python MVP).
-       * scripts/run.sh 가 venv 를 자동 활성 후 run.py 를 실행.
-       * --loop 모드로 주기 실행하며, 사이클마다 헬스체크 + 탭 1개 재사용.
-       */
-      script: 'bash',
-      args: [SCORE_CRAWLER_RUN, '--loop', '--interval-seconds', '300'],
-      interpreter: 'none',
-      cwd: SCORE_CRAWLER_ROOT,
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 5000,
-      /** Ctrl+C 처리 여유를 두기 위해 살짝 길게 */
-      kill_timeout: 10000,
-      env: { PYTHONUNBUFFERED: '1' },
-    },
-    {
-      name: 'cloudflared',
-      script: CLOUDFLARED,
-      args: ['tunnel', '--config', CF_CONFIG, 'run'],
-      cwd: ROOT,
-      interpreter: 'none',
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 5000,
-      env: { NO_COLOR: '1' },
-    },
-  ],
+  apps: isLocalProfile ? appsLocal : appsServer,
 };

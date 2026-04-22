@@ -9,6 +9,8 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { AuthGuard } from '@nestjs/passport';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -20,6 +22,10 @@ import {
   type CrawlerRawMatchIngestItem,
   type CrawlerTeamIngestItem,
 } from './crawler-mappings.service';
+import {
+  CRAWLER_MATCHER_QUEUE,
+  MATCHER_JOB_MANUAL,
+} from './crawler-matcher.queue';
 import { CrawlerMatcherService } from './crawler-matcher.service';
 
 /**
@@ -65,10 +71,7 @@ export class CrawlerMappingsIntegrationController {
 @Controller('integrations/crawler/matches')
 @UseGuards(OddsApiIntegrationKeyGuard)
 export class CrawlerMatchesIntegrationController {
-  constructor(
-    private readonly svc: CrawlerMappingsService,
-    private readonly matcher: CrawlerMatcherService,
-  ) {}
+  constructor(private readonly svc: CrawlerMappingsService) {}
 
   @Post('ingest')
   async ingest(
@@ -76,7 +79,7 @@ export class CrawlerMatchesIntegrationController {
     body: {
       sourceSite?: string;
       items?: CrawlerRawMatchIngestItem[];
-      /** 기본 true — ingest 직후 strict 매처를 자동으로 한 번 돌림 */
+      /** 무시됨 — strict 매처는 API 요청 밖(BullMQ 주기 잡)에서만 돈다. */
       runMatcher?: boolean;
     },
   ) {
@@ -84,10 +87,6 @@ export class CrawlerMatchesIntegrationController {
     if (!site) throw new BadRequestException('sourceSite is required');
     const items = Array.isArray(body?.items) ? body!.items! : [];
     const result = await this.svc.ingestRawMatchesFromCrawler(site, items);
-    if (body?.runMatcher !== false && result.upserted > 0) {
-      const matcherRun = await this.matcher.run({ sourceSite: site });
-      return { ingest: result, matcher: matcherRun };
-    }
     return { ingest: result };
   }
 }
@@ -283,6 +282,7 @@ export class CrawlerMatchesAdminController {
   constructor(
     private readonly svc: CrawlerMappingsService,
     private readonly matcher: CrawlerMatcherService,
+    @InjectQueue(CRAWLER_MATCHER_QUEUE) private readonly matcherQueue: Queue,
   ) {}
 
   @Get()
@@ -422,11 +422,25 @@ export class CrawlerMatchesAdminController {
       >;
     },
   ) {
-    return this.matcher.run({
-      sourceSite: body?.sourceSite?.trim() || undefined,
-      limit: body?.limit,
-      onlyStatuses: body?.onlyStatuses,
-    });
+    const job = await this.matcherQueue.add(
+      MATCHER_JOB_MANUAL,
+      {
+        sourceSite: body?.sourceSite?.trim() || undefined,
+        limit: body?.limit,
+        onlyStatuses: body?.onlyStatuses,
+      },
+      {
+        removeOnComplete: 40,
+        removeOnFail: 20,
+        priority: 10,
+      },
+    );
+    return {
+      queued: true as const,
+      jobId: job.id ?? undefined,
+      message:
+        '매칭 작업을 백그라운드 큐에 넣었습니다. 워커가 DB를 순차 처리합니다.',
+    };
   }
 
   /**

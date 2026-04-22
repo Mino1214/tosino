@@ -16,6 +16,11 @@ function toPublicMediaUrl(u: string | null | undefined): string | null {
   return resolvePublicMediaUrl(t);
 }
 
+/** `findMany({ include: { mapping: true } })` 한 행 — `mapping` 필드 타입 포함 */
+type RawMatchWithMapping = Prisma.CrawlerRawMatchGetPayload<{
+  include: { mapping: true };
+}>;
+
 /**
  * livesport raw 경기 ↔ odds-api.io 이벤트를 엄격한 규칙으로 매칭한다.
  *
@@ -189,8 +194,95 @@ export class CrawlerMatcherService {
 
   // ────────────────────────────────────────────────────────────────────
 
+  /**
+   * 이미 pending 으로 제시(reason)까지 된 건은, raw 매칭 키가 같고
+   * (리그·팀 미확정 등) 이전과 같은 이유로 막혀 있으면 DB 갱신 없이 건너뛴다.
+   * 리그/팀 매핑이 새로 생기면 막힘이 풀린 것이므로 다시 돈다.
+   * catalog/strict 단계 이슈는 raw 가 안 바뀌면 자동 재시도하지 않는다(수동 재검·reopen).
+   */
+  private shouldSkipPendingRematch(
+    raw: RawMatchWithMapping,
+    leagueIdx: Map<string, ConfirmedLeague>,
+    teamIdx: Map<string, ConfirmedTeam>,
+    eventsBySport: Map<string, CatalogEvent[]>,
+  ): boolean {
+    const m = raw.mapping;
+    if (!m || m.status !== 'pending' || !String(m.reason ?? '').trim()) {
+      return false;
+    }
+    if (!this.sameRawMatchSnapshot(raw, m)) {
+      return false;
+    }
+    const reasonCode = parseMatcherReasonCode(m.reason);
+    const rawLeagueSlug = (raw.rawLeagueSlug || '').trim();
+    const rawHomeName = (raw.rawHomeName || '').trim();
+    const rawAwayName = (raw.rawAwayName || '').trim();
+
+    if (reasonCode === 'league-not-confirmed') {
+      const league = leagueIdx.get(`${raw.sourceSite}::${rawLeagueSlug}`);
+      return !league;
+    }
+    if (reasonCode === 'league-missing-provider') {
+      const league = leagueIdx.get(`${raw.sourceSite}::${rawLeagueSlug}`);
+      if (!league) return true;
+      const ps = league.providerSportSlug || league.internalSportSlug;
+      const pl = league.providerLeagueSlug;
+      return !(ps && pl);
+    }
+    if (reasonCode === 'home-team-not-confirmed') {
+      const t = teamIdx.get(
+        `${raw.sourceSite}::${raw.sourceSportSlug}::${rawHomeName}`,
+      );
+      return !t;
+    }
+    if (reasonCode === 'away-team-not-confirmed') {
+      const t = teamIdx.get(
+        `${raw.sourceSite}::${raw.sourceSportSlug}::${rawAwayName}`,
+      );
+      return !t;
+    }
+    if (reasonCode === 'team-missing-externalId') {
+      const home = teamIdx.get(
+        `${raw.sourceSite}::${raw.sourceSportSlug}::${rawHomeName}`,
+      );
+      const away = teamIdx.get(
+        `${raw.sourceSite}::${raw.sourceSportSlug}::${rawAwayName}`,
+      );
+      const stillBroken =
+        !home?.providerTeamExternalId || !away?.providerTeamExternalId;
+      return stillBroken;
+    }
+    if (reasonCode === 'missing-raw-fields') {
+      return !(rawLeagueSlug && rawHomeName && rawAwayName);
+    }
+    if (reasonCode === 'no-events-for-sport') {
+      const slug = parseSportSlugFromNoEventsReason(m.reason);
+      if (slug && (eventsBySport.get(slug)?.length ?? 0) > 0) {
+        return false;
+      }
+    }
+    // catalog/strict/kickoff/다중후보 등: 제시만 유지, raw 키 동일하면 자동 재작업 안 함
+    return true;
+  }
+
+  private sameRawMatchSnapshot(
+    raw: RawMatchWithMapping,
+    m: NonNullable<RawMatchWithMapping['mapping']>,
+  ): boolean {
+    const kick = (d: Date | null | undefined) =>
+      d == null ? null : d.getTime();
+    return (
+      (raw.rawLeagueSlug ?? '').trim() === (m.rawLeagueSlug ?? '').trim() &&
+      (raw.rawHomeName ?? '').trim() === (m.rawHomeName ?? '').trim() &&
+      (raw.rawAwayName ?? '').trim() === (m.rawAwayName ?? '').trim() &&
+      raw.sourceSportSlug === m.sourceSportSlug &&
+      (raw.internalSportSlug ?? null) === (m.internalSportSlug ?? null) &&
+      kick(raw.rawKickoffUtc) === kick(m.rawKickoffUtc)
+    );
+  }
+
   private async matchOne(
-    raw: Awaited<ReturnType<typeof this.prisma.crawlerRawMatch.findMany>>[number],
+    raw: RawMatchWithMapping,
     leagueIdx: Map<string, ConfirmedLeague>,
     teamIdx: Map<string, ConfirmedTeam>,
     eventsBySport: Map<string, CatalogEvent[]>,
@@ -199,6 +291,10 @@ export class CrawlerMatcherService {
     | { kind: 'pending'; reason: string; note?: string }
     | { kind: 'unchanged' }
   > {
+    if (this.shouldSkipPendingRematch(raw, leagueIdx, teamIdx, eventsBySport)) {
+      return { kind: 'unchanged' };
+    }
+
     const rawLeagueSlug = raw.rawLeagueSlug || '';
     const rawHomeName = (raw.rawHomeName || '').trim();
     const rawAwayName = (raw.rawAwayName || '').trim();
@@ -1594,12 +1690,28 @@ export class CrawlerMatcherService {
         matchedVia: null,
         confirmedAt: null,
         confirmedBy: null,
+        reason: null,
+        candidatesJson: Prisma.JsonNull,
       },
     });
   }
 }
 
 /* ───────────────────── helpers ───────────────────── */
+
+/** `reasonCode: 상세` 형태의 앞 토큰 */
+function parseMatcherReasonCode(reason: string | null | undefined): string {
+  const s = String(reason ?? '').trim();
+  if (!s) return '';
+  const i = s.indexOf(':');
+  return (i === -1 ? s : s.slice(0, i)).trim();
+}
+
+/** persistPending 의 no-events-for-sport 메시지에서 sport 슬러그 추출 */
+function parseSportSlugFromNoEventsReason(reason: string | null | undefined): string {
+  const m = String(reason ?? '').match(/sport=([^\s]+)/);
+  return m?.[1]?.trim() ?? '';
+}
 
 function extractCatalogEvents(payloadJson: unknown): CatalogEvent[] {
   if (!payloadJson || typeof payloadJson !== 'object') return [];
