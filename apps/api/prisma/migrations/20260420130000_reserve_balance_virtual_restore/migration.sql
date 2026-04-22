@@ -1,7 +1,8 @@
 -- Reserve Balance (virtual 알 restore) — Phase 1
--- 기존 Platform.creditBalance 는 유지하면서 initial/restore 메타와 변동 로그 테이블만 추가.
+-- creditBalance 는 init 에 없었던 DB 가 있어 IF NOT EXISTS 로 보강한다.
 
 ALTER TABLE "Platform"
+  ADD COLUMN IF NOT EXISTS "creditBalance" DECIMAL(18,2) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "reserveInitialAmount" DECIMAL(18,2) NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "reserveRestoreEnabled" BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS "reserveRatePct" DECIMAL(8,4);
@@ -26,9 +27,35 @@ BEGIN
 END $reserve_init$;
 
 -- creditBalance 가 reserveInitialAmount 보다 큰 극단적 케이스(수동 보정 등)에는 initial 을 끌어올려 invariant 유지.
-UPDATE "Platform"
-SET "reserveInitialAmount" = "creditBalance"
-WHERE "creditBalance" > "reserveInitialAmount";
+DO $credit_cap$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute a
+    JOIN pg_class c ON a.attrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND c.relname = 'Platform'
+      AND a.attname = 'creditBalance'
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM pg_attribute a
+    JOIN pg_class c ON a.attrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND c.relname = 'Platform'
+      AND a.attname = 'reserveInitialAmount'
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+  ) THEN
+    UPDATE "Platform"
+    SET "reserveInitialAmount" = "creditBalance"
+    WHERE "creditBalance" > "reserveInitialAmount";
+  END IF;
+END $credit_cap$;
 
 CREATE TABLE IF NOT EXISTS "PlatformReserveLog" (
   "id"              TEXT PRIMARY KEY,
