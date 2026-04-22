@@ -130,22 +130,30 @@ function kstDateInfo(iso: string | null): {
 
 function leagueTitle(row: CrawlerMatchOverlayItem): string {
   const pv = row.providerOddsPreview;
+  /**
+   * displayLeagueName(alias·크롤 한글 라벨) 단독 최우선 금지.
+   * 크롤/alias 오류로 CPBL 등 엉뚱한 헤더가 나온 사례 있음 — 실제 연결된 이벤트의 스냅샷 리그명이 진실에 가깝다.
+   */
+  const snapKr = (pv?.league?.nameKr || "").trim();
+  if (snapKr) return snapKr;
+  const snapEn = (pv?.league?.name || "").trim();
+  if (snapEn) return snapEn;
   const dn = (row.displayLeagueName || "").trim();
   if (dn) return dn;
-  return (
-    pv?.league?.nameKr ||
-    row.pairedLocaleRaw?.rawLeagueLabel ||
-    pv?.league?.name ||
-    row.rawLeagueSlug ||
-    "기타 리그"
-  );
+  const paired = (row.pairedLocaleRaw?.rawLeagueLabel || "").trim();
+  if (paired) return paired;
+  const rawSlug = (row.rawLeagueSlug || "").trim();
+  if (rawSlug) return rawSlug;
+  return "기타 리그";
 }
 
-/** 리그 그룹핑 전용 안정 키 — providerLeagueSlug 우선 → rawLeagueSlug → title */
+/** 리그 그룹핑 전용 안정 키 — 스냅샷 league.slug → DB providerLeagueSlug → raw 슬러그 */
 function leagueGroupKey(row: CrawlerMatchOverlayItem): string {
   const pv = row.providerOddsPreview;
-  const providerSlug = (pv?.league?.slug || "").trim();
-  if (providerSlug) return `psl:${providerSlug}`;
+  const fromPreview = (pv?.league?.slug || "").trim();
+  if (fromPreview) return `psl:${fromPreview}`;
+  const mapped = (row.providerLeagueSlug || "").trim();
+  if (mapped) return `psl:${mapped}`;
   const rawSlug = (row.rawLeagueSlug || "").trim();
   if (rawSlug) return `rsl:${rawSlug}`;
   return `ttl:${leagueTitle(row)}`;
@@ -164,9 +172,10 @@ function matchDedupKey(row: CrawlerMatchOverlayItem): string {
 /** 중복 후보 중 "한글/현지 표현이 풍부한" row 선호 */
 function scoreRow(row: CrawlerMatchOverlayItem): number {
   let s = 0;
-  if ((row.displayLeagueName || "").trim()) s += 4;
+  if ((row.providerOddsPreview?.league?.slug || "").trim()) s += 6;
+  if ((row.providerOddsPreview?.league?.nameKr || "").trim()) s += 4;
+  if ((row.displayLeagueName || "").trim()) s += 3;
   if ((row.pairedLocaleRaw?.rawLeagueLabel || "").trim()) s += 2;
-  if ((row.providerOddsPreview?.league?.nameKr || "").trim()) s += 2;
   if ((row.providerOddsPreview?.home?.nameKr || "").trim()) s += 1;
   if ((row.providerOddsPreview?.away?.nameKr || "").trim()) s += 1;
   if (row.providerOddsPreview?.primaryMarkets?.moneyline) s += 1;

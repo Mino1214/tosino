@@ -705,6 +705,8 @@ export type CrawlerMatchOverlayItem = {
   rawAwayName: string | null;
   rawKickoffUtc: string | null;
   providerExternalEventId: string | null;
+  /** odds-api 카탈로그 리그 슬러그 — 매처가 붙인 값, 스냅샷과 교차 검증용 */
+  providerLeagueSlug?: string | null;
   providerSportSlug: string | null;
   providerHomeName: string | null;
   providerAwayName: string | null;

@@ -42,18 +42,20 @@ function fmtOdd(n: number) {
   return n.toFixed(2);
 }
 
-/** 목록 API 와 동일: 한글·짝 로케일 리그명을 odds-api 영문 리그명보다 우선 */
+/** 목록과 동일: 배당 스냅샷 리그명을 alias·크롤 라벨보다 우선(CPB L 오표시 방지) */
 function detailLeagueDisplay(
   row: CrawlerMatchOverlayDetail,
   odds: AggregatedMatch,
 ): string {
-  const dn = (row.displayLeagueName || "").trim();
-  if (dn) return dn;
   const kr = (odds.league.nameKr || "").trim();
   if (kr) return kr;
+  const en = (odds.league.name || "").trim();
+  if (en) return en;
+  const dn = (row.displayLeagueName || "").trim();
+  if (dn) return dn;
   const paired = (row.pairedLocaleRaw?.rawLeagueLabel || "").trim();
   if (paired) return paired;
-  return (odds.league.name || "").trim() || "—";
+  return "—";
 }
 
 function matchKeyOf(row: CrawlerMatchOverlayDetail): string {
