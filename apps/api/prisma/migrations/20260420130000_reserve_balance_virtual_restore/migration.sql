@@ -7,18 +7,23 @@ ALTER TABLE "Platform"
   ADD COLUMN IF NOT EXISTS "reserveRatePct" DECIMAL(8,4);
 
 -- 기존 창업(이미 승인된 크레딧 총합) → reserveInitialAmount 초기값 채우기.
--- 현재 creditBalance 이상으로 세팅되어야 하므로 "사상 최대 한도" 개념으로 승인 총합을 사용한다.
-UPDATE "Platform" p
-SET "reserveInitialAmount" = COALESCE(sub.total, 0)
-FROM (
-  SELECT "platformId" AS pid,
-         COALESCE(SUM("approvedAmountKrw"), 0) AS total
-  FROM "PlatformCreditRequest"
-  WHERE "status" = 'APPROVED'
-  GROUP BY "platformId"
-) sub
-WHERE p.id = sub.pid
-  AND p."reserveInitialAmount" = 0;
+-- PlatformCreditRequest 가 없는 DB(또는 롤백 직후)에서도 마이그레이션이 통과하도록 가드.
+DO $reserve_init$
+BEGIN
+  IF to_regclass('public."PlatformCreditRequest"') IS NOT NULL THEN
+    UPDATE "Platform" p
+    SET "reserveInitialAmount" = COALESCE(sub.total, 0)
+    FROM (
+      SELECT "platformId" AS pid,
+             COALESCE(SUM("approvedAmountKrw"), 0) AS total
+      FROM "PlatformCreditRequest"
+      WHERE "status" = 'APPROVED'
+      GROUP BY "platformId"
+    ) sub
+    WHERE p.id = sub.pid
+      AND p."reserveInitialAmount" = 0;
+  END IF;
+END $reserve_init$;
 
 -- creditBalance 가 reserveInitialAmount 보다 큰 극단적 케이스(수동 보정 등)에는 initial 을 끌어올려 invariant 유지.
 UPDATE "Platform"
