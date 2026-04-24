@@ -10,6 +10,19 @@ const CRAWLER_MATCHER_WORKER_ENTRY = path.join(
   'src',
   'crawler-matcher-worker.main.js',
 );
+const SYNC_WORKER_ENTRY = path.join(API_ROOT, 'dist', 'src', 'sync-worker.main.js');
+const USDT_DEPOSIT_WORKER_ENTRY = path.join(
+  API_ROOT,
+  'dist',
+  'src',
+  'usdt-deposit-worker.main.js',
+);
+const COMP_SETTLEMENT_WORKER_ENTRY = path.join(
+  API_ROOT,
+  'dist',
+  'src',
+  'comp-settlement-worker.main.js',
+);
 const SMS_INGEST_ROOT = path.join(ROOT, 'apps', 'sms-ingest');
 const SMS_INGEST_ENTRY = path.join(SMS_INGEST_ROOT, 'dist', 'index.js');
 const SCORE_CRAWLER_ROOT = path.join(ROOT, 'apps', 'score-crawler');
@@ -62,8 +75,14 @@ const appApi = {
   autorestart: true,
   max_restarts: 10,
   restart_delay: 3000,
-  /** crawler-matcher-worker 가 스케줄·소비 담당 — API 안 Bull 매처는 끔(중복 주기 방지) */
-  env: envBase({ CRAWLER_MATCHER_IN_API: '0' }),
+  /**
+   * crawler-matcher-worker + sync / usdt-deposit / comp-settlement 전용 워커가 Bull 담당.
+   * API 는 HTTP·WS(odds) 위주 — 콤프 반복 잡 **등록**만 API(역할 미설정).
+   */
+  env: envBase({
+    CRAWLER_MATCHER_IN_API: '0',
+    BULL_WORKERS_IN_API: '0',
+  }),
 };
 
 const appMatcherWorker = {
@@ -81,6 +100,41 @@ const appMatcherWorker = {
       process.env.CRAWLER_MATCHER_TICK_MS || '420000',
   }),
 };
+
+const appSyncWorker = {
+  name: 'sync-worker',
+  script: SYNC_WORKER_ENTRY,
+  cwd: API_ROOT,
+  interpreter: 'node',
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 5000,
+  env: envBase({}),
+};
+
+const appUsdtDepositWorker = {
+  name: 'usdt-deposit-worker',
+  script: USDT_DEPOSIT_WORKER_ENTRY,
+  cwd: API_ROOT,
+  interpreter: 'node',
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 5000,
+  env: envBase({}),
+};
+
+const appCompSettlementWorker = {
+  name: 'comp-settlement-worker',
+  script: COMP_SETTLEMENT_WORKER_ENTRY,
+  cwd: API_ROOT,
+  interpreter: 'node',
+  autorestart: true,
+  max_restarts: 10,
+  restart_delay: 5000,
+  env: envBase({}),
+};
+
+/** 한 PC에서 위 3개 대신 통합 1프로세스: apps/api/dist/src/bull-heavy-worker.main.js + `pnpm start:bull-heavy-worker` */
 
 const appSmsIngest = {
   name: 'sms-ingest',
@@ -139,14 +193,24 @@ const appCloudflared = {
 const appsServer = [
   appApi,
   appMatcherWorker,
+  appSyncWorker,
+  appUsdtDepositWorker,
+  appCompSettlementWorker,
   appSmsIngest,
   ...staticApps,
   appScoreCrawler,
   appCloudflared,
 ];
 
-/** 로컬 prod: API + 매처 워커 + 정적 5종 (sms-ingest / score-crawler / cloudflared 제외) */
-const appsLocal = [appApi, appMatcherWorker, ...staticApps];
+/** 로컬 prod: API + 워커 4종 + 정적 5종 (sms-ingest / score-crawler / cloudflared 제외) */
+const appsLocal = [
+  appApi,
+  appMatcherWorker,
+  appSyncWorker,
+  appUsdtDepositWorker,
+  appCompSettlementWorker,
+  ...staticApps,
+];
 
 const isLocalProfile =
   DEPLOY_PROFILE === 'local' || DEPLOY_PROFILE === 'local-dev';

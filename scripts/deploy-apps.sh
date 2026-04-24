@@ -73,16 +73,16 @@ fi
 
 ECO="$ROOT/ecosystem.config.js"
 # TOSINO_DEPLOY_PROFILE 은 위에서 이미 export 됨 — macOS env(1)+pm2 조합 이슈 회피
-# api / crawler-matcher-worker 중 하나라도 없으면 start, 있으면 항상 restart(무중단 reload 대신 전부 재기동)
+# api / matcher / sync·usdt·콤프 워커 중 하나라도 없으면 start, 있으면 항상 restart(무중단 reload 대신 전부 재기동)
 NEED_PM2_START=0
-for n in api crawler-matcher-worker; do
+for n in api crawler-matcher-worker sync-worker usdt-deposit-worker comp-settlement-worker; do
   if ! pm2 describe "$n" >/dev/null 2>&1; then
     NEED_PM2_START=1
     break
   fi
 done
 if [[ "$NEED_PM2_START" == "1" ]]; then
-  echo "[deploy:apps] PM2 전체 기동 (api 또는 crawler-matcher-worker 없음 → ecosystem 반영)"
+  echo "[deploy:apps] PM2 전체 기동 (api·워커 중 없음 → ecosystem 반영)"
   pm2 start "$ECO" --update-env
 else
   echo "[deploy:apps] PM2 restart — ecosystem 전부 재시작 (--update-env, reload 아님)"

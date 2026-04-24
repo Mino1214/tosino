@@ -72,3 +72,51 @@ export function runCrawlerMatcherOnBootEnabled(): boolean {
   }
   return schedulerUsesDevDefaults();
 }
+
+/** PM2/워커 기동 시 설정. API(main)는 비움. */
+export function tosinoProcessRole(): string {
+  return (process.env.TOSINO_PROCESS_ROLE ?? '').trim().toLowerCase();
+}
+
+/**
+ * `BULL_WORKERS_IN_API` 가 끔이 아니면 API 한 프로세스에서 sync·usdt·콤프 소비까지 함께 돌린다.
+ * (로컬 `pnpm dev:api` 기본)
+ */
+export function bullWorkersRunInApiProcess(): boolean {
+  const raw = (process.env.BULL_WORKERS_IN_API ?? '').trim().toLowerCase();
+  return !['0', 'false', 'off', 'no', 'disabled'].includes(raw);
+}
+
+/** 통합 워커 — `pnpm start:bull-heavy-worker` 한 방에 sync+usdt+콤프 (선택). */
+export function isBundledBullHeavyWorkerProcess(): boolean {
+  return tosinoProcessRole() === 'bull-heavy-worker';
+}
+
+export function syncQueueAttachHere(): boolean {
+  const r = tosinoProcessRole();
+  if (isBundledBullHeavyWorkerProcess() || r === 'sync-worker') return true;
+  if (r !== '') return false;
+  return bullWorkersRunInApiProcess();
+}
+
+export function usdtDepositQueueAttachHere(): boolean {
+  const r = tosinoProcessRole();
+  if (isBundledBullHeavyWorkerProcess() || r === 'usdt-deposit-worker') return true;
+  if (r !== '') return false;
+  return bullWorkersRunInApiProcess();
+}
+
+export function compSettlementProcessorAttachHere(): boolean {
+  const r = tosinoProcessRole();
+  if (isBundledBullHeavyWorkerProcess() || r === 'comp-settlement-worker') return true;
+  if (r !== '') return false;
+  return bullWorkersRunInApiProcess();
+}
+
+/**
+ * 콤프 Bull 반복 잡 등록·부팅 시 syncAll — **API만** (`TOSINO_PROCESS_ROLE` 비움).
+ * 전용 워커는 역할 문자열이 있으므로 여기서 끔 → API·Redis 한 곳에서만 등록(중복 방지).
+ */
+export function compSettlementSchedulerAttachHere(): boolean {
+  return tosinoProcessRole() === '';
+}
