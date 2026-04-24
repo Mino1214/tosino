@@ -154,6 +154,81 @@ export class OddsApiSnapshotService {
     private readonly whitelist: OddsApiWhitelistService,
   ) {}
 
+  private sleepMs(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /** getMultiOdds 누락 후 단일 getOdds 보강 상한(기본 28). 429 줄이기 위해 병렬·대량을 피함. */
+  private readGetOddsFallbackMax(): number {
+    const raw = (process.env.ODDS_API_CATALOG_GETODDS_FALLBACK_MAX || '28')
+      .trim();
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 && n <= 200 ? n : 28;
+  }
+
+  private readGetOddsFallbackDelayMs(): number {
+    const raw = (
+      process.env.ODDS_API_CATALOG_GETODDS_FALLBACK_DELAY_MS || '450'
+    ).trim();
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 && n <= 5000 ? n : 450;
+  }
+
+  /**
+   * `ODDS_API_CATALOG_SPORTS`(우선) 또는 `ODDS_API_WS_SPORTS` 가 있으면
+   * REST 카탈로그/스냅샷의 `sports` 를 플랫폼 DB 대신 **이 목록**으로 통일(비우면 DB 그대로).
+   */
+  private applyEnvSportsToOddsConfig(
+    config: OddsApiConfig | null,
+  ): OddsApiConfig | null {
+    if (!config) return null;
+    const fromEnv = (
+      process.env.ODDS_API_CATALOG_SPORTS ||
+      process.env.ODDS_API_WS_SPORTS ||
+      ''
+    ).trim();
+    if (!fromEnv) return config;
+    const seen = new Set<string>();
+    const sports: string[] = [];
+    for (const part of fromEnv.split(/[\s,]+/)) {
+      const s = part.trim().toLowerCase();
+      if (s && !seen.has(s)) {
+        seen.add(s);
+        sports.push(s);
+      }
+    }
+    if (sports.length === 0) return config;
+    return { ...config, sports };
+  }
+
+  /**
+   * `ODDS_API_REST_BOOKMAKERS`(우선) 또는 `ODDS_API_WS_BOOKMAKERS` 가 있으면
+   * REST(multi·events·getOdds 등)의 `bookmakers` 쿼리를 플랫폼 DB 대신 **이 목록**으로 통일
+   * (비우면 DB 그대로). WS 전용과 동일 목록을 쓰려면 한 줄만 두면 됨.
+   */
+  private applyEnvBookmakersToOddsConfig(
+    config: OddsApiConfig | null,
+  ): OddsApiConfig | null {
+    if (!config) return null;
+    const fromEnv = (
+      process.env.ODDS_API_REST_BOOKMAKERS ||
+      process.env.ODDS_API_WS_BOOKMAKERS ||
+      ''
+    ).trim();
+    if (!fromEnv) return config;
+    const seen = new Set<string>();
+    const bookmakers: string[] = [];
+    for (const part of fromEnv.split(',')) {
+      const s = part.trim();
+      if (s && !seen.has(s)) {
+        seen.add(s);
+        bookmakers.push(s);
+      }
+    }
+    if (bookmakers.length === 0) return config;
+    return { ...config, bookmakers };
+  }
+
   async refreshPlatform(platformId: string): Promise<{
     enabled: boolean;
     liveCount: number;
@@ -231,6 +306,10 @@ export class OddsApiSnapshotService {
       ]);
     }
 
+    const hasLivePrematchEventWithoutBookie = catalog.items.some(
+      (i) => Object.keys(i.bookmakers ?? {}).length === 0,
+    );
+
     const live =
       config.status === 'prematch'
         ? this.buildEmptyPayload('live', config, now)
@@ -240,6 +319,8 @@ export class OddsApiSnapshotService {
               sports: config.sports,
               bookmakers: config.bookmakers,
               limit: config.matchLimit,
+              // getMultiOdds 403·플랜 미포함 시 배당 없이도 이벤트 id·팀명은 매칭/콘솔에 필요
+              allowEmptyBookies: hasLivePrematchEventWithoutBookie,
             })
           : this.aggregator.listMatches({
               status: 'live',
@@ -257,6 +338,7 @@ export class OddsApiSnapshotService {
               sports: config.sports,
               bookmakers: config.bookmakers,
               limit: config.matchLimit,
+              allowEmptyBookies: hasLivePrematchEventWithoutBookie,
             })
           : this.aggregator.listMatches({
               status: 'prematch',
@@ -368,7 +450,11 @@ export class OddsApiSnapshotService {
       select: { integrationsJson: true },
     });
     if (!row) return null;
-    return readOddsApiConfig(row.integrationsJson);
+    return this.applyEnvBookmakersToOddsConfig(
+      this.applyEnvSportsToOddsConfig(
+        readOddsApiConfig(row.integrationsJson),
+      ),
+    );
   }
 
   async getMatches(
@@ -608,7 +694,8 @@ export class OddsApiSnapshotService {
    * REST 카탈로그를 한 번 빌드. 다음을 모두 수행한다:
    *   1) 종목 풀에서 이번 tick 에 다룰 종목만 골라 (티어 로테이션)
    *   2) 종목별로 status=pending(prematch) × bookmaker / status=live / status=settled 분리 호출
-   *   3) prematch + live 후보를 합쳐 multi-odds 로 enrich → catalog (북메이커 0개는 drop)
+   *   3) prematch+live 를 multi-odds 로 enrich, 실패 시 단일 /v3/odds 보강. 그래도 없으면
+   *      events 목록의 팀명만으로 행 유지(배당 없이도 crawler/matcher·콘솔에 이벤트 id 필요)
    *   4) settled 는 multi-odds 호출 없이 점수만 finishedItems 에 담아 반환
    */
   private async buildRestCatalog(
@@ -712,6 +799,12 @@ export class OddsApiSnapshotService {
       Awaited<ReturnType<OddsApiRestService['getMultiOdds']>>[number]
     >();
 
+    const chunkCount = Math.max(
+      1,
+      Math.ceil(selectedEvents.length / 10),
+    );
+    let multiFailChunks = 0;
+    let firstMultiErr: string | null = null;
     for (let i = 0; i < selectedEvents.length; i += 10) {
       const chunk = selectedEvents.slice(i, i + 10).map((event) => event.id);
       try {
@@ -720,17 +813,44 @@ export class OddsApiSnapshotService {
           oddsById.set(row.id, row);
         }
       } catch (e) {
-        this.log.warn(
-          `getMultiOdds(${chunk.join(',')}) 실패: ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        );
+        multiFailChunks += 1;
+        if (!firstMultiErr) {
+          firstMultiErr =
+            e instanceof Error ? e.message : String(e);
+        }
+      }
+    }
+    if (multiFailChunks > 0) {
+      this.log.warn(
+        `getMultiOdds: ${multiFailChunks}/${chunkCount} chunk(s) failed (예: ${firstMultiErr}). ` +
+          `플랜에 /v3/odds/multi 가 없으면 403 이 날 수 있음 — 단일 getOdds 로 보강 시도. 키·구독: odds-api.io 콘솔 확인.`,
+      );
+    }
+
+    // multi 실패/누락 시 단일 getOdds. 병렬 6+는 odds-api 429(버스트) 를 유발하므로 순차 + 지연.
+    const missAfterMulti = selectedEvents.filter(
+      (e) => e.id && !oddsById.has(e.id),
+    );
+    const maxSingleFallback = this.readGetOddsFallbackMax();
+    const betweenSingleMs = this.readGetOddsFallbackDelayMs();
+    for (const event of missAfterMulti.slice(0, maxSingleFallback)) {
+      const row = await this.rest.getOdds(event.id, {
+        bookies: config.bookmakers,
+        ttlMs: 90_000,
+      });
+      if (row) oddsById.set(event.id, row);
+      if (betweenSingleMs > 0) {
+        await this.sleepMs(betweenSingleMs);
       }
     }
 
     const items: OddsApiCatalogItem[] = selectedEvents
       .map((event) => buildCatalogItem(event, oddsById.get(event.id), fetchedAtIso))
-      .filter((item) => Object.keys(item.bookmakers).length > 0);
+      .filter((item) => {
+        if (Object.keys(item.bookmakers).length > 0) return true;
+        if (String(item.id).length > 0 && (item.home || item.away)) return true;
+        return false;
+      });
 
     // ── settled → finishedItems: 점수만, bookmakers={} (catalog 에는 안 들어감)
     const finishedItems: OddsApiCatalogItem[] = [];

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { platformIntegrationsSchema } from '@tosino/shared';
 import { OddsApiSnapshotService } from '../odds-api-ws/odds-api-snapshot.service';
@@ -21,18 +21,17 @@ export class OddsIngestService {
     private oddsApiSnapshots: OddsApiSnapshotService,
   ) {}
 
+  /**
+   * OddsHost → sports-live(인플레이 목록) ingest. odds-api.io 만 쓰는 경우 0(기본) 으로 둠.
+   * 켜기: ODDSHOST_SPORTS_LIVE_INGEST=1 + ODDSHOST_KEY + 인플레이 URL.
+   */
   private isOddsHostSportsLiveIngestEnabled(): boolean {
     const raw = (
-      this.config.get<string>('ODDSHOST_SPORTS_LIVE_INGEST') ?? 'true'
+      this.config.get<string>('ODDSHOST_SPORTS_LIVE_INGEST') ?? 'false'
     )
       .trim()
       .toLowerCase();
-    return !(
-      raw === '0' ||
-      raw === 'false' ||
-      raw === 'off' ||
-      raw === 'no'
-    );
+    return ['1', 'true', 'yes', 'on'].includes(raw);
   }
 
   private isOddsHostInplayListConfigured(): boolean {
@@ -149,10 +148,17 @@ export class OddsIngestService {
           `OddsHost → sports-live snapshot platform=${platformId} games=${sportsLiveGames}`,
         );
       } catch (e) {
+        const detail =
+          e instanceof HttpException
+            ? (() => {
+                const r = e.getResponse();
+                return typeof r === 'string' ? r : JSON.stringify(r);
+              })()
+            : e instanceof Error
+              ? e.message
+              : String(e);
         this.log.warn(
-          `OddsHost sports-live ingest failed platform=${platformId}: ${
-            e instanceof Error ? e.message : String(e)
-          }`,
+          `OddsHost sports-live ingest failed platform=${platformId}: ${detail}`,
         );
       }
     }

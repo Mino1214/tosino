@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { CRAWLER_MATCHER_QUEUE } from '../crawler-mappings/crawler-matcher.queue';
 import { SyncProcessor } from './sync.processor';
 import { SyncService } from './sync.service';
 import { SyncController } from './sync.controller';
@@ -11,6 +12,7 @@ import { PublicModule } from '../public/public.module';
 @Module({
   imports: [
     BullModule.registerQueue({ name: 'sync' }),
+    BullModule.registerQueue({ name: CRAWLER_MATCHER_QUEUE }),
     PublicModule,
     OddsApiWsModule,
   ],

@@ -8,7 +8,12 @@ import {
   MATCHER_JOB_PERIODIC,
   type CrawlerMatcherJobPayload,
 } from './crawler-matcher.queue';
-import { schedulerUsesDevDefaults } from '../common/scheduler-env.util';
+import {
+  chainCrawlerMatcherAfterBootOddsEnabled,
+  runCrawlerMatcherOnBootEnabled,
+  runOddsIngestOnBootEnabled,
+  schedulerUsesDevDefaults,
+} from '../common/scheduler-env.util';
 
 function readTickMs(config: ConfigService): number {
   const raw =
@@ -44,22 +49,24 @@ export class CrawlerMatcherSchedulerService implements OnModuleInit {
     private readonly config: ConfigService,
   ) {}
 
-  /** 개발 스케줄 프로필 기본 on. 끄기: RUN_CRAWLER_MATCHER_ON_BOOT=0. 운영만 켜기: =1 (로컬이 NODE_ENV=production 이면 TOSINO_LOCAL_SCHEDULERS=1) */
+  /**
+   * 개발 스케줄 프로필 기본 on. 끄기: RUN_CRAWLER_MATCHER_ON_BOOT=0.
+   * 운영만 켜기: =1 (로컬이 NODE_ENV=production 이면 TOSINO_LOCAL_SCHEDULERS=1)
+   * 기동 ODDS( boot-odds ) 끝난 뒤 체인이 켜져 있으면 타이머 1회는 생략(SyncProcessor가 큐잉).
+   */
   private shouldRunMatcherOnBoot(): boolean {
-    const raw = (
-      this.config.get<string>('RUN_CRAWLER_MATCHER_ON_BOOT') ??
-      process.env.RUN_CRAWLER_MATCHER_ON_BOOT ??
-      ''
-    )
-      .trim()
-      .toLowerCase();
-    if (['0', 'false', 'off', 'no', 'disabled'].includes(raw)) {
+    return runCrawlerMatcherOnBootEnabled();
+  }
+
+  /** true면 scheduleBootMatcherJob 타이머를 쓰지 않고, 첫 boot-odds 스냅샷 뒤 API가 매처 잡을 넣음. */
+  private skipBootMatcherTimerForChainAfterOdds(): boolean {
+    if (!chainCrawlerMatcherAfterBootOddsEnabled()) {
       return false;
     }
-    if (['1', 'true', 'yes', 'on'].includes(raw)) {
-      return true;
+    if (!runOddsIngestOnBootEnabled()) {
+      return false;
     }
-    return schedulerUsesDevDefaults();
+    return true;
   }
 
   private readBootMatcherDelayMs(): number {
@@ -76,6 +83,12 @@ export class CrawlerMatcherSchedulerService implements OnModuleInit {
     if (!this.shouldRunMatcherOnBoot()) {
       this.log.log(
         '기동 시 크롤러 매처 1회 스킵 (운영 스케줄 프로필이거나 RUN_CRAWLER_MATCHER_ON_BOOT=0)',
+      );
+      return;
+    }
+    if (this.skipBootMatcherTimerForChainAfterOdds()) {
+      this.log.log(
+        '기동 시 크롤러 매처 타이머 생략 — RUN_ODDS_INGEST_ON_BOOT 1회 끝난 직후 SyncProcessor가 manual 잡 큐잉 (CRAWLER_MATCHER_BOOT_CHAIN_AFTER_FIRST_ODDS=1)',
       );
       return;
     }

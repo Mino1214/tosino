@@ -8,11 +8,10 @@
 #   www.tozinosolution.com     → solution-main :3010
 #   mod.tozinosolution.com     → /api·/uploads :4001, 나머지 super-admin :3000
 #   mod.tozinosoltion.com      → 동일 (오타 도메인 호환)
-#   user.i-on.bet              → solution-user :3002
-#   i-on.bet                   → solution-user :3002
-#   www.i-on.bet               → solution-user :3002
-#   mod.i-on.bet               → solution-admin:3001
-#   agent.i-on.bet             → solution-agent:3003
+#   user.i-on.bet / i-on.bet / www.i-on.bet
+#       → /api·/uploads :4001 (Nest), 나머지 solution-user :3002
+#   mod.i-on.bet → /api·/uploads :4001, 나머지 solution-admin :3001
+#   agent.i-on.bet → /api·/uploads :4001, 나머지 solution-agent :3003
 # ─────────────────────────────────────────────────────────────
 
 tunnel: 50a78d10-c684-4f59-a74e-6385131744d1
@@ -65,26 +64,46 @@ ingress:
     service: http://localhost:3000
 
   # ══════════════════════════════════════════════════
-  # solution-user (3002)
+  # i-on.bet — 솔루션 유저(3002) + 동일 호스트 /api·/uploads → Nest(4001)
   # ══════════════════════════════════════════════════
   - hostname: user.i-on.bet
+    path: "^/(api|uploads)(/|$)"
+    service: http://localhost:4001
+
+  - hostname: user.i-on.bet
     service: http://localhost:3002
+
+  - hostname: i-on.bet
+    path: "^/(api|uploads)(/|$)"
+    service: http://localhost:4001
 
   - hostname: i-on.bet
     service: http://localhost:3002
 
   - hostname: www.i-on.bet
+    path: "^/(api|uploads)(/|$)"
+    service: http://localhost:4001
+
+  - hostname: www.i-on.bet
     service: http://localhost:3002
 
   # ══════════════════════════════════════════════════
-  # mod.i-on.bet — 솔루션 어드민 (solution-admin :3001)
+  # mod.i-on.bet — 솔루션 어드민(3001) + /api·/uploads → Nest(4001)
   # ══════════════════════════════════════════════════
+  - hostname: mod.i-on.bet
+    path: "^/(api|uploads)(/|$)"
+    service: http://localhost:4001
+
   - hostname: mod.i-on.bet
     service: http://localhost:3001
 
   # ══════════════════════════════════════════════════
-  # agent.i-on.bet — 총판 (solution-agent :3003)
+  # agent.i-on.bet — 총판(3003) + /api·/uploads → Nest(4001)
   # ══════════════════════════════════════════════════
+  - hostname: agent.i-on.bet
+    path: "^/(api|uploads)(/|$)"
+    service: http://localhost:4001
+
   - hostname: agent.i-on.bet
     service: http://localhost:3003
 

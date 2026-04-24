@@ -26,6 +26,7 @@ import hashlib
 import logging
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Literal, Optional
 from urllib.parse import urlparse
@@ -164,15 +165,31 @@ def cache_image(url: Optional[str], bucket: Bucket = "other") -> Optional[str]:
         if "image" not in content_type and "octet-stream" not in content_type:
             log.warning("asset skipped (not image) ct=%s url=%s", content_type, u)
             return u
-        tmp = local.with_suffix(local.suffix + ".part")
-        with tmp.open("wb") as fp:
-            for chunk in resp.iter_content(64 * 1024):
-                if chunk:
-                    fp.write(chunk)
-        tmp.rename(local)
+        # 고정 경로 `*.part` 는 동시에 같은 URL/해시를 받을 때 한쪽이 rename 하면
+        # 다른 쪽에서 .part 가 없어져 ENOENT 가 난다. 디렉터리 안에 고유 임시 파일 사용.
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=f"{local.stem}.",
+            suffix=".part",
+            dir=local.parent,
+        )
+        try:
+            with os.fdopen(fd, "wb") as fp:
+                for chunk in resp.iter_content(64 * 1024):
+                    if chunk:
+                        fp.write(chunk)
+            os.replace(tmp_path, local)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         _mem_cache[u] = public
         return public
     except Exception as e:  # pragma: no cover — 네트워크 에러
+        if local.exists():
+            _mem_cache[u] = public
+            return public
         log.warning("asset fetch failed url=%s err=%s", u, e)
         return u
 

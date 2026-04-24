@@ -90,7 +90,16 @@ async function ensureDemoUser(
 /** odds-api.io 저장 스냅샷·Live Odds Control Room 용 (서버 ODDS_API_KEY + 주기/수동 refresh 와 함께 씀) */
 const DEMO_ODDS_API_JSON: Prisma.InputJsonValue = {
   enabled: true,
-  sports: ['football', 'basketball'],
+  sports: [
+    'football',
+    'baseball',
+    'basketball',
+    'volleyball',
+    'ice-hockey',
+    'american-football',
+    'tennis',
+    'esports',
+  ],
   /** 비우면 REST 카탈로그가 multi-odds 후 전부 걸러질 수 있음 — 코드에서도 selected 로 폴백하지만 시드는 명시 */
   bookmakers: ['Bet365'],
   status: 'all',

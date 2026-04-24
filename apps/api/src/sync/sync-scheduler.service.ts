@@ -2,10 +2,21 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { schedulerUsesDevDefaults } from '../common/scheduler-env.util';
+import {
+  runOddsIngestOnBootEnabled,
+  schedulerUsesDevDefaults,
+} from '../common/scheduler-env.util';
 
 /** Bull 작업 이름 — SyncProcessor에서 분기 */
 export const ODDS_ALL_PLATFORMS_JOB = 'odds-all-platforms';
+
+/**
+ * 기동 1회 전 플랫폼 ODDS 잡에만 붙는 payload(주기 repeat 와 구분).
+ * `jobId` prefix 로 판별하면 Bull/Nest 래퍼에 따라 id 형태가 달라질 수 있어 명시 플래그로 본다.
+ */
+export const ODDS_BOOT_ALL_PLATFORMS_DATA = {
+  bootOddsSnapshot: true,
+} as const;
 
 const CRON_OFF = new Set(['false', 'off', '0', 'disabled', 'no']);
 
@@ -47,20 +58,7 @@ export class SyncSchedulerService implements OnModuleInit {
    * - 개발 스케줄 프로필: 기본 켬. 끄려면 RUN_ODDS_INGEST_ON_BOOT=0
    */
   private shouldRunOddsIngestOnBoot(): boolean {
-    const raw = (
-      this.config.get<string>('RUN_ODDS_INGEST_ON_BOOT') ??
-      process.env.RUN_ODDS_INGEST_ON_BOOT ??
-      ''
-    )
-      .trim()
-      .toLowerCase();
-    if (['0', 'false', 'off', 'no', 'disabled'].includes(raw)) {
-      return false;
-    }
-    if (['1', 'true', 'yes', 'on'].includes(raw)) {
-      return true;
-    }
-    return schedulerUsesDevDefaults();
+    return runOddsIngestOnBootEnabled();
   }
 
   private readBootOddsDelayMs(): number {
@@ -96,7 +94,7 @@ export class SyncSchedulerService implements OnModuleInit {
     try {
       await this.syncQueue.add(
         ODDS_ALL_PLATFORMS_JOB,
-        {},
+        { ...ODDS_BOOT_ALL_PLATFORMS_DATA },
         {
           jobId: `boot-odds-${Date.now()}`,
           removeOnComplete: 50,

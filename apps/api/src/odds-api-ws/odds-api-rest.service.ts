@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { normalizeOddsApiEventsSport } from './odds-api-sport-slug.util';
 
 /**
  * odds-api.io REST 클라이언트.
@@ -44,9 +45,13 @@ export class OddsApiRestService {
   /** /v3/events sport refresh single-flight */
   private eventsInflight = new Map<string, Promise<Set<string>>>();
 
-  /** 슬라이딩 윈도우 레이트리밋. odds-api.io 무료/기본 플랜 ≈ 5000/h ⇒ 안전계수 두고 80/min. */
+  /**
+   * odds-api.io: “5000/hour” — 클라이언트는 4000/hour(슬라이딩) + 분당 `floor(h/60)` 으로 여유.
+   * `callTimes` = 최근 1시간(3600s) 이내 요청 시각(밀초)만 보관.
+   */
   private callTimes: number[] = [];
-  private readonly MAX_PER_MIN = 80;
+  private maxPerHour = 4000;
+  private maxPerMin = 66;
 
   /** /v3/events?sport=&status=&bookmaker= 결과 캐시 (full event items). */
   private eventListCache = new Map<
@@ -57,6 +62,17 @@ export class OddsApiRestService {
 
   /** 가벼운 차단 — 429 가 와도 잠시 쉼 */
   private cooldownUntil = 0;
+
+  /**
+   * Node fetch 는 기본 UA 가 node/undici 이라, 브라우저로는 200인데 서버에서만
+   * /v3/odds/multi 등이 HTTP 403 으로 막히는 경우가 있음(엣지·WAF).
+   * 필요 시 .env 의 ODDS_API_HTTP_USER_AGENT 로 덮어쓰기.
+   */
+  private restHeaders: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  };
 
   constructor(private readonly config: ConfigService) {}
 
@@ -70,6 +86,28 @@ export class OddsApiRestService {
 
   onModuleInit() {
     this.apiKey = (this.config.get<string>('ODDS_API_KEY') || '').trim();
+    const ua = (this.config.get<string>('ODDS_API_HTTP_USER_AGENT') || '').trim();
+    if (ua) {
+      this.restHeaders = { ...this.restHeaders, 'User-Agent': ua };
+    }
+    const hourRaw = (
+      this.config.get<string>('ODDS_API_MAX_REQUESTS_PER_HOUR') ?? ''
+    ).trim();
+    const h = hourRaw ? parseInt(hourRaw, 10) : NaN;
+    if (Number.isFinite(h) && h >= 200 && h <= 10000) {
+      this.maxPerHour = h;
+    }
+    const minRaw = (
+      this.config.get<string>('ODDS_API_MAX_REQUESTS_PER_MIN') ?? ''
+    ).trim();
+    if (minRaw) {
+      const m = parseInt(minRaw, 10);
+      if (Number.isFinite(m) && m >= 5 && m <= 200) {
+        this.maxPerMin = m;
+      }
+    } else {
+      this.maxPerMin = Math.max(5, Math.floor(this.maxPerHour / 60));
+    }
   }
 
   /**
@@ -198,11 +236,15 @@ export class OddsApiRestService {
 
   /** 진단용 */
   getCacheStats() {
+    this.pruneToHourWindow();
     return {
       odds: this.oddsCache.size,
       eventsBySport: this.eventsBySport.size,
       eventList: this.eventListCache.size,
-      callsLastMinute: this.recentCallCount(),
+      callsLastHour: this.countInWindow(OddsApiRestService.HOUR_MS),
+      callsLastMinute: this.countInWindow(OddsApiRestService.WINDOW_MS),
+      maxPerHour: this.maxPerHour,
+      maxPerMin: this.maxPerMin,
       cooldownMs: Math.max(0, this.cooldownUntil - Date.now()),
     };
   }
@@ -255,8 +297,9 @@ export class OddsApiRestService {
     } = {},
   ): Promise<OddsApiEventItem[]> {
     if (!this.apiKey) return [];
+    const sportParam = normalizeOddsApiEventsSport(sport);
     const limit = Math.min(Math.max(opts.limit ?? 200, 1), 1000);
-    const cacheKey = `${sport}|${opts.status ?? ''}|${opts.bookmaker ?? ''}|${limit}`;
+    const cacheKey = `${sportParam}|${opts.status ?? ''}|${opts.bookmaker ?? ''}|${limit}`;
     const ttl = opts.ttlMs ?? 60_000;
 
     const now = Date.now();
@@ -269,18 +312,18 @@ export class OddsApiRestService {
       try {
         const q = new URLSearchParams({
           apiKey: this.apiKey,
-          sport,
+          sport: sportParam,
           limit: String(limit),
         });
         if (opts.bookmaker) q.set('bookmaker', opts.bookmaker);
         if (opts.status) q.set('status', opts.status);
         const data = await this.fetchJson(`/events?${q.toString()}`);
-        const items = parseArrayItems(data).map((x) => parseEventItem(x, sport));
+        const items = parseArrayItems(data).map((x) => parseEventItem(x, sportParam));
         this.eventListCache.set(cacheKey, { items, until: Date.now() + ttl });
         return items;
       } catch (e) {
         this.log.warn(
-          `listEventsBySport(${sport}, status=${opts.status ?? '*'}, book=${
+          `listEventsBySport(${sportParam}${sportParam !== sport.trim() ? ` (from ${sport.trim()})` : ''}, status=${opts.status ?? '*'}, book=${
             opts.bookmaker ?? '*'
           }) 실패: ${e instanceof Error ? e.message : String(e)}`,
         );
@@ -319,24 +362,53 @@ export class OddsApiRestService {
 
   /* ─────────────────────────── internal ─────────────────────────── */
 
-  private recentCallCount(): number {
-    const cutoff = Date.now() - 60_000;
-    this.callTimes = this.callTimes.filter((t) => t >= cutoff);
-    return this.callTimes.length;
+  private static readonly WINDOW_MS = 60_000;
+  private static readonly HOUR_MS = 3_600_000;
+
+  private pruneToHourWindow(): void {
+    const t = Date.now() - OddsApiRestService.HOUR_MS;
+    this.callTimes = this.callTimes.filter((x) => x >= t);
+  }
+
+  private countInWindow(windowMs: number): number {
+    const now = Date.now();
+    return this.callTimes.filter((x) => x >= now - windowMs).length;
   }
 
   private async takeSlot(): Promise<void> {
-    const now = Date.now();
-    if (now < this.cooldownUntil) {
-      const wait = this.cooldownUntil - now;
-      await sleep(wait);
+    if (Date.now() < this.cooldownUntil) {
+      await sleep(this.cooldownUntil - Date.now());
     }
-    while (this.recentCallCount() >= this.MAX_PER_MIN) {
-      const oldest = this.callTimes[0] ?? Date.now();
-      const wait = Math.max(50, oldest + 60_000 - Date.now());
-      await sleep(wait);
+    for (;;) {
+      this.pruneToHourWindow();
+      const now = Date.now();
+      const inHour = this.countInWindow(OddsApiRestService.HOUR_MS);
+      const inMin = this.countInWindow(OddsApiRestService.WINDOW_MS);
+      if (inHour < this.maxPerHour && inMin < this.maxPerMin) {
+        this.callTimes.push(Date.now());
+        this.callTimes.sort((a, b) => a - b);
+        return;
+      }
+      const sorted = this.callTimes.slice().sort((a, b) => a - b);
+      let waitMs = 100;
+      if (inHour >= this.maxPerHour && sorted.length > 0) {
+        const oldestH = sorted[0]!;
+        waitMs = Math.max(waitMs, oldestH + OddsApiRestService.HOUR_MS - now);
+      }
+      if (inMin >= this.maxPerMin) {
+        const minWindow = this.callTimes
+          .filter((x) => x >= now - OddsApiRestService.WINDOW_MS)
+          .sort((a, b) => a - b);
+        if (minWindow.length > 0) {
+          const oldestM = minWindow[0]!;
+          waitMs = Math.max(
+            waitMs,
+            oldestM + OddsApiRestService.WINDOW_MS - now,
+          );
+        }
+      }
+      await sleep(Math.max(50, waitMs));
     }
-    this.callTimes.push(Date.now());
   }
 
   private async fetchJson(
@@ -350,20 +422,27 @@ export class OddsApiRestService {
     try {
       res = await fetch(url, {
         signal: ac.signal,
-        headers: { Accept: 'application/json' },
+        headers: { ...this.restHeaders },
       });
     } finally {
       clearTimeout(timer);
     }
-    if (res.status === 429) {
-      // Retry-After 또는 5s 쿨다운
-      const ra = Number(res.headers.get('retry-after') ?? '0');
-      const cd = (Number.isFinite(ra) && ra > 0 ? ra : 5) * 1000;
-      this.cooldownUntil = Date.now() + cd;
-      throw new Error(`HTTP 429 rate-limited (cooldown ${cd}ms)`);
-    }
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const errText = (await res.text().catch(() => '')).trim();
+      const snippet = errText.replace(/\s+/g, ' ').slice(0, 420);
+      if (res.status === 429) {
+        const ra = Number(res.headers.get('retry-after') ?? '0');
+        const cd = (Number.isFinite(ra) && ra > 0 ? ra : 5) * 1000;
+        this.cooldownUntil = Date.now() + cd;
+        throw new Error(
+          `HTTP 429 rate-limited (cooldown ${cd}ms)${snippet ? `: ${snippet}` : ''}`,
+        );
+      }
+      throw new Error(
+        `HTTP ${res.status} ${res.statusText}${
+          snippet ? `: ${snippet}` : ' (빈 본문: 키·IP·WAF; 서버 .env 의 ODDS_API_KEY 가 curl 에 쓴 키와 동일한지 확인)'
+        }`,
+      );
     }
     return (await res.json()) as Record<string, unknown>;
   }

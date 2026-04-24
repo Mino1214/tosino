@@ -92,10 +92,31 @@ export class OddsHostProxyService {
   }
 
   async fetchJson(url: string, upstreamLabel?: string): Promise<unknown> {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      const c =
+        err && typeof err === 'object' && 'cause' in err
+          ? (err as { cause?: unknown }).cause
+          : undefined;
+      const cause =
+        c !== undefined && c !== null ? ` [cause: ${String(c)}]` : '';
+      let host = '';
+      try {
+        host = new URL(url).host;
+      } catch {
+        /* ignore */
+      }
+      const label = upstreamLabel ? `[${upstreamLabel}] ` : '';
+      throw new ServiceUnavailableException(
+        `${label}OddsHost 연결 실패${host ? ` (${host})` : ''}: ${err.message}${cause}`,
+      );
+    }
     const text = await res.text();
     if (!res.ok) {
       const prefix = upstreamLabel ? `[${upstreamLabel}] ` : '';

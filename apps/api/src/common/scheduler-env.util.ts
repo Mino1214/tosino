@@ -27,3 +27,48 @@ export function crawlerMatcherRunsInApiProcess(): boolean {
   const raw = (process.env.CRAWLER_MATCHER_IN_API ?? '').trim().toLowerCase();
   return !['0', 'false', 'off', 'no', 'disabled'].includes(raw);
 }
+
+/** SyncSchedulerService 와 SyncProcessor — RUN_ODDS_INGEST_ON_BOOT 해석(비어 있으면 dev 프로필만 기동 1회). */
+export function runOddsIngestOnBootEnabled(): boolean {
+  const raw = (process.env.RUN_ODDS_INGEST_ON_BOOT ?? '').trim().toLowerCase();
+  if (['0', 'false', 'off', 'no', 'disabled'].includes(raw)) {
+    return false;
+  }
+  if (['1', 'true', 'yes', 'on'].includes(raw)) {
+    return true;
+  }
+  return schedulerUsesDevDefaults();
+}
+
+/**
+ * true면 기동 1회 매처는 "기동 ODDS(boot-odds) 잡 완료 직후"에만 SyncProcessor가 큐잉(순서 보장).
+ * false면 예전처럼 CrawlerMatcherScheduler 의 타이머로만(ODDS와 병렬) 큐잉.
+ * 기본 1. 끄기: 0
+ */
+export function chainCrawlerMatcherAfterBootOddsEnabled(): boolean {
+  const raw = (
+    process.env.CRAWLER_MATCHER_BOOT_CHAIN_AFTER_FIRST_ODDS ?? '1'
+  )
+    .trim()
+    .toLowerCase();
+  if (['0', 'false', 'off', 'no', 'disabled'].includes(raw)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * CrawlerMatcherScheduler 기동 1회 매처 (타이머 또는 체인) — sync 의 runCrawlerMatcherOnBootEnabled 와 동일.
+ */
+export function runCrawlerMatcherOnBootEnabled(): boolean {
+  const raw = (process.env.RUN_CRAWLER_MATCHER_ON_BOOT ?? '')
+    .trim()
+    .toLowerCase();
+  if (['0', 'false', 'off', 'no', 'disabled'].includes(raw)) {
+    return false;
+  }
+  if (['1', 'true', 'yes', 'on'].includes(raw)) {
+    return true;
+  }
+  return schedulerUsesDevDefaults();
+}
