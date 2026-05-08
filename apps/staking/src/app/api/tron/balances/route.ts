@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 const TRON_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
+const TRON_HEX_RE = /^41[a-fA-F0-9]{40}$/;
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const USDT_TRON = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const USDT_TRON_HEX = tronBase58ToHex41(USDT_TRON);
 const TRONGRID_API_KEY = process.env.TRONGRID_API_KEY?.trim() || "";
 const TRON_FULL_HOST = (process.env.TRON_FULL_HOST?.trim() || "https://api.trongrid.io").replace(
   /\/+$/,
@@ -12,19 +14,22 @@ const TRON_FULL_HOST = (process.env.TRON_FULL_HOST?.trim() || "https://api.trong
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const address = searchParams.get("address")?.trim() ?? "";
+  const rawAddress = searchParams.get("address")?.trim() ?? "";
+  const address = normalizeTronAddress(rawAddress);
 
-  if (!TRON_RE.test(address)) {
+  if (!address) {
     return NextResponse.json({ error: "유효한 TRON 주소가 아닙니다." }, { status: 400 });
   }
 
   try {
-    const account = await fetchAccountBalances(address).catch(() => null);
+    const account = await fetchAccountBalances(address.base58).catch(() => null);
     const [trxRaw, usdtRaw] = await Promise.all([
       account?.trxRaw !== undefined
         ? Promise.resolve(account.trxRaw)
-        : fetchTrxBalance(address),
-      fetchTrc20Balance(USDT_TRON, address).catch(() => account?.usdtRaw ?? 0),
+        : fetchTrxBalance(address.hex41),
+      fetchTrc20Balance(USDT_TRON_HEX, address.hex41).catch(
+        () => account?.usdtRaw ?? 0,
+      ),
     ]);
 
     return NextResponse.json({
@@ -69,7 +74,7 @@ async function fetchAccountBalances(address: string) {
   };
 }
 
-async function fetchTrxBalance(address: string) {
+async function fetchTrxBalance(hex41Address: string) {
   const res = await fetch(`${TRON_FULL_HOST}/wallet/getaccount`, {
     method: "POST",
     headers: {
@@ -77,7 +82,7 @@ async function fetchTrxBalance(address: string) {
       ...tronHeaders(),
     },
     cache: "no-store",
-    body: JSON.stringify({ address: tronBase58ToHex41(address) }),
+    body: JSON.stringify({ address: hex41Address }),
   });
 
   if (!res.ok) throw new Error(`TronGrid TRX 조회 오류 (HTTP ${res.status})`);
@@ -85,7 +90,7 @@ async function fetchTrxBalance(address: string) {
   return data.balance ?? 0;
 }
 
-async function fetchTrc20Balance(contractAddress: string, ownerAddress: string) {
+async function fetchTrc20Balance(contractHex41Address: string, ownerHex41Address: string) {
   const res = await fetch(`${TRON_FULL_HOST}/wallet/triggerconstantcontract`, {
     method: "POST",
     headers: {
@@ -94,10 +99,10 @@ async function fetchTrc20Balance(contractAddress: string, ownerAddress: string) 
     },
     cache: "no-store",
     body: JSON.stringify({
-      owner_address: tronBase58ToHex41(ownerAddress),
-      contract_address: tronBase58ToHex41(contractAddress),
+      owner_address: ownerHex41Address,
+      contract_address: contractHex41Address,
       function_selector: "balanceOf(address)",
-      parameter: tronAddressToAbiParam(ownerAddress),
+      parameter: tronHex41ToAbiParam(ownerHex41Address),
     }),
   });
 
@@ -134,8 +139,26 @@ function toTokenAmount(raw: unknown) {
   return Number(amount) / 1_000_000;
 }
 
-function tronAddressToAbiParam(address: string) {
-  const hex41 = tronBase58ToHex41(address);
+function normalizeTronAddress(address: string) {
+  if (TRON_RE.test(address)) {
+    return {
+      base58: address,
+      hex41: tronBase58ToHex41(address),
+    };
+  }
+
+  if (TRON_HEX_RE.test(address)) {
+    const hex41 = address.toLowerCase();
+    return {
+      base58: tronHex41ToBase58(hex41),
+      hex41,
+    };
+  }
+
+  return null;
+}
+
+function tronHex41ToAbiParam(hex41: string) {
   return hex41.slice(2).padStart(64, "0");
 }
 
@@ -148,6 +171,42 @@ function tronBase58ToHex41(address: string) {
   if (!checksum.equals(expected)) throw new Error("TRON 주소 checksum이 올바르지 않습니다.");
   if (payload[0] !== 0x41) throw new Error("TRON mainnet 주소가 아닙니다.");
   return payload.toString("hex");
+}
+
+function tronHex41ToBase58(hex41: string) {
+  const payload = Buffer.from(hex41, "hex");
+  if (payload.length !== 21 || payload[0] !== 0x41) {
+    throw new Error("TRON mainnet hex 주소가 아닙니다.");
+  }
+
+  const checksum = sha256(sha256(payload)).subarray(0, 4);
+  return base58Encode(Buffer.concat([payload, checksum]));
+}
+
+function base58Encode(value: Buffer) {
+  const digits = [0];
+  for (const byte of value) {
+    let carry = byte;
+    for (let index = 0; index < digits.length; index += 1) {
+      carry += digits[index] << 8;
+      digits[index] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = Math.floor(carry / 58);
+    }
+  }
+
+  for (const byte of value) {
+    if (byte !== 0) break;
+    digits.push(0);
+  }
+
+  return digits
+    .reverse()
+    .map((digit) => BASE58_ALPHABET[digit])
+    .join("");
 }
 
 function base58Decode(value: string) {

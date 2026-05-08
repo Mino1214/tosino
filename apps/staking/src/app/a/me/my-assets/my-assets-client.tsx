@@ -60,6 +60,7 @@ const AVAX_PRICE = TICKER_COINS.find((c) => c.symbol === "AVAX")?.price ?? 24.2;
 const TETHER_GREEN = "#26A17B";
 const STAKE_QUOTE_TTL_SECONDS = 15;
 const TRON_ADDRESS_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
+const TRON_HEX_ADDRESS_RE = /^41[a-fA-F0-9]{40}$/;
 
 const PORTFOLIO_ICON: Record<string, string> = {
   ETH: "/coin_image/network/erc20/ETH.svg",
@@ -2730,9 +2731,14 @@ function getAppKitTronAddress(...values: Array<string | undefined>) {
     const trimmed = value?.trim();
     if (!trimmed) continue;
     if (TRON_ADDRESS_RE.test(trimmed)) return trimmed;
+    if (TRON_HEX_ADDRESS_RE.test(trimmed)) return trimmed;
 
     const caipAddress = trimmed.split(":").at(-1)?.trim();
-    if (caipAddress && TRON_ADDRESS_RE.test(caipAddress)) {
+    if (
+      caipAddress &&
+      (TRON_ADDRESS_RE.test(caipAddress) ||
+        TRON_HEX_ADDRESS_RE.test(caipAddress))
+    ) {
       return caipAddress;
     }
   }
@@ -3454,7 +3460,7 @@ function useTronWallet(opts: {
   async function connectExternalAddress(rawAddress: string) {
     const nextAddress = rawAddress.trim();
     setError(null);
-    if (!TRON_ADDRESS_RE.test(nextAddress)) {
+    if (!TRON_ADDRESS_RE.test(nextAddress) && !TRON_HEX_ADDRESS_RE.test(nextAddress)) {
       setError("WalletConnect에서 유효한 TRON 주소를 가져오지 못했습니다.");
       return;
     }
