@@ -8,7 +8,6 @@ import {
   polygon,
   bsc,
   avalanche,
-  tronMainnet,
   type AppKitNetwork,
 } from "@reown/appkit/networks";
 
@@ -33,7 +32,6 @@ export const evmNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [
 
 export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
   ...evmNetworks,
-  tronMainnet,
 ];
 
 export const wagmiAdapter = new WagmiAdapter({

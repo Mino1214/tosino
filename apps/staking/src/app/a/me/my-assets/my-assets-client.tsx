@@ -38,7 +38,6 @@ import { isAddress, parseUnits, type Address } from "viem";
 import { useBalance, useReadContract, useSignMessage, useWriteContract } from "wagmi";
 import { avalanche, bsc, mainnet, polygon } from "wagmi/chains";
 import { useAccount } from "wagmi";
-import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 
 interface MyAssetsClientProps {
   user: {
@@ -59,8 +58,6 @@ const MATIC_PRICE = TICKER_COINS.find((c) => c.symbol === "MATIC")?.price ?? 0.5
 const AVAX_PRICE = TICKER_COINS.find((c) => c.symbol === "AVAX")?.price ?? 24.2;
 const TETHER_GREEN = "#26A17B";
 const STAKE_QUOTE_TTL_SECONDS = 15;
-const TRON_ADDRESS_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
-const TRON_HEX_ADDRESS_RE = /^41[a-fA-F0-9]{40}$/;
 
 const PORTFOLIO_ICON: Record<string, string> = {
   ETH: "/coin_image/network/erc20/ETH.svg",
@@ -264,15 +261,6 @@ export function MyAssetsClient({
     product: LstProduct;
   } | null>(null);
   const [stakeRequests, setStakeRequests] = useState<StakeRequestRecord[]>([]);
-  const { open: openAppKit } = useAppKit();
-  const appKitTronAccount = useAppKitAccount({ namespace: "tron" });
-  const appKitTronAddress = getAppKitTronAddress(
-    appKitTronAccount.address,
-    appKitTronAccount.caipAddress,
-  );
-  const appKitTronConnecting =
-    appKitTronAccount.status === "connecting" ||
-    appKitTronAccount.status === "reconnecting";
 
   const tron = useTronWallet({
     initialAddress: persistedTronAddress,
@@ -289,12 +277,6 @@ export function MyAssetsClient({
       }
     },
   });
-
-  useEffect(() => {
-    if (!appKitTronAccount.isConnected || !appKitTronAddress) return;
-    if (appKitTronAddress === tron.address) return;
-    void tron.connectExternalAddress(appKitTronAddress);
-  }, [appKitTronAccount.isConnected, appKitTronAddress, tron]);
 
   const browserWallets = useBrowserWallets();
   const evmAddressForBalances =
@@ -931,7 +913,7 @@ export function MyAssetsClient({
                 group.connectionKind === "evm"
                   ? evmAddressForBalances
                   : group.connectionKind === "tron"
-                    ? (tron.address ?? appKitTronAddress)
+                    ? tron.address
                     : browserKind
                       ? browserWallets.addresses[browserKind] ?? null
                     : null;
@@ -939,7 +921,7 @@ export function MyAssetsClient({
                 group.connectionKind === "evm"
                   ? wallet.isConnecting
                   : group.connectionKind === "tron"
-                    ? tron.isConnecting || appKitTronConnecting
+                    ? tron.isConnecting
                     : browserKind
                       ? browserWallets.connecting === browserKind
                     : false;
@@ -997,10 +979,7 @@ export function MyAssetsClient({
                           onClick={() => {
                             if (group.connectionKind === "evm") void wallet.connect();
                             if (group.connectionKind === "tron") {
-                              void openAppKit({
-                                view: "Connect",
-                                namespace: "tron",
-                              }).catch(() => tron.connect());
+                              void tron.connect();
                             }
                             if (browserKind) void browserWallets.connect(browserKind);
                           }}
@@ -2726,26 +2705,6 @@ function getInjectedTronAddress() {
   return null;
 }
 
-function getAppKitTronAddress(...values: Array<string | undefined>) {
-  for (const value of values) {
-    const trimmed = value?.trim();
-    if (!trimmed) continue;
-    if (TRON_ADDRESS_RE.test(trimmed)) return trimmed;
-    if (TRON_HEX_ADDRESS_RE.test(trimmed)) return trimmed;
-
-    const caipAddress = trimmed.split(":").at(-1)?.trim();
-    if (
-      caipAddress &&
-      (TRON_ADDRESS_RE.test(caipAddress) ||
-        TRON_HEX_ADDRESS_RE.test(caipAddress))
-    ) {
-      return caipAddress;
-    }
-  }
-
-  return null;
-}
-
 function getTronAddressFromRequest(requested: unknown) {
   if (Array.isArray(requested) && typeof requested[0] === "string") {
     return requested[0];
@@ -3205,6 +3164,9 @@ declare global {
     sui?: SuiWalletLike;
     suiWallet?: SuiWalletLike;
     safepal?: TronProviderLike;
+    tron?: TronProviderLike;
+    tronLink?: TronProviderLike;
+    tronWeb?: TronWebLike;
   }
 }
 
@@ -3457,18 +3419,6 @@ function useTronWallet(opts: {
     }
   }
 
-  async function connectExternalAddress(rawAddress: string) {
-    const nextAddress = rawAddress.trim();
-    setError(null);
-    if (!TRON_ADDRESS_RE.test(nextAddress) && !TRON_HEX_ADDRESS_RE.test(nextAddress)) {
-      setError("WalletConnect에서 유효한 TRON 주소를 가져오지 못했습니다.");
-      return;
-    }
-
-    setConnectedAddress(nextAddress);
-    await refreshFor(nextAddress);
-  }
-
   async function disconnect() {
     setError(null);
     setConnectedAddress(null);
@@ -3543,7 +3493,6 @@ function useTronWallet(opts: {
     trxBalance,
     usdtBalance,
     connect,
-    connectExternalAddress,
     disconnect,
     refresh,
   };

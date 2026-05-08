@@ -4,10 +4,6 @@ import { useState, type ReactNode } from "react";
 import { WagmiProvider, type Config } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
-import { TronAdapter } from "@reown/appkit-adapter-tron";
-import { TronLinkAdapter } from "@tronweb3/tronwallet-adapter-tronlink";
-import { TrustAdapter } from "@tronweb3/tronwallet-adapter-trust";
-import { OkxWalletAdapter } from "@tronweb3/tronwallet-adapter-okxwallet";
 import {
   wagmiAdapter,
   projectId,
@@ -24,26 +20,13 @@ const metadata = {
   icons: ["https://avatars.githubusercontent.com/u/179229932"],
 };
 
-const tronAdapter = new TronAdapter({
-  walletAdapters: [
-    new TronLinkAdapter({
-      openUrlWhenWalletNotFound: false,
-      checkTimeout: 3000,
-    }),
-    new TrustAdapter(),
-    new OkxWalletAdapter({
-      openUrlWhenWalletNotFound: false,
-    }),
-  ],
-});
-
 const globalForAppKit = globalThis as typeof globalThis & {
   __stakingAppKitCreated?: boolean;
 };
 
 if (!globalForAppKit.__stakingAppKitCreated) {
   createAppKit({
-    adapters: [wagmiAdapter, tronAdapter],
+    adapters: [wagmiAdapter],
     networks,
     projectId,
     metadata,
