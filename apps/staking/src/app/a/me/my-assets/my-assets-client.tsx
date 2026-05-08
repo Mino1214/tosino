@@ -58,6 +58,7 @@ const MATIC_PRICE = TICKER_COINS.find((c) => c.symbol === "MATIC")?.price ?? 0.5
 const AVAX_PRICE = TICKER_COINS.find((c) => c.symbol === "AVAX")?.price ?? 24.2;
 const TETHER_GREEN = "#26A17B";
 const STAKE_QUOTE_TTL_SECONDS = 15;
+const TRON_ADDRESS_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 
 const PORTFOLIO_ICON: Record<string, string> = {
   ETH: "/coin_image/network/erc20/ETH.svg",
@@ -254,6 +255,7 @@ export function MyAssetsClient({
   const [persistedTronAddress, setPersistedTronAddress] = useState<string | null>(
     user.tronAddress ?? null,
   );
+  const [manualTronAddress, setManualTronAddress] = useState(user.tronAddress ?? "");
   const [stakeOpen, setStakeOpen] = useState(false);
   const [selectedStakeAsset, setSelectedStakeAsset] = useState<{
     symbol: string;
@@ -266,6 +268,7 @@ export function MyAssetsClient({
     initialAddress: persistedTronAddress,
     onChange: async (addr) => {
       setPersistedTronAddress(addr);
+      if (addr) setManualTronAddress(addr);
       try {
         await fetch("/api/me/tron-wallet", {
           method: "PUT",
@@ -415,6 +418,7 @@ export function MyAssetsClient({
   async function clearTron() {
     await tron.disconnect();
     setPersistedTronAddress(null);
+    setManualTronAddress("");
     try {
       await fetch("/api/me/tron-wallet", {
         method: "PUT",
@@ -995,6 +999,29 @@ export function MyAssetsClient({
                         <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[10px] font-medium text-red-700">
                           {tron.error}
                         </p>
+                      )}
+                      {group.connectionKind === "tron" && (
+                        <form
+                          className="mt-2 flex gap-1.5"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void tron.connectAddress(manualTronAddress);
+                          }}
+                        >
+                          <input
+                            value={manualTronAddress}
+                            onChange={(event) => setManualTronAddress(event.target.value)}
+                            placeholder="TRON 주소 입력"
+                            className="min-w-0 flex-1 rounded-lg border border-black/10 bg-white px-2 py-1.5 font-mono text-[10px] font-semibold text-foreground outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
+                          />
+                          <button
+                            type="submit"
+                            disabled={tron.isLoading}
+                            className="shrink-0 rounded-lg border border-accent-strong/30 bg-accent-strong/[0.06] px-2.5 py-1.5 text-[10px] font-extrabold text-accent-strong transition hover:border-accent-strong/50 disabled:cursor-wait disabled:opacity-60"
+                          >
+                            조회
+                          </button>
+                        </form>
                       )}
                     </div>
                   </div>
@@ -3400,6 +3427,18 @@ function useTronWallet(opts: {
     }
   }
 
+  async function connectAddress(rawAddress: string) {
+    const nextAddress = rawAddress.trim();
+    setError(null);
+    if (!TRON_ADDRESS_RE.test(nextAddress)) {
+      setError("유효한 TRON 주소를 입력해주세요.");
+      return;
+    }
+
+    setConnectedAddress(nextAddress);
+    await refreshFor(nextAddress);
+  }
+
   async function disconnect() {
     setError(null);
     setConnectedAddress(null);
@@ -3470,6 +3509,7 @@ function useTronWallet(opts: {
     trxBalance,
     usdtBalance,
     connect,
+    connectAddress,
     disconnect,
     refresh,
   };
