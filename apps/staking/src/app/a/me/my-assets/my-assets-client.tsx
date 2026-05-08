@@ -265,7 +265,10 @@ export function MyAssetsClient({
   const [stakeRequests, setStakeRequests] = useState<StakeRequestRecord[]>([]);
   const { open: openAppKit } = useAppKit();
   const appKitTronAccount = useAppKitAccount({ namespace: "tron" });
-  const appKitTronAddress = appKitTronAccount.address ?? null;
+  const appKitTronAddress = getAppKitTronAddress(
+    appKitTronAccount.address,
+    appKitTronAccount.caipAddress,
+  );
   const appKitTronConnecting =
     appKitTronAccount.status === "connecting" ||
     appKitTronAccount.status === "reconnecting";
@@ -993,7 +996,10 @@ export function MyAssetsClient({
                           onClick={() => {
                             if (group.connectionKind === "evm") void wallet.connect();
                             if (group.connectionKind === "tron") {
-                              void openAppKit({ view: "Connect", namespace: "tron" });
+                              void openAppKit({
+                                view: "Connect",
+                                namespace: "tron",
+                              }).catch(() => tron.connect());
                             }
                             if (browserKind) void browserWallets.connect(browserKind);
                           }}
@@ -2716,6 +2722,21 @@ function getInjectedTronAddress() {
     const address = tronWeb.defaultAddress?.base58;
     if (address) return address;
   }
+  return null;
+}
+
+function getAppKitTronAddress(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    if (TRON_ADDRESS_RE.test(trimmed)) return trimmed;
+
+    const caipAddress = trimmed.split(":").at(-1)?.trim();
+    if (caipAddress && TRON_ADDRESS_RE.test(caipAddress)) {
+      return caipAddress;
+    }
+  }
+
   return null;
 }
 
