@@ -748,7 +748,7 @@ export function MyAssetsClient({
                       <CheckCircle2 className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 text-left">
-                      <span className="block truncate">지갑 연결됨</span>
+                      <span className="block truncate">EVM 지갑 연결됨</span>
                       <span className="mt-0.5 block truncate text-[11px] font-bold text-white/80">
                         {shortAddress(evmAddressForBalances)} · 지갑 변경
                       </span>
@@ -772,11 +772,72 @@ export function MyAssetsClient({
                       )}
                     </span>
                     <span className="truncate">
-                      {wallet.isConnecting ? "연결 중..." : "지갑 연결 (WalletConnect)"}
+                      {wallet.isConnecting ? "연결 중..." : "EVM 지갑 연결"}
                     </span>
                   </span>
                   <ArrowRight className="h-4 w-4 shrink-0 opacity-85 transition group-hover:translate-x-0.5" />
                 </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void tron.connect()}
+                disabled={tron.isConnecting}
+                className={`group mt-2 flex min-h-[54px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-extrabold shadow-[0_18px_38px_-18px_rgba(239,68,68,0.7)] ring-1 ring-white/50 transition hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-wait disabled:opacity-90 disabled:hover:translate-y-0 ${
+                  tron.address
+                    ? "border-red-400/50 !bg-red-500 !text-white hover:!bg-red-600"
+                    : "border-red-500/35 bg-white text-red-600 hover:border-red-500 hover:bg-red-50"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ${
+                      tron.address
+                        ? "bg-white/18 ring-white/25"
+                        : "bg-red-50 ring-red-500/10"
+                    }`}
+                  >
+                    {tron.isConnecting ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : tron.address ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      <Plug className="h-4 w-4" />
+                    )}
+                  </span>
+                  <span className="min-w-0 text-left">
+                    <span className="block truncate">
+                      {tron.isConnecting
+                        ? "TRON 연결 중..."
+                        : tron.address
+                          ? "TRON 지갑 연결됨"
+                          : "TRON 지갑 연결"}
+                    </span>
+                    <span
+                      className={`mt-0.5 block truncate text-[11px] font-bold ${
+                        tron.address ? "text-white/80" : "text-red-500/80"
+                      }`}
+                    >
+                      {tron.address
+                        ? `TRX ${
+                            tron.trxBalance === null
+                              ? "-"
+                              : formatNumber(tron.trxBalance, 6)
+                          } · USDT ${
+                            tron.usdtBalance === null
+                              ? "-"
+                              : formatNumber(tron.usdtBalance, 6)
+                          }`
+                        : "TronLink 또는 SafePal 앱에서 연결"}
+                    </span>
+                  </span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 opacity-85 transition group-hover:translate-x-0.5" />
+              </button>
+              {tron.error && (
+                <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
+                  {tron.error}
+                </p>
               )}
 
               <StakedAssetsShowcase
