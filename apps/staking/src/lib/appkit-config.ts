@@ -8,20 +8,20 @@ import {
   polygon,
   bsc,
   avalanche,
+  tronMainnet,
   type AppKitNetwork,
 } from "@reown/appkit/networks";
 
 // WalletConnect Cloud (https://cloud.reown.com) 에서 발급받은 Project ID.
-// 데모용 임시 ID — 실제 운영 시 NEXT_PUBLIC_WC_PROJECT_ID 환경변수로 교체하세요.
 export const projectId =
   process.env.NEXT_PUBLIC_WC_PROJECT_ID ||
-  "b56e18d47c72ab683b10814fe9495694";
+  "1ba9248a009f4682a840421545f68b70";
 
 if (!projectId) {
   throw new Error("NEXT_PUBLIC_WC_PROJECT_ID is not set");
 }
 
-export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
+export const evmNetworks: [AppKitNetwork, ...AppKitNetwork[]] = [
   mainnet,
   arbitrum,
   optimism,
@@ -31,11 +31,16 @@ export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
   avalanche,
 ];
 
+export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
+  ...evmNetworks,
+  tronMainnet,
+];
+
 export const wagmiAdapter = new WagmiAdapter({
   storage: createStorage({ storage: cookieStorage }),
   ssr: true,
   projectId,
-  networks,
+  networks: evmNetworks,
 });
 
 export const wagmiConfig = wagmiAdapter.wagmiConfig;

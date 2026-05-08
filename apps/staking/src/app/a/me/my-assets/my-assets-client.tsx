@@ -38,6 +38,7 @@ import { isAddress, parseUnits, type Address } from "viem";
 import { useBalance, useReadContract, useSignMessage, useWriteContract } from "wagmi";
 import { avalanche, bsc, mainnet, polygon } from "wagmi/chains";
 import { useAccount } from "wagmi";
+import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 
 interface MyAssetsClientProps {
   user: {
@@ -58,6 +59,7 @@ const MATIC_PRICE = TICKER_COINS.find((c) => c.symbol === "MATIC")?.price ?? 0.5
 const AVAX_PRICE = TICKER_COINS.find((c) => c.symbol === "AVAX")?.price ?? 24.2;
 const TETHER_GREEN = "#26A17B";
 const STAKE_QUOTE_TTL_SECONDS = 15;
+const TRON_ADDRESS_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 
 const PORTFOLIO_ICON: Record<string, string> = {
   ETH: "/coin_image/network/erc20/ETH.svg",
@@ -261,6 +263,12 @@ export function MyAssetsClient({
     product: LstProduct;
   } | null>(null);
   const [stakeRequests, setStakeRequests] = useState<StakeRequestRecord[]>([]);
+  const { open: openAppKit } = useAppKit();
+  const appKitTronAccount = useAppKitAccount({ namespace: "tron" });
+  const appKitTronAddress = appKitTronAccount.address ?? null;
+  const appKitTronConnecting =
+    appKitTronAccount.status === "connecting" ||
+    appKitTronAccount.status === "reconnecting";
 
   const tron = useTronWallet({
     initialAddress: persistedTronAddress,
@@ -277,6 +285,13 @@ export function MyAssetsClient({
       }
     },
   });
+
+  useEffect(() => {
+    if (!appKitTronAccount.isConnected || !appKitTronAddress) return;
+    if (appKitTronAddress === tron.address) return;
+    void tron.connectExternalAddress(appKitTronAddress);
+  }, [appKitTronAccount.isConnected, appKitTronAddress, tron]);
+
   const browserWallets = useBrowserWallets();
   const evmAddressForBalances =
     wallet.address ??
@@ -912,7 +927,7 @@ export function MyAssetsClient({
                 group.connectionKind === "evm"
                   ? evmAddressForBalances
                   : group.connectionKind === "tron"
-                    ? tron.address
+                    ? (tron.address ?? appKitTronAddress)
                     : browserKind
                       ? browserWallets.addresses[browserKind] ?? null
                     : null;
@@ -920,7 +935,7 @@ export function MyAssetsClient({
                 group.connectionKind === "evm"
                   ? wallet.isConnecting
                   : group.connectionKind === "tron"
-                    ? tron.isConnecting
+                    ? tron.isConnecting || appKitTronConnecting
                     : browserKind
                       ? browserWallets.connecting === browserKind
                     : false;
@@ -977,7 +992,9 @@ export function MyAssetsClient({
                           type="button"
                           onClick={() => {
                             if (group.connectionKind === "evm") void wallet.connect();
-                            if (group.connectionKind === "tron") void tron.connect();
+                            if (group.connectionKind === "tron") {
+                              void openAppKit({ view: "Connect", namespace: "tron" });
+                            }
                             if (browserKind) void browserWallets.connect(browserKind);
                           }}
                           disabled={isPending || isConnecting}
@@ -2680,9 +2697,9 @@ async function getTronWalletReadiness({
 function getTronWebCandidates() {
   if (typeof window === "undefined") return undefined;
   return [
-    window.tronLink?.tronWeb,
-    window.tron?.tronWeb,
-    window.safepal?.tronWeb,
+    window.tronLink?.tronWeb as TronWebLike | undefined,
+    window.tron?.tronWeb as TronWebLike | undefined,
+    window.safepal?.tronWeb as TronWebLike | undefined,
     tip6963TronProvider?.tronWeb,
     window.tronWeb,
   ].filter((tronWeb): tronWeb is TronWebLike => Boolean(tronWeb));
@@ -2732,13 +2749,16 @@ function getTronAddressFromRequest(requested: unknown) {
 async function requestTronAccountsAccess() {
   let requested: unknown = null;
   const tip6963Provider = await discoverTip6963TronProvider();
+  const tronLinkTronWeb = window.tronLink?.tronWeb as TronWebLike | undefined;
+  const tronTronWeb = window.tron?.tronWeb as TronWebLike | undefined;
+  const safepalTronWeb = window.safepal?.tronWeb as TronWebLike | undefined;
   const requesters = [
     () => window.tronLink?.request?.({ method: "tron_requestAccounts" }),
-    () => window.tronLink?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
+    () => tronLinkTronWeb?.request?.({ method: "tron_requestAccounts" }),
     () => window.tron?.request?.({ method: "tron_requestAccounts" }),
-    () => window.tron?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
+    () => tronTronWeb?.request?.({ method: "tron_requestAccounts" }),
     () => window.safepal?.request?.({ method: "tron_requestAccounts" }),
-    () => window.safepal?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
+    () => safepalTronWeb?.request?.({ method: "tron_requestAccounts" }),
     () => tip6963Provider?.request?.({ method: "tron_requestAccounts" }),
     () => getInjectedTronWeb()?.request?.({ method: "tron_requestAccounts" }),
     () => window.tron?.request?.({ method: "eth_requestAccounts" }),
@@ -3157,10 +3177,7 @@ declare global {
     };
     sui?: SuiWalletLike;
     suiWallet?: SuiWalletLike;
-    tron?: TronProviderLike;
-    tronLink?: TronProviderLike & { ready?: boolean };
     safepal?: TronProviderLike;
-    tronWeb?: TronWebLike;
   }
 }
 
@@ -3168,11 +3185,11 @@ interface TronProviderLike {
   request?: (args: { method: string; params?: unknown }) => Promise<unknown>;
   on?: (
     event: "accountsChanged",
-    listener: (accounts: string[]) => void,
+    listener: (accounts: Array<string | undefined>) => void,
   ) => void;
   removeListener?: (
     event: "accountsChanged",
-    listener: (accounts: string[]) => void,
+    listener: (accounts: Array<string | undefined>) => void,
   ) => void;
   tronWeb?: TronWebLike;
 }
@@ -3413,6 +3430,18 @@ function useTronWallet(opts: {
     }
   }
 
+  async function connectExternalAddress(rawAddress: string) {
+    const nextAddress = rawAddress.trim();
+    setError(null);
+    if (!TRON_ADDRESS_RE.test(nextAddress)) {
+      setError("WalletConnect에서 유효한 TRON 주소를 가져오지 못했습니다.");
+      return;
+    }
+
+    setConnectedAddress(nextAddress);
+    await refreshFor(nextAddress);
+  }
+
   async function disconnect() {
     setError(null);
     setConnectedAddress(null);
@@ -3432,7 +3461,7 @@ function useTronWallet(opts: {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const handleAccountsChanged = (accounts: string[]) => {
+    const handleAccountsChanged = (accounts: Array<string | undefined>) => {
       const current = addressRef.current;
       if (!current) return;
 
@@ -3448,13 +3477,17 @@ function useTronWallet(opts: {
       }
     };
 
-    window.tron?.on?.("accountsChanged", handleAccountsChanged);
-    window.tronLink?.on?.("accountsChanged", handleAccountsChanged);
-    window.safepal?.on?.("accountsChanged", handleAccountsChanged);
+    const tronProvider = window.tron as unknown as TronProviderLike | undefined;
+    const tronLinkProvider = window.tronLink as unknown as TronProviderLike | undefined;
+    const safepalProvider = window.safepal;
+
+    tronProvider?.on?.("accountsChanged", handleAccountsChanged);
+    tronLinkProvider?.on?.("accountsChanged", handleAccountsChanged);
+    safepalProvider?.on?.("accountsChanged", handleAccountsChanged);
     return () => {
-      window.tron?.removeListener?.("accountsChanged", handleAccountsChanged);
-      window.tronLink?.removeListener?.("accountsChanged", handleAccountsChanged);
-      window.safepal?.removeListener?.("accountsChanged", handleAccountsChanged);
+      tronProvider?.removeListener?.("accountsChanged", handleAccountsChanged);
+      tronLinkProvider?.removeListener?.("accountsChanged", handleAccountsChanged);
+      safepalProvider?.removeListener?.("accountsChanged", handleAccountsChanged);
     };
   }, [refreshFor, setConnectedAddress]);
 
@@ -3483,6 +3516,7 @@ function useTronWallet(opts: {
     trxBalance,
     usdtBalance,
     connect,
+    connectExternalAddress,
     disconnect,
     refresh,
   };
