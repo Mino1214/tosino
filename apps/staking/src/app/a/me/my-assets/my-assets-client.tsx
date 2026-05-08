@@ -3283,17 +3283,6 @@ function useTronWallet(opts: {
         trxRaw = null;
       }
 
-      if (trxRaw === null) {
-        trxRaw = await (async () => {
-          const url = new URL(`https://api.trongrid.io/v1/accounts/${addr}`);
-          const res = await fetch(url.toString(), { method: "GET" });
-          if (!res.ok) return null;
-          const data = (await res.json()) as {
-            data?: Array<{ balance?: string | number }>;
-          };
-          return data.data?.[0]?.balance ?? null;
-        })();
-      }
       const trxRawStr = parseRawBalance(trxRaw);
       if (trxRawStr && addressRef.current === addr) {
         const asBigInt = trxRawStr.startsWith("0x")
@@ -3302,6 +3291,7 @@ function useTronWallet(opts: {
         setTrxBalance(Number(asBigInt) / 1_000_000);
       }
 
+      let serverBalanceError: string | null = null;
       const localBalanceRes = await fetch(
         `/api/tron/balances?address=${encodeURIComponent(addr)}`,
         { method: "GET" },
@@ -3324,6 +3314,12 @@ function useTronWallet(opts: {
           if (serverUsdt !== null) setUsdtBalance(serverUsdt);
         }
         if (serverUsdt !== null) return;
+      } else {
+        const errorPayload = (await localBalanceRes.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        serverBalanceError =
+          errorPayload?.error ?? `TRON 잔액 조회 오류 (HTTP ${localBalanceRes.status})`;
       }
 
       // Prefer TronLink's tronWeb for TRC20 reads (avoids TronGrid CORS / rate-limits).
@@ -3332,7 +3328,7 @@ function useTronWallet(opts: {
           const contract = await getTronTrc20Contract(USDT_TRON);
           const r = await contract.balanceOf(addr).call();
           const amount = toTokenAmount(r);
-          if (amount !== null && amount > 0) {
+          if (amount !== null) {
             if (addressRef.current === addr) {
               setUsdtBalance(amount);
             }
@@ -3343,29 +3339,7 @@ function useTronWallet(opts: {
         }
       }
 
-      // Use server API as fallback to avoid mobile/browser CORS and rate-limit issues.
-      const res = await fetch(
-        `/api/tron/balances?address=${encodeURIComponent(addr)}`,
-        { method: "GET" },
-      );
-      if (!res.ok) {
-        const errorPayload = (await res.json().catch(() => null)) as
-          | { error?: string }
-          | null;
-        throw new Error(
-          errorPayload?.error ?? `TRON 잔액 조회 오류 (HTTP ${res.status})`,
-        );
-      }
-      const data = (await res.json()) as {
-        trxBalance?: number;
-        usdtBalance?: number;
-      };
-      if (addressRef.current === addr) {
-        if (Number.isFinite(data.trxBalance)) setTrxBalance(data.trxBalance ?? 0);
-        setUsdtBalance(
-          Number.isFinite(data.usdtBalance) ? (data.usdtBalance ?? 0) : 0,
-        );
-      }
+      throw new Error(serverBalanceError ?? "TRON 잔액 조회 실패");
     } catch (e) {
       setError(e instanceof Error ? e.message : "TRON 잔액 조회 실패");
     } finally {
