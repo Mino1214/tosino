@@ -999,6 +999,33 @@ export function MyAssetsClient({
                           {tron.error}
                         </p>
                       )}
+                      {group.connectionKind === "tron" && tron.address && (
+                        <div className="mt-2 rounded-lg border border-black/5 bg-black/[0.02] px-2 py-1.5 text-[10px] font-semibold text-foreground/70">
+                          <div className="flex items-center justify-between gap-2">
+                            <span>
+                              {tron.isLoading
+                                ? "잔액 조회 중..."
+                                : `TRX ${
+                                    tron.trxBalance === null
+                                      ? "-"
+                                      : formatNumber(tron.trxBalance, 6)
+                                  } · USDT ${
+                                    tron.usdtBalance === null
+                                      ? "-"
+                                      : formatNumber(tron.usdtBalance, 6)
+                                  }`}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void tron.refresh()}
+                              disabled={tron.isLoading}
+                              className="shrink-0 rounded-full border border-black/10 bg-white px-2 py-0.5 text-[9px] font-extrabold text-foreground/65 disabled:opacity-50"
+                            >
+                              조회
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2699,7 +2726,7 @@ function getInjectedTronAddress() {
   const tronWebs = getTronWebCandidates();
   if (!tronWebs) return null;
   for (const tronWeb of tronWebs) {
-    const address = tronWeb.defaultAddress?.base58;
+    const address = tronWeb.defaultAddress?.base58 ?? tronWeb.defaultAddress?.hex;
     if (address) return address;
   }
   return null;
@@ -3196,7 +3223,7 @@ interface TronTrc20Contract {
 }
 
 interface TronWebLike {
-  defaultAddress?: { base58?: string };
+  defaultAddress?: { base58?: string; hex?: string };
   request?: (args: { method: string; params?: unknown }) => Promise<unknown>;
   trx?: {
     getBalance?: (address: string) => Promise<unknown>;
@@ -3399,15 +3426,17 @@ function useTronWallet(opts: {
 
       const injectedFirst = getInjectedTronAddress();
       if (injectedFirst) {
-        setConnectedAddress(injectedFirst);
-        await refreshFor(injectedFirst);
+        const addr = injectedFirst.trim();
+        setConnectedAddress(addr);
+        await refreshFor(addr);
         return;
       }
 
       const { requested } = await requestTronAccountsAccess();
 
-      const addr =
-        getTronAddressFromRequest(requested) ?? getInjectedTronAddress();
+      const addr = (
+        getTronAddressFromRequest(requested) ?? getInjectedTronAddress()
+      )?.trim();
 
       if (!addr) throw new Error("TronLink에서 주소를 가져오지 못했습니다.");
       setConnectedAddress(addr);
