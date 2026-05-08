@@ -11,6 +11,7 @@ apps/agent-web/out
 .env.test.local
 .env.production.local
 *.log
+*.tsbuildinfo
 .DS_Store
 apps/api/uploads
 apps/api/tmp

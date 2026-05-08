@@ -29,6 +29,8 @@ pnpm db:generate
 if [[ "${SKIP_MIGRATE:-0}" != "1" ]]; then
   echo "==> Prisma migrate deploy"
   pnpm db:migrate:deploy
+  echo "==> Staking Prisma migrate deploy"
+  pnpm staking:db:migrate:deploy
 fi
 
 if [[ "${RUN_DB_SEED:-0}" == "1" ]]; then
@@ -39,7 +41,7 @@ fi
 echo "==> Build (api + super-admin + solution-admin + solution-user + solution-agent)"
 pnpm build:apps
 
-for d in apps/super-admin/out apps/solution-admin/out apps/solution-user/out apps/solution-agent/out; do
+for d in apps/super-admin/out apps/solution-admin/out apps/solution-user/out apps/solution-agent/out apps/solution-main/out apps/staking/.next; do
   if [[ ! -d "$ROOT/$d" ]]; then
     echo "오류: 빌드 산출물 없음: $d — 웹 빌드가 실패했는지 확인하세요." >&2
     exit 1
@@ -58,7 +60,7 @@ pm2 save || true
 echo ""
 echo "배포 반영 완료."
 echo "  - API:   127.0.0.1:4001 (cwd apps/api → .env 로드)"
-echo "  - 정적: 3000 super-admin / 3001 solution-admin / 3002 solution-user / 3003 solution-agent / 3010 solution-main"
+echo "  - 웹:    3000 super-admin / 3001 solution-admin / 3002 solution-user / 3003 solution-agent / 3010 solution-main / 3016 staking"
 echo "  - nginx: sudo nginx -t && sudo systemctl reload nginx"
 echo "  - 헬스: curl -sk --resolve nexus001.vip:443:127.0.0.1 https://nexus001.vip/health"
 echo ""

@@ -30,7 +30,7 @@ pm2 restart comp-settlement-worker 2>/dev/null || env TOSINO_DEPLOY_PROFILE=serv
 sleep 2
 pm2 restart sms-ingest
 sleep 2
-for a in super-admin solution-admin solution-user solution-agent solution-main; do
+for a in super-admin solution-admin solution-user solution-agent solution-main staking; do
   pm2 restart "$a" 2>/dev/null || true
   sleep 1
 done

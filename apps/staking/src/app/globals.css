@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+:root {
+  --background: #faf6f1;
+  --foreground: #17211d;
+  --muted: #6f7c77;
+  --accent: #ffb088;
+  --accent-strong: #ff6b48;
+  --surface: #ffffff;
+  --surface-soft: rgba(255, 255, 255, 0.72);
+  --border-subtle: rgba(23, 33, 29, 0.08);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-surface: var(--surface);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.glow-btn {
+  box-shadow: 0 20px 50px -20px rgba(255, 107, 72, 0.65);
+}
+
+.slide-up {
+  animation: slide-up 0.55s ease both;
+}
+
+.ticker-anim {
+  animation: ticker 32s linear infinite;
+}
+
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

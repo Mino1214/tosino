@@ -39,7 +39,7 @@ if [[ "$DEV" == "1" ]]; then
   echo "[deploy:apps --dev] 프로필=local-dev (install·seed 생략)"
 else
   export TOSINO_DEPLOY_PROFILE=local
-  echo "[deploy:apps] 프로필=local (API·매처워커·정적 5종만, sms/cloudflared/크롤러 제외)"
+  echo "[deploy:apps] 프로필=local (API·매처워커·정적앱+staking, sms/cloudflared/크롤러 제외)"
 fi
 
 if [[ "${SKIP_DOCKER:-0}" != "1" ]]; then
@@ -64,6 +64,7 @@ if [[ "$DEV" != "1" ]]; then
 fi
 
 pnpm build:apps
+pnpm staking:db:migrate:deploy
 
 if [[ "$DEV" != "1" ]]; then
   pnpm db:seed

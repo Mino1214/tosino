@@ -27,6 +27,7 @@ const SMS_INGEST_ROOT = path.join(ROOT, 'apps', 'sms-ingest');
 const SMS_INGEST_ENTRY = path.join(SMS_INGEST_ROOT, 'dist', 'index.js');
 const SCORE_CRAWLER_ROOT = path.join(ROOT, 'apps', 'score-crawler');
 const SCORE_CRAWLER_RUN = path.join(SCORE_CRAWLER_ROOT, 'scripts', 'run.sh');
+const STAKING_ROOT = path.join(ROOT, 'apps', 'staking');
 /**
  * 정적 앱은 scripts/pm2-serve-static.sh 를 통해 띄운다.
  * 이유: serve 가 직접 EADDRINUSE 로 죽으면 좀비가 포트를 잡고 남는 사고가 있었음
@@ -57,6 +58,21 @@ function serveStaticApp(outDir, port) {
     restart_delay: 3000,
     /** SIGTERM 후 충분히 기다려서 OS 가 포트를 release 하도록 */
     kill_timeout: 5000,
+  };
+}
+
+function nextServerApp(name, cwd, port) {
+  return {
+    name,
+    script: 'pnpm',
+    args: ['start'],
+    interpreter: 'none',
+    cwd,
+    autorestart: true,
+    max_restarts: 10,
+    restart_delay: 3000,
+    kill_timeout: 5000,
+    env: envBase({ PORT: String(port) }),
   };
 }
 
@@ -159,6 +175,8 @@ const staticApps = [
   env: envBase(row.env || {}),
 }));
 
+const appStaking = nextServerApp('staking', STAKING_ROOT, 3016);
+
 const appScoreCrawler = {
   name: 'score-crawler',
   /**
@@ -198,6 +216,7 @@ const appsServer = [
   appCompSettlementWorker,
   appSmsIngest,
   ...staticApps,
+  appStaking,
   appScoreCrawler,
   appCloudflared,
 ];
@@ -210,6 +229,7 @@ const appsLocal = [
   appUsdtDepositWorker,
   appCompSettlementWorker,
   ...staticApps,
+  appStaking,
 ];
 
 const isLocalProfile =

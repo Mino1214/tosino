@@ -17,6 +17,7 @@ printf '%s\n' \
   "  터미널 4   솔루션유저      pnpm dev:solution    → http://localhost:3002" \
   "  터미널 5   솔루션에이전트  pnpm dev:agent       → http://localhost:3003  (필요 시)" \
   "  (선택)     솔루션 메인랜딩 pnpm dev:solution-main → http://localhost:3010  (tozinosolution.com)" \
+  "  (선택)     스테이킹        pnpm dev:staking → http://localhost:3016" \
   "  (선택)     shared 타입     pnpm dev:shared      → packages/shared 수정 시" \
   "  (선택)     SMS 수집       pnpm dev:sms-ingest" \
   "" \
@@ -31,6 +32,7 @@ printf '%s\n' \
   "  터미널 4   솔루션유저        pnpm start:solution" \
   "  터미널 5   솔루션에이전트    pnpm start:agent" \
   "  (선택)     솔루션 메인랜딩    pnpm start:solution-main  (apps/solution-main/out)" \
+  "  (선택)     스테이킹           pnpm start:staking       (Next server :3016)" \
   "" \
   "  위 네 개를 한 번에:            pnpm start:apps   (또는 pnpm apps:prod = 빌드+기동)" \
   ""

@@ -7,6 +7,7 @@ printf '%s\n' \
   "  관리자(플랫폼)  http://localhost:3000  (nginx mod 호스트와 동일 포트)" \
   "  솔루션(유저)    http://localhost:3002" \
   "  총판 관리       http://localhost:3003  ← 로그인: 총판(MASTER_AGENT)" \
+  "  스테이킹        http://localhost:3016" \
   "  API             http://localhost:4001  (health: /health, REST: /api/...)" \
   "  sms-ingest      http://localhost:4050  (+ 터널은 터미널 로그 참고)" \
   ""

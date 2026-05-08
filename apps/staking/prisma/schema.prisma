@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  passwordHash  String
+  walletAddress String?
+  tronAddress   String?
+  stakeRequests StakeRequest[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model StakeRequest {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceNetwork    String
+  sourceSymbol     String
+  sourceName       String
+  receiptSymbol    String
+  platform         String
+  platformUrl      String
+  category         String
+  amount           String
+  amountNumeric    Float
+  walletAddress    String?
+  tronAddress      String?
+  spenderAddress   String?
+  tokenAddress     String?
+  tokenDecimals    Int?
+  approvalRequired Boolean  @default(false)
+  allowanceRaw     String?
+  approveTxHash    String?
+  transferTxHash   String?
+  status           String   @default("REQUESTED")
+  adminNote        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model AdminWallet {
+  id          String   @id @default("default")
+  evmAddress  String
+  tronAddress String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
