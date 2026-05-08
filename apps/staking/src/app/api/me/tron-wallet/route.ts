@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getCurrentSession } from "@/lib/session";
 
 // Tron base58 addresses typically start with 'T' and are 34 chars total.
@@ -31,11 +30,8 @@ export async function PUT(request: Request) {
     );
   }
 
-  const user = await prisma.user.update({
-    where: { id: session.userId },
-    data: { tronAddress: address as string | null },
-    select: { id: true, username: true, walletAddress: true, tronAddress: true },
+  return NextResponse.json({
+    saved: false,
+    tronAddress: address as string | null,
   });
-
-  return NextResponse.json({ user });
 }

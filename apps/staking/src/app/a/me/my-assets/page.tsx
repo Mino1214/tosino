@@ -18,7 +18,7 @@ export default async function MyAssetsPage() {
   }
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, username: true, walletAddress: true, tronAddress: true },
+    select: { id: true, username: true },
   });
   if (!user) redirect("/login");
 

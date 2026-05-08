@@ -15,7 +15,7 @@ interface SiteHeaderProps {
   user: HeaderUser | null;
 }
 
-type HeaderUser = { id: string; username: string; walletAddress: string | null };
+type HeaderUser = { id: string; username: string };
 
 const NAV_ITEMS = [
   { href: "/scanner", label: "스테이킹 스캐너" },

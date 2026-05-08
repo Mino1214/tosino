@@ -43,8 +43,6 @@ interface MyAssetsClientProps {
   user: {
     id: string;
     username: string;
-    walletAddress: string | null;
-    tronAddress?: string | null;
   };
   adminEvmWallet: string;
   adminTronWallet: string | null;
@@ -234,26 +232,12 @@ export function MyAssetsClient({
   adminTronWallet,
 }: MyAssetsClientProps) {
   const wallet = useWallet({
-    onConnect: async (addr) => {
+    onConnect: (addr) => {
       setPersistedAddress(addr);
-      try {
-        await fetch("/api/me/wallet", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address: addr }),
-        });
-      } catch {
-        /* swallow */
-      }
     },
   });
 
-  const [persistedAddress, setPersistedAddress] = useState<string | null>(
-    user.walletAddress,
-  );
-  const [persistedTronAddress, setPersistedTronAddress] = useState<string | null>(
-    user.tronAddress ?? null,
-  );
+  const [persistedAddress, setPersistedAddress] = useState<string | null>(null);
   const [stakeOpen, setStakeOpen] = useState(false);
   const [selectedStakeAsset, setSelectedStakeAsset] = useState<{
     symbol: string;
@@ -263,19 +247,8 @@ export function MyAssetsClient({
   const [stakeRequests, setStakeRequests] = useState<StakeRequestRecord[]>([]);
 
   const tron = useTronWallet({
-    initialAddress: persistedTronAddress,
-    onChange: async (addr) => {
-      setPersistedTronAddress(addr);
-      try {
-        await fetch("/api/me/tron-wallet", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address: addr }),
-        });
-      } catch {
-        /* swallow */
-      }
-    },
+    initialAddress: null,
+    onChange: () => {},
   });
 
   const browserWallets = useBrowserWallets();
@@ -412,35 +385,6 @@ export function MyAssetsClient({
     const id = window.setTimeout(() => void loadStakeRequests(), 0);
     return () => window.clearTimeout(id);
   }, [loadStakeRequests]);
-
-  async function clearTron() {
-    await tron.disconnect();
-    setPersistedTronAddress(null);
-    try {
-      await fetch("/api/me/tron-wallet", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: null }),
-      });
-    } catch {
-      /* swallow */
-    }
-  }
-
-  const lastConnectedEvmAddressRef = useRef<string | null>(user.walletAddress);
-  useEffect(() => {
-    const current = wallet.address ?? null;
-    const prev = lastConnectedEvmAddressRef.current;
-    // EVM 지갑이 바뀌면 이전 EVM 계정에 연결된 TRON 잔액을 즉시 분리한다.
-    // TronLink가 아직 A 계정을 가리키는 상태에서 B 화면에 A TRON 자산이 남으면 안 된다.
-    if (prev && current && prev !== current) {
-      void clearTron();
-    }
-    if (current) {
-      lastConnectedEvmAddressRef.current = current;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wallet.address]);
 
   const portfolio: TokenBalance[] = useMemo(() => {
     const map = new Map<string, TokenBalance>();
@@ -658,9 +602,9 @@ export function MyAssetsClient({
     () =>
       buildRewardSummary({
         totalUsd: stakedTotalValue,
-        address: evmAddressForBalances ?? user.walletAddress ?? tron.address ?? user.id,
+        address: evmAddressForBalances ?? tron.address ?? user.id,
       }),
-    [evmAddressForBalances, stakedTotalValue, tron.address, user.id, user.walletAddress],
+    [evmAddressForBalances, stakedTotalValue, tron.address, user.id],
   );
   const activeStakeRequestCount = stakeRequests.filter(
     (request) => request.status !== "REJECTED",
