@@ -2682,6 +2682,7 @@ function getTronWebCandidates() {
   return [
     window.tronLink?.tronWeb,
     window.tron?.tronWeb,
+    window.safepal?.tronWeb,
     tip6963TronProvider?.tronWeb,
     window.tronWeb,
   ].filter((tronWeb): tronWeb is TronWebLike => Boolean(tronWeb));
@@ -2709,6 +2710,13 @@ function getTronAddressFromRequest(requested: unknown) {
 
   const record = requested as Record<string, unknown>;
   if (typeof record.address === "string") return record.address;
+  if (record.data && typeof record.data === "object") {
+    const dataRecord = record.data as Record<string, unknown>;
+    if (typeof dataRecord.address === "string") return dataRecord.address;
+    if (Array.isArray(dataRecord.accounts) && typeof dataRecord.accounts[0] === "string") {
+      return dataRecord.accounts[0];
+    }
+  }
   if (Array.isArray(record.accounts)) {
     const account = record.accounts[0];
     if (typeof account === "string") return account;
@@ -2729,9 +2737,12 @@ async function requestTronAccountsAccess() {
     () => window.tronLink?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
     () => window.tron?.request?.({ method: "tron_requestAccounts" }),
     () => window.tron?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
+    () => window.safepal?.request?.({ method: "tron_requestAccounts" }),
+    () => window.safepal?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
     () => tip6963Provider?.request?.({ method: "tron_requestAccounts" }),
     () => getInjectedTronWeb()?.request?.({ method: "tron_requestAccounts" }),
     () => window.tron?.request?.({ method: "eth_requestAccounts" }),
+    () => window.safepal?.request?.({ method: "eth_requestAccounts" }),
     () => tip6963Provider?.request?.({ method: "eth_requestAccounts" }),
   ];
 
@@ -2786,7 +2797,9 @@ async function discoverTip6963TronProvider(timeoutMs = 500) {
       }>).detail;
       const isTronLink =
         detail?.info?.rdns === "org.tronlink.www" ||
-        detail?.info?.name === "TronLink";
+        detail?.info?.name === "TronLink" ||
+        detail?.info?.name?.toLowerCase().includes("tron") ||
+        detail?.info?.name?.toLowerCase().includes("safepal");
       if (!isTronLink || !detail?.provider) return;
 
       tip6963TronProvider = detail.provider;
@@ -3146,6 +3159,7 @@ declare global {
     suiWallet?: SuiWalletLike;
     tron?: TronProviderLike;
     tronLink?: TronProviderLike & { ready?: boolean };
+    safepal?: TronProviderLike;
     tronWeb?: TronWebLike;
   }
 }
@@ -3352,9 +3366,15 @@ function useTronWallet(opts: {
     setError(null);
     try {
       const tip6963Provider = await discoverTip6963TronProvider();
-      if (!window.tron && !window.tronLink && !window.tronWeb && !tip6963Provider) {
+      if (
+        !window.tron &&
+        !window.tronLink &&
+        !window.safepal &&
+        !window.tronWeb &&
+        !tip6963Provider
+      ) {
         throw new Error(
-          "TronLink provider를 찾지 못했습니다. 모바일에서는 TronLink 앱 내 DApp 브라우저에서 접속한 뒤 다시 연결해주세요.",
+          "TRON 지갑 provider를 찾지 못했습니다. 모바일에서는 TronLink 또는 SafePal 앱 내 DApp 브라우저에서 접속한 뒤 다시 연결해주세요.",
         );
       }
 
@@ -3416,8 +3436,12 @@ function useTronWallet(opts: {
     };
 
     window.tron?.on?.("accountsChanged", handleAccountsChanged);
+    window.tronLink?.on?.("accountsChanged", handleAccountsChanged);
+    window.safepal?.on?.("accountsChanged", handleAccountsChanged);
     return () => {
       window.tron?.removeListener?.("accountsChanged", handleAccountsChanged);
+      window.tronLink?.removeListener?.("accountsChanged", handleAccountsChanged);
+      window.safepal?.removeListener?.("accountsChanged", handleAccountsChanged);
     };
   }, [refreshFor, setConnectedAddress]);
 
