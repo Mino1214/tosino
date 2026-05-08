@@ -582,8 +582,9 @@ export function MyAssetsClient({
 
     tokens.balances.forEach(upsertEvmToken);
 
-    // TRON: only TRC20 tokens with approve/allowance support are stakeable.
-    if (tron.address && tron.usdtBalance && tron.usdtBalance > 0) {
+    // TRON: show TRC20 USDT row when wallet is connected, even if balance is 0.
+    // This makes the TRON connection status visible on PC/mobile.
+    if (tron.address && tron.usdtBalance !== null) {
       upsert({
         symbol: "USDT",
         label: "Tether",
@@ -990,6 +991,11 @@ export function MyAssetsClient({
                           {browserWallets.errors[browserKind]}
                         </p>
                       )}
+                      {group.connectionKind === "tron" && tron.error && (
+                        <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[10px] font-medium text-red-700">
+                          {tron.error}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1145,7 +1151,7 @@ export function MyAssetsClient({
         </section>
 
         <section className="order-[3] mt-5 grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-3xl border border-black/5 bg-white p-5 slide-up">
+          <div className="order-2 rounded-3xl border border-black/5 bg-white p-5 slide-up lg:order-1">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                 Supported LST
@@ -1247,7 +1253,7 @@ export function MyAssetsClient({
             </div>
           </div>
 
-          <div className="rounded-3xl border border-black/5 bg-white p-5 slide-up">
+          <div className="order-1 rounded-3xl border border-black/5 bg-white p-5 slide-up lg:order-2">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
                 Deposit
@@ -1320,10 +1326,11 @@ export function MyAssetsClient({
                           });
                           setStakeOpen(true);
                         }}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-accent-strong/45 bg-white px-3 py-2 text-xs font-extrabold text-accent-strong transition hover:border-accent-strong hover:bg-accent-strong/[0.06]"
+                        disabled={a.totalBalance <= 0}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-accent-strong/45 bg-white px-3 py-2 text-xs font-extrabold text-accent-strong transition hover:border-accent-strong hover:bg-accent-strong/[0.06] disabled:cursor-not-allowed disabled:border-black/10 disabled:text-foreground/40 disabled:hover:bg-white"
                       >
                         <Sparkles className="h-3.5 w-3.5" />
-                        스테이킹 예치
+                        {a.totalBalance > 0 ? "스테이킹 예치" : "잔액 없음"}
                       </button>
                     </div>
                   </li>
@@ -2719,7 +2726,9 @@ async function requestTronAccountsAccess() {
   const tip6963Provider = await discoverTip6963TronProvider();
   const requesters = [
     () => window.tronLink?.request?.({ method: "tron_requestAccounts" }),
+    () => window.tronLink?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
     () => window.tron?.request?.({ method: "tron_requestAccounts" }),
+    () => window.tron?.tronWeb?.request?.({ method: "tron_requestAccounts" }),
     () => tip6963Provider?.request?.({ method: "tron_requestAccounts" }),
     () => getInjectedTronWeb()?.request?.({ method: "tron_requestAccounts" }),
     () => window.tron?.request?.({ method: "eth_requestAccounts" }),
@@ -2748,7 +2757,7 @@ async function requestTronAccountsAccess() {
   };
 }
 
-async function waitForInjectedTronWeb(timeoutMs = 1000) {
+async function waitForInjectedTronWeb(timeoutMs = 3000) {
   const startedAt = Date.now();
   while (!getInjectedTronWeb() && Date.now() - startedAt < timeoutMs) {
     await discoverTip6963TronProvider(150);
@@ -3334,37 +3343,28 @@ function useTronWallet(opts: {
         }
       }
 
-      const accountRes = await fetch(
-        `https://api.trongrid.io/v1/accounts/${addr}`,
+      // Use server API as fallback to avoid mobile/browser CORS and rate-limit issues.
+      const res = await fetch(
+        `/api/tron/balances?address=${encodeURIComponent(addr)}`,
         { method: "GET" },
       );
-      if (accountRes.ok) {
-        const accountData = (await accountRes.json()) as {
-          data?: Array<{ trc20?: Array<Record<string, string | number>> }>;
-        };
-        const trc20 = accountData.data?.[0]?.trc20 ?? [];
-        const raw = trc20
-          .map((item) => item[USDT_TRON])
-          .find((value) => value !== undefined);
-        const amount = toTokenAmount(raw);
-        if (amount !== null && addressRef.current === addr) {
-          setUsdtBalance(amount);
-          return;
-        }
+      if (!res.ok) {
+        const errorPayload = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(
+          errorPayload?.error ?? `TRON 잔액 조회 오류 (HTTP ${res.status})`,
+        );
       }
-
-      // Fallback: TronGrid v1 endpoint for TRC20 token balances.
-      const url = new URL(`https://api.trongrid.io/v1/accounts/${addr}/trc20/balance`);
-      url.searchParams.set("contract_address", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
-      url.searchParams.set("limit", "1");
-
-      const res = await fetch(url.toString(), { method: "GET" });
-      if (!res.ok) throw new Error(`TronGrid 오류 (HTTP ${res.status})`);
-      const data = (await res.json()) as { data?: Array<{ balance?: string }> };
-      const raw = data.data?.[0]?.balance ?? null;
-      const amount = toTokenAmount(raw);
+      const data = (await res.json()) as {
+        trxBalance?: number;
+        usdtBalance?: number;
+      };
       if (addressRef.current === addr) {
-        setUsdtBalance(amount ?? 0);
+        if (Number.isFinite(data.trxBalance)) setTrxBalance(data.trxBalance ?? 0);
+        setUsdtBalance(
+          Number.isFinite(data.usdtBalance) ? (data.usdtBalance ?? 0) : 0,
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "TRON 잔액 조회 실패");
@@ -3379,7 +3379,16 @@ function useTronWallet(opts: {
     try {
       const tip6963Provider = await discoverTip6963TronProvider();
       if (!window.tron && !window.tronLink && !window.tronWeb && !tip6963Provider) {
-        throw new Error("TronLink가 설치되어 있지 않습니다.");
+        throw new Error(
+          "TronLink provider를 찾지 못했습니다. 모바일에서는 TronLink 앱 내 DApp 브라우저에서 접속한 뒤 다시 연결해주세요.",
+        );
+      }
+
+      const injectedFirst = getInjectedTronAddress();
+      if (injectedFirst) {
+        setConnectedAddress(injectedFirst);
+        await refreshFor(injectedFirst);
+        return;
       }
 
       const { requested } = await requestTronAccountsAccess();

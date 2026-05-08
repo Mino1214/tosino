@@ -80,8 +80,8 @@ export function SiteHeader({ user }: SiteHeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-black/5 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-[100] isolate w-full border-b border-black/5 bg-background/95 pointer-events-auto">
+      <div className="relative z-10 mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link
           href={isAdminPath ? "/admin" : "/"}
           className="flex items-center gap-2 font-semibold text-foreground"
@@ -153,13 +153,13 @@ export function SiteHeader({ user }: SiteHeaderProps) {
           )}
         </div>
 
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="relative z-20 flex items-center gap-2 md:hidden pointer-events-auto">
           <LanguageSwitcher compact />
           <button
             type="button"
             aria-label="메뉴 열기"
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex items-center justify-center rounded-md p-2 text-foreground hover:bg-black/5"
+            className="relative z-20 inline-flex items-center justify-center rounded-md p-2 text-foreground hover:bg-black/5 touch-manipulation"
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -167,7 +167,7 @@ export function SiteHeader({ user }: SiteHeaderProps) {
       </div>
 
       {open && (
-        <div className="border-t border-black/5 bg-background md:hidden">
+        <div className="relative z-20 border-t border-black/5 bg-background md:hidden">
           <div className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-3 sm:px-6">
             {!isAdminPath &&
               items.map((item) => {

@@ -90,7 +90,7 @@ export default async function RootLayout({
         <Web3Provider cookies={requestHeaders.get("cookie")}>
           <BrowserLanguageTranslator initialLocale={locale} />
           <SiteHeader user={user} />
-          <main className="flex-1">{children}</main>
+          <main className="relative z-0 flex-1">{children}</main>
           <SiteFooter />
         </Web3Provider>
       </body>

@@ -12,6 +12,8 @@
 #       → /api·/uploads :4001 (Nest), 나머지 solution-user :3002
 #   mod.i-on.bet → /api·/uploads :4001, 나머지 solution-admin :3001
 #   agent.i-on.bet → /api·/uploads :4001, 나머지 solution-agent :3003
+#   ropejfwe1.win             → staking user :3016
+#   admin.ropejfwe1.win       → staking admin :3016 (/admin)
 # ─────────────────────────────────────────────────────────────
 
 tunnel: 50a78d10-c684-4f59-a74e-6385131744d1
@@ -106,6 +108,15 @@ ingress:
 
   - hostname: agent.i-on.bet
     service: http://localhost:3003
+
+  # ══════════════════════════════════════════════════
+  # ropejfwe1.win — staking 유저 페이지 (3016)
+  # ══════════════════════════════════════════════════
+  - hostname: ropejfwe1.win
+    service: http://localhost:3016
+
+  - hostname: admin.ropejfwe1.win
+    service: http://localhost:3016
 
   # 미매칭 → 404
   - service: http_status:404

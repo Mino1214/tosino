@@ -88,7 +88,7 @@ const FAQS = [
 
 export default async function HomePage() {
   const host = (await headers()).get("host") ?? "";
-  if (host === "admin.localhost:3016") {
+  if (host === "admin.localhost:3016" || host === "admin.ropejfwe1.win") {
     redirect("/admin");
   }
 

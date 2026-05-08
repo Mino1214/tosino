@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 const TRON_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 const USDT_TRON = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const TRONGRID_API_KEY = process.env.TRONGRID_API_KEY?.trim() || "";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,6 +14,11 @@ export async function GET(request: Request) {
 
   const res = await fetch(`https://api.trongrid.io/v1/accounts/${address}`, {
     method: "GET",
+    headers: TRONGRID_API_KEY
+      ? {
+          "TRON-PRO-API-KEY": TRONGRID_API_KEY,
+        }
+      : undefined,
     next: { revalidate: 15 },
   });
 
