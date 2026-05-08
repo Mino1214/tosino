@@ -3403,6 +3403,12 @@ function useTronWallet(opts: {
     setIsConnecting(true);
     setError(null);
     try {
+      if (isExternalMobileBrowser() && !hasInjectedTronProvider()) {
+        openTronLinkDappBrowser();
+        setError("TronLink 앱에서 이 페이지를 다시 열고 있습니다.");
+        return;
+      }
+
       const tip6963Provider = await discoverTip6963TronProvider();
       if (
         !window.tron &&
@@ -3544,6 +3550,30 @@ function openTronLinkDappBrowser() {
     JSON.stringify(payload),
   )}`;
   return true;
+}
+
+function hasInjectedTronProvider() {
+  if (typeof window === "undefined") return false;
+  return Boolean(
+    window.tron ||
+      window.tronLink ||
+      window.safepal ||
+      window.tronWeb ||
+      tip6963TronProvider,
+  );
+}
+
+function isExternalMobileBrowser() {
+  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
+  const userAgent = navigator.userAgent;
+  return (
+    isMobileBrowser() &&
+    !window.tron &&
+    !window.tronLink &&
+    !window.safepal &&
+    !window.tronWeb &&
+    !/TronLink|SafePal/i.test(userAgent)
+  );
 }
 
 function isMobileBrowser() {
