@@ -13,8 +13,7 @@ const TRON_FULL_HOST = (process.env.TRON_FULL_HOST?.trim() || "https://api.trong
 );
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const rawAddress = searchParams.get("address")?.trim() ?? "";
+  const rawAddress = getAddressParam(request.url);
   const address = normalizeTronAddress(rawAddress);
 
   if (!address) {
@@ -47,6 +46,26 @@ export async function GET(request: Request) {
       { status: 502 },
     );
   }
+}
+
+function getAddressParam(url: string) {
+  const { searchParams } = new URL(url);
+  const explicitAddress =
+    searchParams.get("address") ??
+    searchParams.get("wallet") ??
+    searchParams.get("walletAddress");
+
+  if (explicitAddress?.trim()) return explicitAddress.trim();
+
+  for (const [key, value] of searchParams.entries()) {
+    if (value) continue;
+    const bareAddress = key.trim();
+    if (TRON_RE.test(bareAddress) || TRON_HEX_RE.test(bareAddress)) {
+      return bareAddress;
+    }
+  }
+
+  return "";
 }
 
 async function fetchAccountBalances(address: string) {
