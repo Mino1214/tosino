@@ -26,7 +26,7 @@ const NAV_ITEMS = [
   { href: "/about", label: "About" },
 ];
 
-const LOGGED_IN_HOME = { href: "/a/me/my-assets", label: "내 자산 리포트" };
+const LOGGED_IN_HOME = { href: "/dashboard", label: "대시보드" };
 const LOCALE_CHANGE_EVENT = "staking:locale-change";
 const AUTH_CHANGE_EVENT = "staking:auth-change";
 
