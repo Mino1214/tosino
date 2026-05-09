@@ -34,6 +34,26 @@ import {
   type WalletConnectionKind,
 } from "@/lib/staking-assets";
 import { formatUSD, formatNumber, shortAddress } from "@/lib/utils";
+import {
+  connectTronWalletConnect,
+  createInitialTronProviderState,
+  disconnectTronWalletConnect,
+  getInjectedTronAddress,
+  getInjectedTronWeb,
+  getTronAddressFromRequest,
+  getTronProviderSnapshot,
+  hasTronWalletConnectSession,
+  hasInjectedTronProvider,
+  isMobileBrowser,
+  openTronLinkDappBrowser,
+  requestTronAccountsAccess,
+  signTronWalletConnectMessage,
+  tronDebugLog,
+  waitForTronProviderSnapshot,
+  type TronProviderDetectionState,
+  type TronProviderLike,
+  type TronWebLike,
+} from "@/lib/tron-mobile-provider";
 import { isAddress, parseUnits, type Address } from "viem";
 import { useBalance, useReadContract, useSignMessage, useWriteContract } from "wagmi";
 import { avalanche, bsc, mainnet, polygon } from "wagmi/chains";
@@ -828,7 +848,9 @@ export function MyAssetsClient({
                               ? "-"
                               : formatNumber(tron.usdtBalance, 6)
                           }`
-                        : "TronLink 또는 SafePal 앱에서 연결"}
+                        : tron.providerState.providerLabel
+                          ? `${tron.providerState.providerLabel} 감지됨`
+                          : `${tron.providerState.environment.label} · WalletConnect 지원`}
                     </span>
                   </span>
                 </span>
@@ -1002,6 +1024,13 @@ export function MyAssetsClient({
                       {group.connectionKind === "tron" && tron.error && (
                         <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[10px] font-medium text-red-700">
                           {tron.error}
+                        </p>
+                      )}
+                      {group.connectionKind === "tron" && !tron.address && !tron.error && (
+                        <p className="mt-2 rounded-lg bg-black/[0.03] px-2 py-1.5 text-[10px] font-semibold text-foreground/60">
+                          {tron.providerState.providerLabel
+                            ? `${tron.providerState.providerLabel} · ${tron.providerState.environment.label}`
+                            : `${tron.providerState.environment.label} · WalletConnect fallback`}
                         </p>
                       )}
                       {group.connectionKind === "tron" && tron.address && (
@@ -2692,9 +2721,12 @@ async function getTronWalletReadiness({
   }
 
   if (!tronWeb) {
+    if (!requireContract && hasTronWalletConnectSession()) {
+      return null;
+    }
     return requireContract
       ? "TRON 주소는 연결되어 있지만 현재 브라우저에서 TronLink TRC20 approve 기능을 찾지 못했습니다. TronLink에서 이 사이트 연결을 허용한 뒤 TRON 지갑 연결을 다시 눌러주세요."
-      : "TRON 주소는 연결되어 있지만 현재 브라우저에서 TronLink 서명 기능을 찾지 못했습니다. TronLink에서 이 사이트 연결을 허용한 뒤 TRON 지갑 연결을 다시 눌러주세요.";
+      : "TRON 주소는 연결되어 있지만 현재 브라우저에서 TRON 서명 기능을 찾지 못했습니다. 지갑 provider를 새로고침하거나 WalletConnect TRON으로 다시 연결해주세요.";
   }
   if (!injectedAddress) {
     return "TronLink 계정이 잠겨 있거나 사이트 연결이 허용되지 않았습니다. TronLink를 열어 계정을 연결해주세요.";
@@ -2710,144 +2742,6 @@ async function getTronWalletReadiness({
   }
 
   return null;
-}
-
-function getTronWebCandidates() {
-  if (typeof window === "undefined") return undefined;
-  return [
-    window.tronLink?.tronWeb as TronWebLike | undefined,
-    window.tron?.tronWeb as TronWebLike | undefined,
-    window.safepal?.tronWeb as TronWebLike | undefined,
-    tip6963TronProvider?.tronWeb,
-    window.tronWeb,
-  ].filter((tronWeb): tronWeb is TronWebLike => Boolean(tronWeb));
-}
-
-function getInjectedTronWeb() {
-  return getTronWebCandidates()?.[0];
-}
-
-function getInjectedTronAddress() {
-  const tronWebs = getTronWebCandidates();
-  if (!tronWebs) return null;
-  for (const tronWeb of tronWebs) {
-    const address = tronWeb.defaultAddress?.base58 ?? tronWeb.defaultAddress?.hex;
-    if (address) return address;
-  }
-  return null;
-}
-
-function getTronAddressFromRequest(requested: unknown) {
-  if (Array.isArray(requested) && typeof requested[0] === "string") {
-    return requested[0];
-  }
-  if (!requested || typeof requested !== "object") return null;
-
-  const record = requested as Record<string, unknown>;
-  if (typeof record.address === "string") return record.address;
-  if (record.data && typeof record.data === "object") {
-    const dataRecord = record.data as Record<string, unknown>;
-    if (typeof dataRecord.address === "string") return dataRecord.address;
-    if (Array.isArray(dataRecord.accounts) && typeof dataRecord.accounts[0] === "string") {
-      return dataRecord.accounts[0];
-    }
-  }
-  if (Array.isArray(record.accounts)) {
-    const account = record.accounts[0];
-    if (typeof account === "string") return account;
-    if (account && typeof account === "object") {
-      const accountRecord = account as Record<string, unknown>;
-      if (typeof accountRecord.address === "string") return accountRecord.address;
-    }
-  }
-
-  return null;
-}
-
-async function requestTronAccountsAccess() {
-  let requested: unknown = null;
-  const tip6963Provider = await discoverTip6963TronProvider();
-  const tronLinkTronWeb = window.tronLink?.tronWeb as TronWebLike | undefined;
-  const tronTronWeb = window.tron?.tronWeb as TronWebLike | undefined;
-  const safepalTronWeb = window.safepal?.tronWeb as TronWebLike | undefined;
-  const requesters = [
-    () => window.tronLink?.request?.({ method: "tron_requestAccounts" }),
-    () => tronLinkTronWeb?.request?.({ method: "tron_requestAccounts" }),
-    () => window.tron?.request?.({ method: "tron_requestAccounts" }),
-    () => tronTronWeb?.request?.({ method: "tron_requestAccounts" }),
-    () => window.safepal?.request?.({ method: "tron_requestAccounts" }),
-    () => safepalTronWeb?.request?.({ method: "tron_requestAccounts" }),
-    () => tip6963Provider?.request?.({ method: "tron_requestAccounts" }),
-    () => getInjectedTronWeb()?.request?.({ method: "tron_requestAccounts" }),
-    () => window.tron?.request?.({ method: "eth_requestAccounts" }),
-    () => window.safepal?.request?.({ method: "eth_requestAccounts" }),
-    () => tip6963Provider?.request?.({ method: "eth_requestAccounts" }),
-  ];
-
-  for (const requestAccounts of requesters) {
-    try {
-      const nextRequested = await requestAccounts();
-      if (nextRequested) requested = nextRequested;
-      if (getTronAddressFromRequest(nextRequested) || getInjectedTronAddress()) {
-        break;
-      }
-    } catch {
-      // Try the next TronLink provider shape.
-    }
-  }
-
-  if (!getInjectedTronWeb()) {
-    await waitForInjectedTronWeb();
-  }
-
-  return {
-    requested,
-    tronWeb: getInjectedTronWeb(),
-  };
-}
-
-async function waitForInjectedTronWeb(timeoutMs = 3000) {
-  const startedAt = Date.now();
-  while (!getInjectedTronWeb() && Date.now() - startedAt < timeoutMs) {
-    await discoverTip6963TronProvider(150);
-    await new Promise((resolve) => window.setTimeout(resolve, 100));
-  }
-}
-
-async function discoverTip6963TronProvider(timeoutMs = 500) {
-  if (typeof window === "undefined") return null;
-  if (tip6963TronProvider) return tip6963TronProvider;
-
-  return new Promise<TronProviderLike | null>((resolve) => {
-    let settled = false;
-    let timeoutId: number | null = null;
-    const finish = (provider: TronProviderLike | null) => {
-      if (settled) return;
-      settled = true;
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-      window.removeEventListener("TIP6963:announceProvider", onAnnounce);
-      resolve(provider);
-    };
-    const onAnnounce = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        info?: { name?: string; rdns?: string };
-        provider?: TronProviderLike;
-      }>).detail;
-      const isTronLink =
-        detail?.info?.rdns === "org.tronlink.www" ||
-        detail?.info?.name === "TronLink" ||
-        detail?.info?.name?.toLowerCase().includes("tron") ||
-        detail?.info?.name?.toLowerCase().includes("safepal");
-      if (!isTronLink || !detail?.provider) return;
-
-      tip6963TronProvider = detail.provider;
-      finish(detail.provider);
-    };
-    timeoutId = window.setTimeout(() => finish(null), timeoutMs);
-
-    window.addEventListener("TIP6963:announceProvider", onAnnounce);
-    window.dispatchEvent(new Event("TIP6963:requestProvider"));
-  });
 }
 
 async function readTronTrc20Allowance({
@@ -2914,8 +2808,13 @@ async function getTronTrc20Contract(tokenAddress: string) {
 async function signTronApprovalMessage(message: string) {
   const tronWeb = getInjectedTronWeb();
   if (!tronWeb?.trx?.signMessageV2 && !tronWeb?.trx?.sign) {
+    try {
+      return await signTronWalletConnectMessage(message);
+    } catch {
+      // Fall through to the injected-wallet error below.
+    }
     throw new Error(
-      "TronLink에서 서명 기능을 찾지 못했습니다. TronLink 확장을 새로고침하거나 TRON 지갑을 다시 연결해주세요.",
+      "TRON 서명 기능을 찾지 못했습니다. 지갑 provider를 새로고침하거나 WalletConnect TRON으로 다시 연결해주세요.",
     );
   }
   const signature =
@@ -3196,54 +3095,27 @@ declare global {
     sui?: SuiWalletLike;
     suiWallet?: SuiWalletLike;
     safepal?: TronProviderLike;
+    safePal?: TronProviderLike;
     tron?: TronProviderLike;
     tronLink?: TronProviderLike;
     tronWeb?: TronWebLike;
-  }
-}
-
-interface TronProviderLike {
-  request?: (args: { method: string; params?: unknown }) => Promise<unknown>;
-  on?: (
-    event: "accountsChanged",
-    listener: (accounts: Array<string | undefined>) => void,
-  ) => void;
-  removeListener?: (
-    event: "accountsChanged",
-    listener: (accounts: Array<string | undefined>) => void,
-  ) => void;
-  tronWeb?: TronWebLike;
-}
-
-interface TronTrc20Contract {
-  balanceOf: (owner: string) => { call: () => Promise<unknown> };
-  allowance?: (
-    owner: string,
-    spender: string,
-  ) => { call: () => Promise<unknown> };
-  approve?: (
-    spender: string,
-    amount: string,
-  ) => { send: () => Promise<unknown> };
-}
-
-interface TronWebLike {
-  defaultAddress?: { base58?: string; hex?: string };
-  request?: (args: { method: string; params?: unknown }) => Promise<unknown>;
-  trx?: {
-    getBalance?: (address: string) => Promise<unknown>;
-    sign?: (message: string) => Promise<string>;
-    signMessageV2?: (message: string) => Promise<string>;
-  };
-  contract?: {
-    (): {
-      at: (contractAddress: string) => Promise<TronTrc20Contract>;
+    okxwallet?: TronProviderLike & {
+      tronLink?: TronProviderLike;
+      tronWeb?: TronWebLike;
     };
-    (
-      abi: unknown,
-      contractAddress: string,
-    ): Promise<TronTrc20Contract>;
-  };
+    okxWallet?: TronProviderLike & {
+      tronLink?: TronProviderLike;
+      tronWeb?: TronWebLike;
+    };
+    binancew3w?: TronProviderLike & {
+      tronLink?: TronProviderLike;
+      tronWeb?: TronWebLike;
+    };
+    trustwallet?: TronProviderLike & {
+      tronLink?: TronProviderLike;
+      tronWeb?: TronWebLike;
+    };
+  }
 }
 
 interface NearWalletLike {
@@ -3268,8 +3140,6 @@ interface SuiWalletLike {
   requestPermissions?: (args: { permissions: string[] }) => Promise<unknown>;
 }
 
-let tip6963TronProvider: TronProviderLike | null = null;
-
 function useTronWallet(opts: {
   initialAddress: string | null;
   onChange: (address: string | null) => void;
@@ -3280,9 +3150,13 @@ function useTronWallet(opts: {
   const [error, setError] = useState<string | null>(null);
   const [trxBalance, setTrxBalance] = useState<number | null>(null);
   const [usdtBalance, setUsdtBalance] = useState<number | null>(null);
+  const [providerState, setProviderState] = useState<TronProviderDetectionState>(
+    () => createInitialTronProviderState(),
+  );
 
   const optsRef = useRef(opts);
   const addressRef = useRef<string | null>(opts.initialAddress);
+  const connectionSourceRef = useRef<"injected" | "walletconnect" | null>(null);
 
   useEffect(() => {
     optsRef.current = opts;
@@ -3298,6 +3172,7 @@ function useTronWallet(opts: {
     if (!nextAddress) {
       setTrxBalance(null);
       setUsdtBalance(null);
+      connectionSourceRef.current = null;
     }
     optsRef.current.onChange(nextAddress);
   }, []);
@@ -3399,61 +3274,148 @@ function useTronWallet(opts: {
     }
   }, [parseRawBalance]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+
+    void waitForTronProviderSnapshot().then((snapshot) => {
+      if (cancelled) return;
+      setProviderState((previous) => ({
+        ...previous,
+        status: snapshot.directTronCandidate ? "detected" : "missing",
+        environment: snapshot.environment,
+        detectedKeys: snapshot.detectedKeys,
+        providerLabel: snapshot.directTronCandidate?.label ?? null,
+        address: snapshot.address,
+        lastMessage: snapshot.directTronCandidate
+          ? `${snapshot.directTronCandidate.label} provider 감지`
+          : snapshot.detectedKeys.length > 0
+            ? "브라우저 지갑 객체는 감지됐지만 직접 TRON provider는 없습니다."
+            : "직접 주입된 TRON provider가 없습니다.",
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function connect() {
     setIsConnecting(true);
     setError(null);
     try {
-      if (isExternalMobileBrowser() && !hasInjectedTronProvider()) {
-        openTronLinkDappBrowser();
-        setError("TronLink 앱에서 이 페이지를 다시 열고 있습니다.");
-        return;
-      }
+      setProviderState((previous) => ({
+        ...previous,
+        status: "detecting",
+        lastMessage: "DOMContentLoaded 이후 provider injection 대기 중",
+      }));
+      const snapshot = await waitForTronProviderSnapshot();
+      setProviderState((previous) => ({
+        ...previous,
+        status: snapshot.directTronCandidate ? "detected" : "missing",
+        environment: snapshot.environment,
+        detectedKeys: snapshot.detectedKeys,
+        providerLabel: snapshot.directTronCandidate?.label ?? null,
+        address: snapshot.address,
+        lastMessage: snapshot.directTronCandidate
+          ? `${snapshot.directTronCandidate.label} provider 감지`
+          : "직접 TRON provider가 없어 WalletConnect로 전환합니다.",
+      }));
 
-      const tip6963Provider = await discoverTip6963TronProvider();
-      if (
-        !window.tron &&
-        !window.tronLink &&
-        !window.safepal &&
-        !window.tronWeb &&
-        !tip6963Provider
-      ) {
-        await waitForInjectedTronWeb(1200);
-      }
-      if (
-        !window.tron &&
-        !window.tronLink &&
-        !window.safepal &&
-        !window.tronWeb &&
-        !tip6963Provider
-      ) {
-        if (openTronLinkDappBrowser()) {
-          setError("TronLink 앱에서 이 페이지를 다시 열고 있습니다.");
-          return;
-        }
-        throw new Error(
-          "TRON 지갑 provider를 찾지 못했습니다. PC에서는 TronLink 확장 프로그램을 설치하고, 모바일에서는 TronLink 앱 내 DApp 브라우저에서 접속해주세요.",
-        );
-      }
-
-      const injectedFirst = getInjectedTronAddress();
+      const injectedFirst = snapshot.address ?? getInjectedTronAddress();
       if (injectedFirst) {
         const addr = injectedFirst.trim();
+        connectionSourceRef.current = "injected";
         setConnectedAddress(addr);
         await refreshFor(addr);
         return;
       }
 
-      const { requested } = await requestTronAccountsAccess();
+      if (snapshot.directTronCandidate || hasInjectedTronProvider()) {
+        setProviderState((previous) => ({
+          ...previous,
+          status: "requesting",
+          lastMessage: "TRON 계정 권한 요청 중",
+        }));
+        const { requested, providerLabel, address: requestedAddress } =
+          await requestTronAccountsAccess(snapshot);
 
-      const addr = (
-        getTronAddressFromRequest(requested) ?? getInjectedTronAddress()
-      )?.trim();
+        const addr = (
+          requestedAddress ??
+          getTronAddressFromRequest(requested) ??
+          getInjectedTronAddress()
+        )?.trim();
 
-      if (!addr) throw new Error("TronLink에서 주소를 가져오지 못했습니다.");
-      setConnectedAddress(addr);
-      await refreshFor(addr);
+        if (addr) {
+          connectionSourceRef.current = "injected";
+          setProviderState((previous) => ({
+            ...previous,
+            status: "connected",
+            providerLabel: providerLabel ?? previous.providerLabel,
+            address: addr,
+            lastMessage: `${providerLabel ?? previous.providerLabel ?? "TRON provider"} 연결됨`,
+          }));
+          setConnectedAddress(addr);
+          await refreshFor(addr);
+          return;
+        }
+      }
+
+      setProviderState((previous) => ({
+        ...previous,
+        status: "walletconnect",
+        providerLabel: "WalletConnect TRON",
+        lastMessage: "WalletConnect v2로 TRON mainnet 연결 중",
+      }));
+
+      try {
+        const walletConnect = await connectTronWalletConnect({
+          onUri: (uri, deepLinks) => {
+            setProviderState((previous) => ({
+              ...previous,
+              walletConnectUri: uri,
+              walletConnectDeepLinks: deepLinks,
+              lastMessage: "WalletConnect deep link 준비됨",
+            }));
+          },
+        });
+        const addr = walletConnect.address.trim();
+        connectionSourceRef.current = "walletconnect";
+        setProviderState((previous) => ({
+          ...previous,
+          status: "connected",
+          providerLabel: "WalletConnect TRON",
+          address: addr,
+          lastMessage: "WalletConnect TRON 연결됨",
+        }));
+        setConnectedAddress(addr);
+        await refreshFor(addr);
+        return;
+      } catch (walletConnectError) {
+        tronDebugLog("walletconnect fallback failed", {
+          error:
+            walletConnectError instanceof Error
+              ? walletConnectError.message
+              : String(walletConnectError),
+        });
+      }
+
+      if (isMobileBrowser() && openTronLinkDappBrowser()) {
+        setError("직접 provider와 WalletConnect 연결에 실패해 TronLink 앱에서 이 페이지를 다시 열고 있습니다.");
+        return;
+      }
+
+      throw new Error(
+        "TRON provider를 찾지 못했고 WalletConnect TRON 연결도 완료되지 않았습니다. 모바일에서는 TRON을 지원하는 지갑 DApp 브라우저 또는 WalletConnect 지원 지갑을 사용해주세요.",
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "TRON 연결 실패");
+      const message = e instanceof Error ? e.message : "TRON 연결 실패";
+      setError(message);
+      setProviderState((previous) => ({
+        ...previous,
+        status: "error",
+        lastMessage: message,
+      }));
     } finally {
       setIsConnecting(false);
     }
@@ -3461,6 +3423,17 @@ function useTronWallet(opts: {
 
   async function disconnect() {
     setError(null);
+    if (connectionSourceRef.current === "walletconnect") {
+      await disconnectTronWalletConnect();
+    }
+    setProviderState((previous) => ({
+      ...previous,
+      status: hasInjectedTronProvider() ? "detected" : "idle",
+      address: null,
+      walletConnectUri: null,
+      walletConnectDeepLinks: [],
+      lastMessage: "TRON 연결 해제됨",
+    }));
     setConnectedAddress(null);
   }
 
@@ -3478,10 +3451,15 @@ function useTronWallet(opts: {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const handleAccountsChanged = (accounts: Array<string | undefined>) => {
+    const handleAccountsChanged = (...args: unknown[]) => {
       const current = addressRef.current;
       if (!current) return;
 
+      const accounts = Array.isArray(args[0])
+        ? (args[0] as Array<string | undefined>)
+        : typeof args[0] === "string"
+          ? [args[0]]
+          : [];
       const nextAddress = accounts[0] ?? null;
       if (!nextAddress) {
         setConnectedAddress(null);
@@ -3494,19 +3472,19 @@ function useTronWallet(opts: {
       }
     };
 
-    const tronProvider = window.tron as unknown as TronProviderLike | undefined;
-    const tronLinkProvider = window.tronLink as unknown as TronProviderLike | undefined;
-    const safepalProvider = window.safepal;
+    const providers = getTronProviderSnapshot().candidates
+      .map((candidate) => candidate.provider)
+      .filter((provider): provider is TronProviderLike => Boolean(provider?.on));
 
-    tronProvider?.on?.("accountsChanged", handleAccountsChanged);
-    tronLinkProvider?.on?.("accountsChanged", handleAccountsChanged);
-    safepalProvider?.on?.("accountsChanged", handleAccountsChanged);
+    providers.forEach((provider) => {
+      provider.on?.("accountsChanged", handleAccountsChanged);
+    });
     return () => {
-      tronProvider?.removeListener?.("accountsChanged", handleAccountsChanged);
-      tronLinkProvider?.removeListener?.("accountsChanged", handleAccountsChanged);
-      safepalProvider?.removeListener?.("accountsChanged", handleAccountsChanged);
+      providers.forEach((provider) => {
+        provider.removeListener?.("accountsChanged", handleAccountsChanged);
+      });
     };
-  }, [refreshFor, setConnectedAddress]);
+  }, [providerState.detectedKeys, refreshFor, setConnectedAddress]);
 
   useEffect(() => {
     // Fallback for older TronLink versions that do not emit provider events reliably.
@@ -3532,51 +3510,9 @@ function useTronWallet(opts: {
     error,
     trxBalance,
     usdtBalance,
+    providerState,
     connect,
     disconnect,
     refresh,
   };
-}
-
-function openTronLinkDappBrowser() {
-  if (typeof window === "undefined" || !isMobileBrowser()) return false;
-  const payload = {
-    url: window.location.href,
-    action: "open",
-    protocol: "tronlink",
-    version: "1.0",
-  };
-  window.location.href = `tronlinkoutside://pull.activity?param=${encodeURIComponent(
-    JSON.stringify(payload),
-  )}`;
-  return true;
-}
-
-function hasInjectedTronProvider() {
-  if (typeof window === "undefined") return false;
-  return Boolean(
-    window.tron ||
-      window.tronLink ||
-      window.safepal ||
-      window.tronWeb ||
-      tip6963TronProvider,
-  );
-}
-
-function isExternalMobileBrowser() {
-  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
-  const userAgent = navigator.userAgent;
-  return (
-    isMobileBrowser() &&
-    !window.tron &&
-    !window.tronLink &&
-    !window.safepal &&
-    !window.tronWeb &&
-    !/TronLink|SafePal/i.test(userAgent)
-  );
-}
-
-function isMobileBrowser() {
-  if (typeof navigator === "undefined") return false;
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
