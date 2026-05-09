@@ -18,6 +18,8 @@ export interface WalletState {
   isConnecting: boolean;
   hasProvider: boolean;
   error: string | null;
+  connectorId: string | null;
+  connectorName: string | null;
 }
 
 export function useWallet(opts?: {
@@ -25,7 +27,8 @@ export function useWallet(opts?: {
   onDisconnect?: () => void;
 }) {
   const { open } = useAppKit();
-  const { address, isConnected, isConnecting, isReconnecting } = useAccount();
+  const { address, isConnected, isConnecting, isReconnecting, connector } =
+    useAccount();
   const chainId = useChainId();
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const balanceQuery = useBalance({
@@ -79,6 +82,8 @@ export function useWallet(opts?: {
     isConnecting: isConnecting || isReconnecting,
     hasProvider: true,
     error: null,
+    connectorId: connector?.id ?? null,
+    connectorName: connector?.name ?? null,
   };
 
   return { ...state, connect, disconnect, refresh };

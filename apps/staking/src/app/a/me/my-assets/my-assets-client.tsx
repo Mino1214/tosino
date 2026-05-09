@@ -39,8 +39,12 @@ import {
   resetRememberedWalletState,
 } from "@/lib/wallet-session-reset";
 import {
+  connectBinanceTronAdapter,
   connectMobileTronWallet,
+  connectOkxTronApp,
+  connectSafePalTron,
   connectTronWalletConnect,
+  connectTrustTronAdapter,
   createInitialTronProviderState,
   disconnectConnectedTronAdapter,
   getInjectedTronAddress,
@@ -845,7 +849,19 @@ export function MyAssetsClient({
 
               <button
                 type="button"
-                onClick={() => void tron.connect()}
+                onClick={() => {
+                  // EVM에서 사용된 wagmi connector를 보고 매치되는 지갑이면 그 지갑의 TRON 어댑터로
+                  // 직행. 매치 없으면 기존 자동 감지 + WalletConnect fallback chain으로 떨어짐.
+                  const brand = tronBrandFromConnector(
+                    wallet.connectorId,
+                    wallet.connectorName,
+                  );
+                  if (brand) {
+                    void tron.connectVia(brand);
+                  } else {
+                    void tron.connect();
+                  }
+                }}
                 disabled={tron.isConnecting}
                 className={`group mt-2 flex min-h-[54px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-extrabold shadow-[0_18px_38px_-18px_rgba(239,68,68,0.7)] ring-1 ring-white/50 transition hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-wait disabled:opacity-90 disabled:hover:translate-y-0 ${
                   tron.address
@@ -3228,6 +3244,28 @@ interface SuiWalletLike {
   requestPermissions?: (args: { permissions: string[] }) => Promise<unknown>;
 }
 
+type TronBrandId = "safepal" | "binance" | "okx" | "trust";
+
+// EVM 연결 시 사용된 wagmi connector 이름/id를 보고 같은 지갑의 TRON 어댑터로 라우팅한다.
+// 매치되는 게 없으면 null을 반환하고 호출 측에서 기본 자동 감지 흐름으로 fallback.
+export function tronBrandFromConnector(
+  connectorId: string | null,
+  connectorName: string | null,
+): TronBrandId | null {
+  const haystack = `${connectorId ?? ""} ${connectorName ?? ""}`.toLowerCase();
+  if (haystack.includes("safepal") || haystack.includes("safe pal")) {
+    return "safepal";
+  }
+  if (haystack.includes("binance") || haystack.includes("bnc")) {
+    return "binance";
+  }
+  if (haystack.includes("okx") || haystack.includes("okex")) {
+    return "okx";
+  }
+  if (haystack.includes("trust")) return "trust";
+  return null;
+}
+
 function useTronWallet(opts: {
   initialAddress: string | null;
   onChange: (address: string | null) => void;
@@ -3552,6 +3590,67 @@ function useTronWallet(opts: {
     }
   }, [refreshFor, setConnectedAddress]);
 
+  // 사용자가 EVM에서 어떤 지갑을 골랐는지 알 때, 자동 감지 + WalletConnect fallback chain을 거치지
+  // 않고 곧장 그 지갑의 TRON 어댑터로 직행한다. 매치 안 되면 null 반환 → 호출 측이 connect()로 fallback.
+  const connectVia = useCallback(
+    async (brand: TronBrandId) => {
+      setIsConnecting(true);
+      setError(null);
+      try {
+        await disconnectConnectedTronAdapter();
+        connectionSourceRef.current = null;
+        setConnectedAddress(null);
+        setProviderState((previous) => ({
+          ...previous,
+          status: "requesting",
+          address: null,
+          walletConnectUri: null,
+          walletConnectDeepLinks: [],
+          lastMessage: `${brand} TRON 연결 시도 중`,
+        }));
+
+        let result: { address: string; providerLabel: string };
+        if (brand === "safepal") {
+          result = await connectSafePalTron();
+          connectionSourceRef.current = "injected";
+        } else if (brand === "binance") {
+          result = await connectBinanceTronAdapter();
+          connectionSourceRef.current = "adapter";
+        } else if (brand === "okx") {
+          result = await connectOkxTronApp();
+          connectionSourceRef.current = "adapter";
+        } else if (brand === "trust") {
+          result = await connectTrustTronAdapter();
+          connectionSourceRef.current = "adapter";
+        } else {
+          throw new Error(`지원하지 않는 지갑: ${brand}`);
+        }
+
+        const addr = result.address.trim();
+        setProviderState((previous) => ({
+          ...previous,
+          status: "connected",
+          providerLabel: result.providerLabel,
+          address: addr,
+          lastMessage: `${result.providerLabel} 연결됨`,
+        }));
+        setConnectedAddress(addr);
+        await refreshFor(addr);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "TRON 연결 실패";
+        setError(message);
+        setProviderState((previous) => ({
+          ...previous,
+          status: "error",
+          lastMessage: message,
+        }));
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    [refreshFor, setConnectedAddress],
+  );
+
   const disconnect = useCallback(async () => {
     setError(null);
     await disconnectConnectedTronAdapter();
@@ -3641,6 +3740,7 @@ function useTronWallet(opts: {
     usdtBalance,
     providerState,
     connect,
+    connectVia,
     disconnect,
     refresh,
   };
