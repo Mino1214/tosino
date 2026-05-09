@@ -44,6 +44,7 @@ import {
   getTronProviderSnapshot,
   hasTronWalletConnectSession,
   hasInjectedTronProvider,
+  isExternalMobileBrowser,
   isMobileBrowser,
   openTronLinkDappBrowser,
   requestTronAccountsAccess,
@@ -265,6 +266,7 @@ export function MyAssetsClient({
     product: LstProduct;
   } | null>(null);
   const [stakeRequests, setStakeRequests] = useState<StakeRequestRecord[]>([]);
+  const autoTronStartedRef = useRef(false);
 
   const tron = useTronWallet({
     initialAddress: null,
@@ -277,6 +279,19 @@ export function MyAssetsClient({
     (persistedAddress && isAddress(persistedAddress)
       ? (persistedAddress as Address)
       : null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || autoTronStartedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("autoTron") !== "1") return;
+
+    autoTronStartedRef.current = true;
+    params.delete("autoTron");
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
+    window.history.replaceState(null, "", nextUrl);
+    void tron.connect();
+  }, [tron]);
 
   const tokens = useTokenBalances(evmAddressForBalances);
   const ethBalanceQuery = useBalance({
@@ -3304,6 +3319,12 @@ function useTronWallet(opts: {
     setIsConnecting(true);
     setError(null);
     try {
+      if (isExternalMobileBrowser() && !hasInjectedTronProvider()) {
+        openTronLinkDappBrowser();
+        setError("TronLink 앱에서 이 페이지를 다시 열고 있습니다.");
+        return;
+      }
+
       setProviderState((previous) => ({
         ...previous,
         status: "detecting",

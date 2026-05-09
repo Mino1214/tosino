@@ -564,8 +564,10 @@ export function openTronLinkDappBrowser() {
   if (typeof window === "undefined" || !detectMobileWalletEnvironment().isMobile) {
     return false;
   }
+  const targetUrl = new URL("/login", window.location.origin);
+  targetUrl.searchParams.set("next", "/a/me/my-assets?autoTron=1");
   const payload = {
-    url: window.location.href,
+    url: targetUrl.toString(),
     action: "open",
     protocol: "tronlink",
     version: "1.0",
@@ -574,6 +576,11 @@ export function openTronLinkDappBrowser() {
     JSON.stringify(payload),
   )}`;
   return true;
+}
+
+export function isExternalMobileBrowser() {
+  const environment = detectMobileWalletEnvironment();
+  return environment.isMobile && !environment.isInAppBrowser;
 }
 
 export function hasInjectedTronProvider() {
