@@ -633,6 +633,17 @@ export async function connectTronWalletConnect(opts?: {
         return address;
       },
       async connect(options) {
+        const existing = await wallet.checkConnectStatus().catch(() => ({
+          address: "",
+        }));
+        if (existing.address) {
+          await wallet.disconnect().catch((error) => {
+            tronDebugLog("walletconnect-tron stale session disconnect failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+          address = null;
+        }
         const result = await wallet.connect(options);
         address = result.address?.trim() || null;
       },
@@ -848,7 +859,7 @@ export async function connectMobileTronWallet(opts?: {
   onUri?: (uri: string, deepLinks: WalletDeepLink[]) => void;
 }) {
   const environment = detectMobileWalletEnvironment();
-  const preferred: Array<[
+  const connectors: Array<[
     string,
     () => Promise<{ address: string; providerLabel: string }>,
   ]> = [
@@ -858,18 +869,30 @@ export async function connectMobileTronWallet(opts?: {
     ["walletconnect", () => connectTronWalletConnect(opts)],
     ["tronlink", () => connectTronLinkAdapter()],
   ];
+  const connectorMap = new Map(connectors);
   const rank: Partial<Record<MobileWalletBrowserKind, string[]>> = {
-    okx: ["okx", "walletconnect", "binance", "metamask", "tronlink"],
-    binance: ["binance", "walletconnect", "okx", "metamask", "tronlink"],
-    metamask: ["metamask", "walletconnect", "okx", "binance", "tronlink"],
-    tronlink: ["tronlink", "walletconnect", "okx", "binance", "metamask"],
-    safari: ["okx", "binance", "metamask", "walletconnect", "tronlink"],
-    chrome: ["okx", "binance", "metamask", "walletconnect", "tronlink"],
+    okx: ["okx", "walletconnect"],
+    binance: ["binance", "walletconnect"],
+    metamask: ["metamask", "walletconnect"],
+    tronlink: ["tronlink", "walletconnect"],
+    safepal: ["walletconnect"],
+    trust: ["walletconnect"],
+    safari: ["walletconnect"],
+    chrome: ["walletconnect"],
+    "android-webview": ["walletconnect"],
+    "ios-webview": ["walletconnect"],
+    unknown: environment.isMobile ? ["walletconnect"] : [],
   };
-  const order = rank[environment.kind] ?? preferred.map(([id]) => id);
-  const attempts = [...preferred].sort(
-    ([left], [right]) => order.indexOf(left) - order.indexOf(right),
-  );
+  const order = rank[environment.kind] ?? ["walletconnect"];
+  const attempts = order
+    .map((id) => {
+      const connect = connectorMap.get(id);
+      return connect ? ([id, connect] as const) : null;
+    })
+    .filter((attempt): attempt is readonly [
+      string,
+      () => Promise<{ address: string; providerLabel: string }>,
+    ] => Boolean(attempt));
   const errors: string[] = [];
 
   for (const [id, connect] of attempts) {

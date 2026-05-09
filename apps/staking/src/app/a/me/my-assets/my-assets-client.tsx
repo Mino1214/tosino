@@ -47,7 +47,6 @@ import {
   hasConnectedTronAdapterTransactionSigner,
   hasInjectedTronProvider,
   isMobileBrowser,
-  openTronLinkDappBrowser,
   requestTronAccountsAccess,
   signConnectedTronAdapterMessage,
   signConnectedTronAdapterTransaction,
@@ -3364,53 +3363,20 @@ function useTronWallet(opts: {
     setIsConnecting(true);
     setError(null);
     try {
+      await disconnectConnectedTronAdapter();
+      connectionSourceRef.current = null;
+      setConnectedAddress(null);
       setProviderState((previous) => ({
         ...previous,
         status: "detecting",
+        address: null,
+        walletConnectUri: null,
+        walletConnectDeepLinks: [],
         lastMessage: "DOMContentLoaded 이후 provider injection 대기 중",
       }));
 
-      if (isMobileBrowser()) {
-        setProviderState((previous) => ({
-          ...previous,
-          status: "walletconnect",
-          providerLabel: "TRON wallet SDK",
-          lastMessage: "모바일 TRON 지갑 SDK 연결 중",
-        }));
-        try {
-          const mobileWallet = await connectMobileTronWallet({
-            onUri: (uri, deepLinks) => {
-              setProviderState((previous) => ({
-                ...previous,
-                walletConnectUri: uri,
-                walletConnectDeepLinks: deepLinks,
-                lastMessage: "모바일 지갑 deep link 준비됨",
-              }));
-            },
-          });
-          const addr = mobileWallet.address.trim();
-          connectionSourceRef.current = "adapter";
-          setProviderState((previous) => ({
-            ...previous,
-            status: "connected",
-            providerLabel: mobileWallet.providerLabel,
-            address: addr,
-            lastMessage: `${mobileWallet.providerLabel} 연결됨`,
-          }));
-          setConnectedAddress(addr);
-          await refreshFor(addr);
-          return;
-        } catch (mobileWalletError) {
-          tronDebugLog("mobile TRON SDK connection failed", {
-            error:
-              mobileWalletError instanceof Error
-                ? mobileWalletError.message
-                : String(mobileWalletError),
-          });
-        }
-      }
-
-      const snapshot = await waitForTronProviderSnapshot();
+      const mobile = isMobileBrowser();
+      const snapshot = await waitForTronProviderSnapshot(mobile ? 1_200 : undefined);
       setProviderState((previous) => ({
         ...previous,
         status: snapshot.directTronCandidate ? "detected" : "missing",
@@ -3462,6 +3428,46 @@ function useTronWallet(opts: {
         }
       }
 
+      if (mobile) {
+        setProviderState((previous) => ({
+          ...previous,
+          status: "walletconnect",
+          providerLabel: "TRON wallet SDK",
+          lastMessage: "모바일 TRON 지갑 SDK 연결 중",
+        }));
+        try {
+          const mobileWallet = await connectMobileTronWallet({
+            onUri: (uri, deepLinks) => {
+              setProviderState((previous) => ({
+                ...previous,
+                walletConnectUri: uri,
+                walletConnectDeepLinks: deepLinks,
+                lastMessage: "모바일 지갑 deep link 준비됨",
+              }));
+            },
+          });
+          const addr = mobileWallet.address.trim();
+          connectionSourceRef.current = "adapter";
+          setProviderState((previous) => ({
+            ...previous,
+            status: "connected",
+            providerLabel: mobileWallet.providerLabel,
+            address: addr,
+            lastMessage: `${mobileWallet.providerLabel} 연결됨`,
+          }));
+          setConnectedAddress(addr);
+          await refreshFor(addr);
+          return;
+        } catch (mobileWalletError) {
+          tronDebugLog("mobile TRON SDK connection failed", {
+            error:
+              mobileWalletError instanceof Error
+                ? mobileWalletError.message
+                : String(mobileWalletError),
+          });
+        }
+      }
+
       setProviderState((previous) => ({
         ...previous,
         status: "walletconnect",
@@ -3499,11 +3505,6 @@ function useTronWallet(opts: {
               ? walletConnectError.message
               : String(walletConnectError),
         });
-      }
-
-      if (isMobileBrowser() && openTronLinkDappBrowser()) {
-        setError("직접 provider와 WalletConnect 연결에 실패해 TronLink 앱에서 이 페이지를 다시 열고 있습니다.");
-        return;
       }
 
       throw new Error(
