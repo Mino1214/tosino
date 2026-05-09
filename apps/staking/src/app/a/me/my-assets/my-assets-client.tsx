@@ -36,6 +36,7 @@ import {
 import { formatUSD, formatNumber, shortAddress } from "@/lib/utils";
 import {
   connectTronWalletConnect,
+  connectTronLinkAdapter,
   createInitialTronProviderState,
   disconnectTronWalletConnect,
   getInjectedTronAddress,
@@ -53,7 +54,6 @@ import {
   waitForTronProviderSnapshot,
   type TronProviderDetectionState,
   type TronProviderLike,
-  type TronWebLike,
 } from "@/lib/tron-mobile-provider";
 import { isAddress, parseUnits, type Address } from "viem";
 import { useBalance, useReadContract, useSignMessage, useWriteContract } from "wagmi";
@@ -3109,27 +3109,6 @@ declare global {
     };
     sui?: SuiWalletLike;
     suiWallet?: SuiWalletLike;
-    safepal?: TronProviderLike;
-    safePal?: TronProviderLike;
-    tron?: TronProviderLike;
-    tronLink?: TronProviderLike;
-    tronWeb?: TronWebLike;
-    okxwallet?: TronProviderLike & {
-      tronLink?: TronProviderLike;
-      tronWeb?: TronWebLike;
-    };
-    okxWallet?: TronProviderLike & {
-      tronLink?: TronProviderLike;
-      tronWeb?: TronWebLike;
-    };
-    binancew3w?: TronProviderLike & {
-      tronLink?: TronProviderLike;
-      tronWeb?: TronWebLike;
-    };
-    trustwallet?: TronProviderLike & {
-      tronLink?: TronProviderLike;
-      tronWeb?: TronWebLike;
-    };
   }
 }
 
@@ -3330,6 +3309,70 @@ function useTronWallet(opts: {
         status: "detecting",
         lastMessage: "DOMContentLoaded 이후 provider injection 대기 중",
       }));
+
+      if (isExternalMobileBrowser()) {
+        setProviderState((previous) => ({
+          ...previous,
+          status: "walletconnect",
+          providerLabel: "WalletConnect TRON",
+          lastMessage: "모바일 지갑 선택창을 여는 중",
+        }));
+        try {
+          const walletConnect = await connectTronWalletConnect({
+            onUri: (uri, deepLinks) => {
+              setProviderState((previous) => ({
+                ...previous,
+                walletConnectUri: uri,
+                walletConnectDeepLinks: deepLinks,
+                lastMessage: "모바일 지갑 deep link 준비됨",
+              }));
+            },
+          });
+          const addr = walletConnect.address.trim();
+          connectionSourceRef.current = "walletconnect";
+          setProviderState((previous) => ({
+            ...previous,
+            status: "connected",
+            providerLabel: "WalletConnect TRON",
+            address: addr,
+            lastMessage: "WalletConnect TRON 연결됨",
+          }));
+          setConnectedAddress(addr);
+          await refreshFor(addr);
+          return;
+        } catch (walletConnectError) {
+          tronDebugLog("official walletconnect adapter failed", {
+            error:
+              walletConnectError instanceof Error
+                ? walletConnectError.message
+                : String(walletConnectError),
+          });
+        }
+
+        try {
+          const tronLink = await connectTronLinkAdapter();
+          const addr = tronLink.address.trim();
+          connectionSourceRef.current = "injected";
+          setProviderState((previous) => ({
+            ...previous,
+            status: "connected",
+            providerLabel: "TronLink",
+            address: addr,
+            lastMessage: "TronLink 연결됨",
+          }));
+          setConnectedAddress(addr);
+          await refreshFor(addr);
+          return;
+        } catch (tronLinkError) {
+          tronDebugLog("official tronlink adapter failed", {
+            error:
+              tronLinkError instanceof Error
+                ? tronLinkError.message
+                : String(tronLinkError),
+          });
+        }
+      }
+
       const snapshot = await waitForTronProviderSnapshot();
       setProviderState((previous) => ({
         ...previous,

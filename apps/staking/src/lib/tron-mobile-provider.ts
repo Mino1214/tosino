@@ -1,6 +1,10 @@
 "use client";
 
 import { projectId } from "@/lib/appkit-config";
+import {
+  TronLinkAdapter,
+  WalletConnectAdapter,
+} from "@tronweb3/tronwallet-adapters";
 
 export const TRON_PROVIDER_POLL_TIMEOUT_MS = 5_000;
 const TRON_PROVIDER_POLL_INTERVAL_MS = 150;
@@ -135,15 +139,8 @@ type TronWalletNamespace = TronProviderLike & {
 };
 
 let tip6963TronProvider: TronProviderLike | null = null;
-let walletConnectWallet: WalletConnectWalletLike | null = null;
-
-interface WalletConnectWalletLike {
-  connect: (options?: { onUri?: (uri: string) => void }) => Promise<{ address: string }>;
-  disconnect: () => Promise<void>;
-  signMessage?: (message: string) => Promise<unknown>;
-  on?: (event: "accountsChanged" | "disconnect", listener: (...args: unknown[]) => void) => void;
-  off?: (event: string, listener: (...args: unknown[]) => void) => void;
-}
+let tronLinkAdapter: TronLinkAdapter | null = null;
+let walletConnectAdapter: WalletConnectAdapter | null = null;
 
 export function createInitialTronProviderState(): TronProviderDetectionState {
   const environment = detectMobileWalletEnvironment();
@@ -454,12 +451,9 @@ export function getTronAddressFromRequest(requested: unknown) {
 export async function connectTronWalletConnect(opts?: {
   onUri?: (uri: string, deepLinks: WalletDeepLink[]) => void;
 }) {
-  if (!walletConnectWallet) {
-    const { WalletConnectWallet, WalletConnectChainID } = await import(
-      "@tronweb3/walletconnect-tron"
-    );
-    walletConnectWallet = new WalletConnectWallet({
-      network: WalletConnectChainID.Mainnet,
+  if (!walletConnectAdapter) {
+    walletConnectAdapter = new WalletConnectAdapter({
+      network: "Mainnet",
       options: {
         relayUrl: "wss://relay.walletconnect.com",
         projectId,
@@ -479,18 +473,19 @@ export async function connectTronWalletConnect(opts?: {
       allWallets: "ONLY_MOBILE",
       enableAnalytics: false,
       debug: isTronDebugEnabled(),
+      enableMobileDeepLink: true,
       themeMode: "dark",
       themeVariables: {
         "--w3m-accent": "#ef4444",
         "--w3m-border-radius-master": "4px",
         "--w3m-z-index": 1000,
       },
-    }) as WalletConnectWalletLike;
+    });
   }
 
   const environment = detectMobileWalletEnvironment();
   const shouldCaptureUri = Boolean(opts?.onUri && environment.isMobile);
-  const result = await walletConnectWallet.connect(
+  await walletConnectAdapter.connect(
     shouldCaptureUri
       ? {
           onUri: (uri) => {
@@ -506,37 +501,62 @@ export async function connectTronWalletConnect(opts?: {
         }
       : undefined,
   );
+  const address = walletConnectAdapter.address;
+  if (!address) throw new Error("WalletConnect TRON 주소를 가져오지 못했습니다.");
 
   tronDebugLog("walletconnect connected", {
     chainId: TRON_MAINNET_CHAIN_ID,
-    address: result.address,
+    address,
   });
   return {
-    address: result.address,
-    wallet: walletConnectWallet,
+    address,
+    adapter: walletConnectAdapter,
   };
 }
 
 export async function disconnectTronWalletConnect() {
-  await walletConnectWallet?.disconnect().catch((error) => {
+  await walletConnectAdapter?.disconnect().catch((error) => {
     tronDebugLog("walletconnect disconnect failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   });
-  walletConnectWallet = null;
+  walletConnectAdapter = null;
 }
 
 export function hasTronWalletConnectSession() {
-  return Boolean(walletConnectWallet);
+  return Boolean(walletConnectAdapter?.address);
 }
 
 export async function signTronWalletConnectMessage(message: string) {
-  if (!walletConnectWallet?.signMessage) {
+  if (!walletConnectAdapter?.address) {
     throw new Error("WalletConnect TRON 서명 세션을 찾지 못했습니다.");
   }
-  const signature = await walletConnectWallet.signMessage(message);
+  const signature = await walletConnectAdapter.signMessage(message);
   if (!signature) throw new Error("WalletConnect TRON 서명에 실패했습니다.");
   return String(signature);
+}
+
+export async function connectTronLinkAdapter() {
+  if (!tronLinkAdapter) {
+    tronLinkAdapter = new TronLinkAdapter({
+      checkTimeout: 1200,
+      openAppWithDeeplink: true,
+      openUrlWhenWalletNotFound: false,
+      dappName: "StakingDemo",
+      dappIcon:
+        typeof window === "undefined"
+          ? ""
+          : `${window.location.origin}/favicon.ico`,
+    });
+  }
+
+  await tronLinkAdapter.connect();
+  const address = tronLinkAdapter.address;
+  if (!address) throw new Error("TronLink 주소를 가져오지 못했습니다.");
+  return {
+    address,
+    adapter: tronLinkAdapter,
+  };
 }
 
 export function buildWalletConnectDeepLinks(
