@@ -19,6 +19,7 @@ type HeaderUser = { id: string; username: string };
 
 const NAV_ITEMS = [
   { href: "/scanner", label: "스테이킹 스캐너" },
+  { href: "/bots", label: "트레이딩 봇" },
   { href: "/news", label: "뉴스" },
   { href: "/calendar", label: "캘린더" },
   { href: "/guide", label: "가이드" },
