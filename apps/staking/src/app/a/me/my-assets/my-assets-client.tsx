@@ -267,11 +267,14 @@ export function MyAssetsClient({
   } | null>(null);
   const [stakeRequests, setStakeRequests] = useState<StakeRequestRecord[]>([]);
   const autoTronStartedRef = useRef(false);
+  const previousEvmAddressRef = useRef<Address | null>(null);
 
   const tron = useTronWallet({
     initialAddress: null,
     onChange: () => {},
   });
+  const tronAddress = tron.address;
+  const disconnectTron = tron.disconnect;
 
   const browserWallets = useBrowserWallets();
   const evmAddressForBalances =
@@ -279,6 +282,15 @@ export function MyAssetsClient({
     (persistedAddress && isAddress(persistedAddress)
       ? (persistedAddress as Address)
       : null);
+
+  useEffect(() => {
+    const previous = previousEvmAddressRef.current;
+    previousEvmAddressRef.current = evmAddressForBalances;
+    if (!evmAddressForBalances || !tronAddress) return;
+    if (previous !== evmAddressForBalances) {
+      void disconnectTron();
+    }
+  }, [disconnectTron, evmAddressForBalances, tronAddress]);
 
   useEffect(() => {
     if (typeof window === "undefined" || autoTronStartedRef.current) return;
@@ -3359,7 +3371,7 @@ function useTronWallet(opts: {
     };
   }, []);
 
-  async function connect() {
+  const connect = useCallback(async () => {
     setIsConnecting(true);
     setError(null);
     try {
@@ -3521,9 +3533,9 @@ function useTronWallet(opts: {
     } finally {
       setIsConnecting(false);
     }
-  }
+  }, [refreshFor, setConnectedAddress]);
 
-  async function disconnect() {
+  const disconnect = useCallback(async () => {
     setError(null);
     if (connectionSourceRef.current === "adapter") {
       await disconnectConnectedTronAdapter();
@@ -3537,13 +3549,13 @@ function useTronWallet(opts: {
       lastMessage: "TRON 연결 해제됨",
     }));
     setConnectedAddress(null);
-  }
+  }, [setConnectedAddress]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const current = addressRef.current;
     if (!current) return;
     await refreshFor(current);
-  }
+  }, [refreshFor]);
 
   useEffect(() => {
     const initialAddress = addressRef.current;

@@ -585,6 +585,12 @@ async function connectSignableWallet(
   wallet: TronSignableWallet,
   opts?: { onUri?: (uri: string, deepLinks: WalletDeepLink[]) => void },
 ) {
+  await wallet.disconnect?.().catch((error) => {
+    tronDebugLog("stale TRON adapter session disconnect failed", {
+      provider: wallet.label,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
   await wallet.connect?.(createMobileWalletConnectOptions(opts));
   if (wallet.switchChain) {
     await wallet.switchChain(TRON_MAINNET_HEX_CHAIN_ID).catch((error) => {
@@ -649,7 +655,6 @@ export async function connectTronWalletConnect(opts?: {
       },
       async disconnect() {
         await wallet.disconnect();
-        wallet.removeAllListeners();
         address = null;
       },
       signMessage: (message) => wallet.signMessage(message),
