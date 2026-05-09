@@ -185,6 +185,15 @@ const BROWSER_WALLET_LABELS: Record<BrowserWalletConnectionKind, string> = {
   cardano: "Cardano CIP-30",
 };
 
+// Wallet-first picker용 지갑 브랜드. 같은 시드 가져온 4개 지갑 모두 EVM 주소를 동일하게 노출하므로,
+// EVM 연결 후 TRON은 EVM→TRON 주소 변환(0x→41 prefix 후 base58check)으로 잔액을 조회한다.
+const WALLET_BRANDS = [
+  { id: "safepal", label: "SafePal", color: "#1F8FFF" },
+  { id: "metamask", label: "MetaMask", color: "#F6851B" },
+  { id: "binance", label: "Binance", color: "#F0B90B" },
+  { id: "trust", label: "Trust", color: "#3375BB" },
+] as const;
+
 const MULTICHAIN_WALLET_STORAGE_KEY = "staking_multichain_wallets";
 
 interface StakeRequestRecord {
@@ -801,110 +810,154 @@ export function MyAssetsClient({
                 />
               </div>
 
-              {evmAddressForBalances ? (
-                <button
-                  type="button"
-                  onClick={() => wallet.connect()}
-                  className="group mt-4 flex min-h-[58px] w-full items-center justify-between gap-3 rounded-2xl border border-emerald-400/60 !bg-emerald-500 px-4 py-3 text-sm font-extrabold !text-white shadow-[0_18px_38px_-18px_rgba(16,185,129,0.95)] ring-1 ring-white/50 transition hover:-translate-y-0.5 hover:!bg-emerald-600 hover:shadow-[0_22px_48px_-20px_rgba(16,185,129,1)] active:translate-y-0"
-                >
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/18 ring-1 ring-white/25">
-                      <CheckCircle2 className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0 text-left">
-                      <span className="block truncate">EVM 지갑 연결됨</span>
-                      <span className="mt-0.5 block truncate text-[11px] font-bold text-white/80">
-                        {shortAddress(evmAddressForBalances)} · 지갑 변경
-                      </span>
-                    </span>
-                  </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 opacity-85 transition group-hover:translate-x-0.5" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => wallet.connect()}
-                  disabled={wallet.isConnecting}
-                  className="group mt-4 flex min-h-[54px] w-full items-center justify-between gap-3 rounded-2xl border border-accent-strong/35 !bg-accent-strong px-4 py-3 text-sm font-extrabold !text-white shadow-[0_18px_38px_-18px_rgba(255,107,72,0.95)] ring-1 ring-white/50 transition hover:-translate-y-0.5 hover:!bg-accent-strong/95 hover:shadow-[0_22px_48px_-20px_rgba(255,107,72,1)] active:translate-y-0 disabled:cursor-wait disabled:opacity-90 disabled:hover:translate-y-0"
-                >
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/18 ring-1 ring-white/25">
-                      {wallet.isConnecting ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Plug className="h-4 w-4" />
-                      )}
-                    </span>
-                    <span className="truncate">
-                      {wallet.isConnecting ? "연결 중..." : "EVM 지갑 연결"}
-                    </span>
-                  </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 opacity-85 transition group-hover:translate-x-0.5" />
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => void tron.connect()}
-                disabled={tron.isConnecting}
-                className={`group mt-2 flex min-h-[54px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm font-extrabold shadow-[0_18px_38px_-18px_rgba(239,68,68,0.7)] ring-1 ring-white/50 transition hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-wait disabled:opacity-90 disabled:hover:translate-y-0 ${
-                  tron.address
-                    ? "border-red-400/50 !bg-red-500 !text-white hover:!bg-red-600"
-                    : "border-red-500/35 bg-white text-red-600 hover:border-red-500 hover:bg-red-50"
-                }`}
-              >
-                <span className="flex min-w-0 items-center gap-2.5">
-                  <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ${
-                      tron.address
-                        ? "bg-white/18 ring-white/25"
-                        : "bg-red-50 ring-red-500/10"
-                    }`}
-                  >
-                    {tron.isConnecting ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : tron.address ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : (
-                      <Plug className="h-4 w-4" />
-                    )}
-                  </span>
-                  <span className="min-w-0 text-left">
-                    <span className="block truncate">
-                      {tron.isConnecting
-                        ? "TRON 연결 중..."
-                        : tron.address
-                          ? "TRON 지갑 연결됨"
-                          : "TRON 지갑 연결"}
-                    </span>
-                    <span
-                      className={`mt-0.5 block truncate text-[11px] font-bold ${
-                        tron.address ? "text-white/80" : "text-red-500/80"
-                      }`}
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                    지갑별 자산 조회
+                  </p>
+                  {(evmAddressForBalances || tron.address) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        wallet.disconnect();
+                        setPersistedAddress(null);
+                        void tron.disconnect();
+                      }}
+                      className="rounded-full border border-black/10 bg-white px-2 py-0.5 text-[10px] font-bold text-foreground/70 transition hover:border-foreground/30"
                     >
-                      {tron.address
-                        ? `TRX ${
-                            tron.trxBalance === null
+                      연결 해제
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {WALLET_BRANDS.map((brand) => (
+                    <div
+                      key={brand.id}
+                      className="rounded-2xl border border-black/10 bg-white p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold text-white"
+                          style={{ backgroundColor: brand.color }}
+                        >
+                          {brand.label[0]}
+                        </span>
+                        <span className="truncate text-xs font-extrabold text-foreground">
+                          {brand.label}
+                        </span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => wallet.connect()}
+                          disabled={wallet.isConnecting}
+                          className="rounded-full border border-emerald-500/30 bg-emerald-50 px-2 py-1.5 text-[10px] font-extrabold text-emerald-700 transition hover:border-emerald-500 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {wallet.isConnecting
+                            ? "EVM 연결중..."
+                            : evmAddressForBalances
+                              ? "EVM 변경"
+                              : "EVM 조회"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!evmAddressForBalances) {
+                              void wallet.connect();
+                              return;
+                            }
+                            void tron.connectFromEvm(evmAddressForBalances);
+                          }}
+                          disabled={tron.isConnecting || tron.isLoading}
+                          className="rounded-full border border-red-500/30 bg-red-50 px-2 py-1.5 text-[10px] font-extrabold text-red-700 transition hover:border-red-500 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {tron.isConnecting || tron.isLoading
+                            ? "TRON 조회중..."
+                            : "TRON 조회"}
+                        </button>
+                        {/*
+                          SOL 버튼은 임시 비활성. 사유: BIP39 동일 시드여도 EVM(secp256k1)에서
+                          SOL(ed25519) 주소를 derive할 수 없어, 지갑이 직접 window.solana provider를
+                          노출해줘야 함. SafePal/Trust 익스텐션 직접 연동 또는 사용자 SOL 주소 입력 UI를
+                          도입할 때 다시 켠다.
+                          <button
+                            type="button"
+                            onClick={() => void browserWallets.connect("solana")}
+                            disabled={browserWallets.connecting === "solana"}
+                            className="col-span-2 rounded-full border border-violet-500/30 bg-violet-50 px-2 py-1.5 text-[10px] font-extrabold text-violet-700"
+                          >
+                            SOL 조회
+                          </button>
+                        */}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {(evmAddressForBalances || tron.address || tron.error) && (
+                  <div className="rounded-2xl border border-black/5 bg-black/[0.02] p-3 text-[11px] font-semibold text-foreground/80">
+                    {evmAddressForBalances && (
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate">
+                            EVM · {shortAddress(evmAddressForBalances)}
+                          </span>
+                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                            연결됨
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
+                          <span>
+                            ETH{" "}
+                            {ethBalance === null
                               ? "-"
-                              : formatNumber(tron.trxBalance, 6)
-                          } · USDT ${
-                            tron.usdtBalance === null
+                              : formatNumber(ethBalance, 6)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {tron.address && (
+                      <div className={evmAddressForBalances ? "mt-2" : ""}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate">
+                            TRON · {shortAddress(tron.address)}
+                            {tron.providerState.providerLabel
+                              ? ` (${tron.providerState.providerLabel})`
+                              : ""}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void tron.refresh()}
+                            disabled={tron.isLoading}
+                            className="rounded-full border border-black/10 bg-white px-2 py-0.5 text-[9px] font-bold text-foreground/70 disabled:opacity-50"
+                          >
+                            {tron.isLoading ? "조회중" : "새로고침"}
+                          </button>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
+                          <span>
+                            TRX{" "}
+                            {tron.trxBalance === null
                               ? "-"
-                              : formatNumber(tron.usdtBalance, 6)
-                          }`
-                        : tron.providerState.providerLabel
-                          ? `${tron.providerState.providerLabel} 감지됨`
-                          : `${tron.providerState.environment.label} · WalletConnect 지원`}
-                    </span>
-                  </span>
-                </span>
-                <ArrowRight className="h-4 w-4 shrink-0 opacity-85 transition group-hover:translate-x-0.5" />
-              </button>
-              {tron.error && (
-                <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
-                  {tron.error}
-                </p>
-              )}
+                              : formatNumber(tron.trxBalance, 6)}
+                          </span>
+                          <span>
+                            USDT(TRC20){" "}
+                            {tron.usdtBalance === null
+                              ? "-"
+                              : formatNumber(tron.usdtBalance, 6)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {tron.error && (
+                      <p className="mt-2 rounded-lg bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700">
+                        {tron.error}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <StakedAssetsShowcase
                 assets={stakedAssets}
@@ -976,7 +1029,12 @@ export function MyAssetsClient({
           </div>
 
           <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {lstCatalogGroups.map((group) => {
+            {lstCatalogGroups
+              // SOL은 EVM-derive 불가하여 임시 비활성. LST_PRODUCTS에 solana 엔트리가 추가되더라도
+              // 카드가 노출되지 않도록 여기서 스킵한다. window.solana 직접 연동 또는 SOL 주소 입력 UI
+              // 도입 시 이 필터를 제거하고 useBrowserWallets를 다시 살린다.
+              .filter((group) => group.connectionKind !== "solana")
+              .map((group) => {
               const browserKind = isBrowserWalletKind(group.connectionKind)
                 ? group.connectionKind
                 : null;
@@ -3228,6 +3286,52 @@ interface SuiWalletLike {
   requestPermissions?: (args: { permissions: string[] }) => Promise<unknown>;
 }
 
+// EVM 주소(0xABC…) → TRON 메인넷 base58 주소 변환.
+// 둘 다 secp256k1 + keccak256 기반이라 동일 private key로 derive되는 주소만 인코딩이 다름.
+// 따라서 wallet provider가 TRON을 직접 노출하지 않아도 EVM 주소만 알면 같은 시드의 TRON 주소가 나온다.
+async function evmAddressToTronBase58(evmAddress: string): Promise<string> {
+  const hex = evmAddress.toLowerCase().replace(/^0x/, "");
+  if (hex.length !== 40) throw new Error("유효한 EVM 주소가 아닙니다.");
+  const payload = new Uint8Array(21);
+  payload[0] = 0x41;
+  for (let i = 0; i < 20; i += 1) {
+    payload[i + 1] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  const h1 = new Uint8Array(await crypto.subtle.digest("SHA-256", payload));
+  const h2 = new Uint8Array(await crypto.subtle.digest("SHA-256", h1));
+  const merged = new Uint8Array(payload.length + 4);
+  merged.set(payload);
+  merged.set(h2.slice(0, 4), payload.length);
+  return tronBase58Encode(merged);
+}
+
+const TRON_BASE58_ALPHABET =
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function tronBase58Encode(value: Uint8Array): string {
+  const digits: number[] = [0];
+  for (const byte of value) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i += 1) {
+      carry += digits[i] << 8;
+      digits[i] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = Math.floor(carry / 58);
+    }
+  }
+  for (const byte of value) {
+    if (byte !== 0) break;
+    digits.push(0);
+  }
+  return digits
+    .reverse()
+    .map((d) => TRON_BASE58_ALPHABET[d])
+    .join("");
+}
+
 function useTronWallet(opts: {
   initialAddress: string | null;
   onChange: (address: string | null) => void;
@@ -3552,6 +3656,43 @@ function useTronWallet(opts: {
     }
   }, [refreshFor, setConnectedAddress]);
 
+  // EVM 주소 기반 TRON 연결: 같은 시드의 EVM 주소(0x…)에서 TRON 메인넷 주소(T…)를 클라이언트에서
+  // 변환한 뒤 /api/tron/balances에 위임해 잔액만 조회한다. provider/서명 없이도 잔액 표시가 가능.
+  const connectFromEvm = useCallback(
+    async (evmAddress: string) => {
+      setIsConnecting(true);
+      setError(null);
+      try {
+        await disconnectConnectedTronAdapter();
+        connectionSourceRef.current = null;
+        const tronAddress = await evmAddressToTronBase58(evmAddress);
+        setProviderState((previous) => ({
+          ...previous,
+          status: "connected",
+          providerLabel: "EVM 주소 변환",
+          address: tronAddress,
+          walletConnectUri: null,
+          walletConnectDeepLinks: [],
+          lastMessage: "EVM 주소를 TRON 주소로 변환해 잔액을 조회합니다.",
+        }));
+        setConnectedAddress(tronAddress);
+        await refreshFor(tronAddress);
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : "TRON 주소 변환 실패";
+        setError(message);
+        setProviderState((previous) => ({
+          ...previous,
+          status: "error",
+          lastMessage: message,
+        }));
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    [refreshFor, setConnectedAddress],
+  );
+
   const disconnect = useCallback(async () => {
     setError(null);
     await disconnectConnectedTronAdapter();
@@ -3641,6 +3782,7 @@ function useTronWallet(opts: {
     usdtBalance,
     providerState,
     connect,
+    connectFromEvm,
     disconnect,
     refresh,
   };
