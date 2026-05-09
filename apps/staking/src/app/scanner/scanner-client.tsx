@@ -1,77 +1,86 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
-import { ArrowDownUp, ShieldCheck, Search, Filter } from "lucide-react";
-import { STAKING_OPTIONS, type StakingOption } from "@/lib/mock-data";
-import { LST_PRODUCTS } from "@/lib/staking-assets";
+import { Search } from "lucide-react";
+import { LST_PRODUCTS, type LstProduct } from "@/lib/staking-assets";
 import { cn } from "@/lib/utils";
 
-type Category = StakingOption["category"] | "전체";
-type SortKey = "apy" | "platform" | "coin";
+interface NetworkGroup {
+  network: string;
+  networkIcon?: string;
+  color: string;
+  products: LstProduct[];
+}
 
-const CATEGORIES: Category[] = ["전체", "거래소", "DeFi", "지갑"];
-
-// 대시보드(/dashboard, /a/me/my-assets)의 자산 리스트와 동일한 코인만 스캐너에 노출하기 위한 필터.
-// LST_PRODUCTS의 sourceSymbol을 모두 모아두고 STAKING_OPTIONS를 그 집합으로 거른다.
-const DASHBOARD_COIN_SYMBOLS = new Set(
-  LST_PRODUCTS.map((product) => product.sourceSymbol.toUpperCase()),
-);
-const DASHBOARD_STAKING_OPTIONS = STAKING_OPTIONS.filter((option) =>
-  DASHBOARD_COIN_SYMBOLS.has(option.coin.toUpperCase()),
-);
+const NETWORK_GROUPS: NetworkGroup[] = (() => {
+  const map = new Map<string, NetworkGroup>();
+  for (const product of LST_PRODUCTS) {
+    const existing = map.get(product.network);
+    if (!existing) {
+      map.set(product.network, {
+        network: product.network,
+        networkIcon: product.networkIcon,
+        color: product.color,
+        products: [product],
+      });
+    } else {
+      existing.products.push(product);
+    }
+  }
+  return Array.from(map.values());
+})();
 
 export function ScannerClient() {
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<Category>("전체");
-  const [sortKey, setSortKey] = useState<SortKey>("apy");
-  const [sortDesc, setSortDesc] = useState(true);
+  const [activeNetwork, setActiveNetwork] = useState<string>("ALL");
 
-  const filtered = useMemo(() => {
+  const filteredGroups = useMemo(() => {
     const lower = search.trim().toLowerCase();
-    let list = DASHBOARD_STAKING_OPTIONS.filter((o) => {
-      const matchSearch =
-        !lower ||
-        o.coin.toLowerCase().includes(lower) ||
-        o.coinName.toLowerCase().includes(lower) ||
-        o.platform.toLowerCase().includes(lower);
-      const matchCat = category === "전체" || o.category === category;
-      return matchSearch && matchCat;
+    return NETWORK_GROUPS.map((group) => {
+      const products = group.products.filter((product) => {
+        if (!lower) return true;
+        return (
+          product.sourceSymbol.toLowerCase().includes(lower) ||
+          product.sourceName.toLowerCase().includes(lower) ||
+          product.receiptSymbol.toLowerCase().includes(lower) ||
+          product.platform.toLowerCase().includes(lower) ||
+          group.network.toLowerCase().includes(lower)
+        );
+      });
+      return { ...group, products };
+    }).filter((group) => {
+      if (activeNetwork !== "ALL" && group.network !== activeNetwork) return false;
+      return group.products.length > 0;
     });
-    list = [...list].sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "apy") cmp = a.apy - b.apy;
-      else if (sortKey === "platform") cmp = a.platform.localeCompare(b.platform);
-      else cmp = a.coin.localeCompare(b.coin);
-      return sortDesc ? -cmp : cmp;
-    });
-    return list;
-  }, [search, category, sortKey, sortDesc]);
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDesc((v) => !v);
-    else {
-      setSortKey(key);
-      setSortDesc(true);
-    }
-  }
+  }, [search, activeNetwork]);
 
   const stats = useMemo(() => {
-    const apys = filtered.map((o) => o.apy);
+    const networks = filteredGroups.length;
+    const tokens = filteredGroups.reduce(
+      (sum, group) => sum + group.products.length,
+      0,
+    );
+    const apys = filteredGroups
+      .flatMap((group) => group.products)
+      .map((product) => product.estimatedApy)
+      .filter((apy): apy is number => typeof apy === "number");
     const max = apys.length ? Math.max(...apys) : 0;
     const avg = apys.length ? apys.reduce((a, b) => a + b, 0) / apys.length : 0;
-    return { count: filtered.length, max, avg };
-  }, [filtered]);
+    return { networks, tokens, max, avg };
+  }, [filteredGroups]);
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SummaryCard label="검색 결과" value={`${stats.count}개`} />
+      <div className="grid gap-3 sm:grid-cols-4">
+        <SummaryCard label="네트워크" value={`${stats.networks}개`} />
+        <SummaryCard label="LST 수" value={`${stats.tokens}개`} />
         <SummaryCard
-          label="최고 APY"
+          label="최고 예상 APY"
           value={`${stats.max.toFixed(2)}%`}
           accent
         />
-        <SummaryCard label="평균 APY" value={`${stats.avg.toFixed(2)}%`} />
+        <SummaryCard label="평균 예상 APY" value={`${stats.avg.toFixed(2)}%`} />
       </div>
 
       <div className="rounded-3xl border border-black/5 bg-white p-4 sm:p-5">
@@ -81,173 +90,226 @@ export function ScannerClient() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="코인 또는 플랫폼 검색 (예: ETH, Lido)"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="토큰, 네트워크 검색 (예: USDT, Polygon)"
               className="w-full rounded-xl border border-black/10 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
             />
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            <Filter className="h-4 w-4 shrink-0 text-muted" />
-            {CATEGORIES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCategory(c)}
-                className={cn(
-                  "shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition",
-                  category === c
-                    ? "bg-foreground text-white"
-                    : "bg-black/5 text-foreground/70 hover:bg-black/10",
-                )}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <NetworkPill
+            label="모든 네트워크"
+            active={activeNetwork === "ALL"}
+            onClick={() => setActiveNetwork("ALL")}
+          />
+          {NETWORK_GROUPS.map((group) => (
+            <NetworkPill
+              key={group.network}
+              label={group.network}
+              active={activeNetwork === group.network}
+              onClick={() => setActiveNetwork(group.network)}
+              icon={group.networkIcon}
+            />
+          ))}
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-black/5 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-black/[0.025] text-xs uppercase tracking-wider text-muted">
-              <tr>
-                <Th sortable onClick={() => toggleSort("coin")}>코인</Th>
-                <Th sortable onClick={() => toggleSort("platform")}>플랫폼</Th>
-                <Th>카테고리</Th>
-                <Th sortable onClick={() => toggleSort("apy")}>APY</Th>
-                <Th>락업</Th>
-                <Th className="hidden md:table-cell">최소 스테이킹</Th>
-                <Th className="hidden lg:table-cell">보상 토큰</Th>
-                <Th className="hidden md:table-cell">검증</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((o) => (
-                <tr
-                  key={o.id}
-                  className="border-t border-black/5 transition hover:bg-orange-50/50"
-                >
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground text-[11px] font-bold text-white">
-                        {o.coin.slice(0, 3)}
+      <div className="space-y-5">
+        {filteredGroups.length === 0 ? (
+          <div className="rounded-3xl border border-black/5 bg-white p-12 text-center text-sm text-muted">
+            검색 결과가 없습니다.
+          </div>
+        ) : (
+          filteredGroups.map((group) => (
+            <section
+              key={group.network}
+              className="rounded-3xl border border-black/5 bg-white p-5"
+            >
+              <header className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <NetworkLogo
+                    icon={group.networkIcon}
+                    label={group.network}
+                    color={group.color}
+                  />
+                  <div>
+                    <h2 className="text-base font-extrabold text-foreground">
+                      {group.network}
+                    </h2>
+                    <p className="text-[11px] font-semibold text-muted">
+                      {group.products.length}개 LST
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-black/[0.04] px-3 py-1 text-[11px] font-bold text-foreground/65">
+                  {averageApy(group.products).toFixed(2)}% 평균
+                </span>
+              </header>
+
+              <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {group.products.map((product) => (
+                  <li
+                    key={`${product.network}-${product.receiptSymbol}`}
+                    className="rounded-2xl border border-black/5 bg-white p-3 transition hover:border-accent-strong/30 hover:shadow-sm"
+                  >
+                    <div className="flex items-center gap-3">
+                      <TokenAvatar
+                        icon={product.sourceIcon ?? product.receiptIcon}
+                        symbol={product.sourceSymbol}
+                        color={product.color}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="flex flex-wrap items-center gap-1 text-sm font-extrabold text-foreground">
+                          <span>{product.sourceSymbol}</span>
+                          <span className="text-muted">→</span>
+                          <span>{product.receiptSymbol}</span>
+                        </p>
+                        <p className="truncate text-[11px] text-muted">
+                          {product.platform}
+                        </p>
                       </div>
-                      <div>
-                        <p className="font-semibold">{o.coin}</p>
-                        <p className="text-[11px] text-muted">{o.coinName}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 font-medium">{o.platform}</td>
-                  <td className="px-4 py-4">
-                    <CategoryBadge cat={o.category} />
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="font-mono text-base font-bold text-accent-strong">
-                      {o.apy.toFixed(2)}%
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-muted">{o.lockup}</td>
-                  <td className="hidden px-4 py-4 font-mono text-muted md:table-cell">
-                    {o.minStake} {o.coin}
-                  </td>
-                  <td className="hidden px-4 py-4 text-muted lg:table-cell">
-                    {o.payoutToken}
-                  </td>
-                  <td className="hidden px-4 py-4 md:table-cell">
-                    {o.audited && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-                        <ShieldCheck className="h-3 w-3" />
-                        감사
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-extrabold text-emerald-700">
+                        {product.estimatedApy.toFixed(2)}%
                       </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center text-muted">
-                    조건에 맞는 결과가 없습니다.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-function Th({
-  children,
-  className,
-  sortable,
+function NetworkPill({
+  label,
+  active,
   onClick,
+  icon,
 }: {
-  children: React.ReactNode;
-  className?: string;
-  sortable?: boolean;
-  onClick?: () => void;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  icon?: string;
 }) {
   return (
-    <th
-      className={cn(
-        "px-4 py-3 text-left font-semibold",
-        sortable && "cursor-pointer select-none hover:text-foreground",
-        className,
-      )}
+    <button
+      type="button"
       onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors",
+        active
+          ? "bg-accent-strong text-white shadow-sm"
+          : "bg-black/[0.04] text-foreground/65 hover:bg-black/[0.08]",
+      )}
     >
-      <span className="inline-flex items-center gap-1">
-        {children}
-        {sortable && <ArrowDownUp className="h-3 w-3 opacity-60" />}
-      </span>
-    </th>
+      {icon && (
+        <Image
+          src={icon}
+          alt=""
+          width={14}
+          height={14}
+          className="h-3.5 w-3.5 shrink-0 rounded-full object-contain"
+        />
+      )}
+      {label}
+    </button>
   );
 }
 
-function CategoryBadge({ cat }: { cat: StakingOption["category"] }) {
-  const map: Record<StakingOption["category"], string> = {
-    거래소: "bg-amber-100 text-amber-700",
-    DeFi: "bg-violet-100 text-violet-700",
-    지갑: "bg-sky-100 text-sky-700",
-  };
+function NetworkLogo({
+  icon,
+  label,
+  color,
+}: {
+  icon?: string;
+  label: string;
+  color: string;
+}) {
   return (
-    <span
-      className={cn(
-        "rounded-full px-2.5 py-1 text-[11px] font-semibold",
-        map[cat],
-      )}
+    <div
+      className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-white"
+      style={{ color }}
     >
-      {cat}
-    </span>
+      {icon ? (
+        <Image
+          src={icon}
+          alt={`${label} logo`}
+          width={36}
+          height={36}
+          className="h-full w-full object-contain p-1.5"
+        />
+      ) : (
+        <span className="text-[10px] font-extrabold">{label.slice(0, 2)}</span>
+      )}
+    </div>
+  );
+}
+
+function TokenAvatar({
+  icon,
+  symbol,
+  color,
+}: {
+  icon?: string;
+  symbol: string;
+  color: string;
+}) {
+  return (
+    <div
+      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-white"
+      style={{ color }}
+    >
+      {icon ? (
+        <Image
+          src={icon}
+          alt={`${symbol} logo`}
+          width={32}
+          height={32}
+          className="h-full w-full object-contain p-1"
+        />
+      ) : (
+        <span className="text-[10px] font-extrabold">{symbol.slice(0, 3)}</span>
+      )}
+    </div>
   );
 }
 
 function SummaryCard({
   label,
   value,
-  accent,
+  accent = false,
 }: {
   label: string;
   value: string;
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-3xl border border-black/5 bg-white p-5">
-      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+    <div
+      className={cn(
+        "rounded-2xl border border-black/5 bg-white p-4",
+        accent && "ring-1 ring-accent-strong/30",
+      )}
+    >
+      <div className="text-[10px] font-bold uppercase tracking-widest text-muted">
         {label}
-      </p>
-      <p
+      </div>
+      <div
         className={cn(
-          "mt-2 text-3xl font-extrabold tracking-tight",
-          accent && "text-accent-strong",
+          "mt-1 font-mono text-2xl font-extrabold tracking-tight",
+          accent ? "text-accent-strong" : "text-foreground",
         )}
       >
         {value}
-      </p>
+      </div>
     </div>
   );
+}
+
+function averageApy(products: LstProduct[]) {
+  if (products.length === 0) return 0;
+  const total = products.reduce((sum, product) => sum + product.estimatedApy, 0);
+  return total / products.length;
 }

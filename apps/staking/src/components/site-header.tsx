@@ -18,7 +18,7 @@ interface SiteHeaderProps {
 type HeaderUser = { id: string; username: string };
 
 const NAV_ITEMS = [
-  { href: "/scanner", label: "스테이킹 스캐너" },
+  { href: "/scanner", label: "스테이킹 토큰" },
   { href: "/bots", label: "트레이딩 봇" },
   { href: "/news", label: "뉴스" },
   { href: "/calendar", label: "캘린더" },

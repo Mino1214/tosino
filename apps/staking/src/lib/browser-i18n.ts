@@ -27,7 +27,7 @@ const ENTRIES: Array<[string, Translation]> = [
   ],
   ["대시보드", { ko: "대시보드", en: "Dashboard", "zh-CN": "仪表板" }],
   ["트레이딩 봇", { ko: "트레이딩 봇", en: "Trading Bots", "zh-CN": "交易机器人" }],
-  ["스테이킹 스캐너", { ko: "스테이킹 스캐너", en: "Staking Scanner", "zh-CN": "质押扫描器" }],
+  ["스테이킹 토큰", { ko: "스테이킹 토큰", en: "Staking Tokens", "zh-CN": "质押代币" }],
   ["뉴스", { ko: "뉴스", en: "News", "zh-CN": "新闻" }],
   ["캘린더", { ko: "캘린더", en: "Calendar", "zh-CN": "日历" }],
   ["에어드롭 캘린더", { ko: "에어드롭 캘린더", en: "Airdrop Calendar", "zh-CN": "空投日历" }],
