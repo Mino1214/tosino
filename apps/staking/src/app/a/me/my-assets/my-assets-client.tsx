@@ -35,6 +35,10 @@ import {
 } from "@/lib/staking-assets";
 import { formatUSD, formatNumber, shortAddress } from "@/lib/utils";
 import {
+  consumeFreshWalletResetMarker,
+  resetRememberedWalletState,
+} from "@/lib/wallet-session-reset";
+import {
   connectMobileTronWallet,
   connectTronWalletConnect,
   createInitialTronProviderState,
@@ -268,6 +272,7 @@ export function MyAssetsClient({
   const [stakeRequests, setStakeRequests] = useState<StakeRequestRecord[]>([]);
   const autoTronStartedRef = useRef(false);
   const previousEvmAddressRef = useRef<Address | null>(null);
+  const walletMemoryResetRef = useRef(false);
 
   const tron = useTronWallet({
     initialAddress: null,
@@ -275,6 +280,7 @@ export function MyAssetsClient({
   });
   const tronAddress = tron.address;
   const disconnectTron = tron.disconnect;
+  const disconnectEvm = wallet.disconnect;
 
   const browserWallets = useBrowserWallets();
   const evmAddressForBalances =
@@ -282,6 +288,17 @@ export function MyAssetsClient({
     (persistedAddress && isAddress(persistedAddress)
       ? (persistedAddress as Address)
       : null);
+
+  useEffect(() => {
+    if (walletMemoryResetRef.current) return;
+    walletMemoryResetRef.current = true;
+
+    consumeFreshWalletResetMarker();
+    setPersistedAddress(null);
+    disconnectEvm();
+    void disconnectTron();
+    void resetRememberedWalletState();
+  }, [disconnectEvm, disconnectTron]);
 
   useEffect(() => {
     const previous = previousEvmAddressRef.current;
@@ -3537,9 +3554,7 @@ function useTronWallet(opts: {
 
   const disconnect = useCallback(async () => {
     setError(null);
-    if (connectionSourceRef.current === "adapter") {
-      await disconnectConnectedTronAdapter();
-    }
+    await disconnectConnectedTronAdapter();
     setProviderState((previous) => ({
       ...previous,
       status: hasInjectedTronProvider() ? "detected" : "idle",

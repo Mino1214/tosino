@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Hexagon, Loader2 } from "lucide-react";
+import { resetRememberedWalletState } from "@/lib/wallet-session-reset";
 
 interface AuthFormProps {
   mode: "login" | "signup";
@@ -52,6 +53,7 @@ export function AuthForm({
         setLoading(false);
         return;
       }
+      await resetRememberedWalletState({ markFreshLogin: true });
       window.dispatchEvent(new CustomEvent(AUTH_CHANGE_EVENT));
       router.refresh();
       router.push(redirectTo);
