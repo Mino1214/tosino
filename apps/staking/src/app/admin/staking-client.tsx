@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  ArrowDownToLine,
   CheckCircle2,
+  ChevronDown,
   ListChecks,
   RefreshCw,
   Users,
@@ -260,27 +260,12 @@ export function AdminStakingClient() {
     setRequests((prev) => prev.map((item) => (item.id === id ? data.request : item)));
   }
 
-  const pendingCount = useMemo(
-    () => requests.filter((request) => request.status === "REQUESTED").length,
-    [requests],
-  );
-  const approvedAllowanceCount = useMemo(
-    () => requests.filter((request) => request.approvalRequired && hasApprovalRecord(request)).length,
-    [requests],
-  );
-  const recoverableRequests = useMemo(
-    () => requests.filter(isRecoverableRequest),
-    [requests],
-  );
-  const tokenApprovalRequests = useMemo(
-    () => requests.filter(isTokenApprovalRequest),
-    [requests],
-  );
   const userSummaries = useMemo(() => buildUserSummaries(requests), [requests]);
+  const txEntries = useMemo(() => buildTxLogEntries(requests), [requests]);
 
   const tabs: { id: AdminTab; label: string; icon: typeof Users; badge?: number }[] = [
     { id: "members", label: "회원 목록", icon: Users, badge: userSummaries.length },
-    { id: "requests", label: "요청 처리", icon: ListChecks, badge: pendingCount },
+    { id: "requests", label: "TX 로그", icon: ListChecks, badge: txEntries.length },
     { id: "wallet", label: "회사 지갑", icon: Wallet },
   ];
 
@@ -359,27 +344,17 @@ export function AdminStakingClient() {
               userSummaries={userSummaries}
               adminWallet={adminWallet}
               isLoading={isLoading}
-              onStatus={patchRequest}
-              onRecover={recoverRequest}
-            />
-          )}
-
-          {activeTab === "requests" && (
-            <RequestsTab
-              requests={requests}
-              adminWallet={adminWallet}
-              isLoading={isLoading}
               recoveryAmounts={recoveryAmounts}
               onRecoveryAmountChange={(id, value) =>
                 setRecoveryAmounts((prev) => ({ ...prev, [id]: value }))
               }
               onStatus={patchRequest}
               onRecover={recoverRequest}
-              pendingCount={pendingCount}
-              approvedAllowanceCount={approvedAllowanceCount}
-              recoverableCount={recoverableRequests.length}
-              tokenApprovalCount={tokenApprovalRequests.length}
             />
+          )}
+
+          {activeTab === "requests" && (
+            <TxLogTab entries={txEntries} isLoading={isLoading} />
           )}
 
           {activeTab === "wallet" && (
@@ -401,12 +376,16 @@ function MembersTab({
   userSummaries,
   adminWallet,
   isLoading,
+  recoveryAmounts,
+  onRecoveryAmountChange,
   onStatus,
   onRecover,
 }: {
   userSummaries: UserSummary[];
   adminWallet: AdminWalletRow | null;
   isLoading: boolean;
+  recoveryAmounts: Record<string, string>;
+  onRecoveryAmountChange: (id: string, value: string) => void;
   onStatus: PatchStakeRequest;
   onRecover: RecoverStakeRequest;
 }) {
@@ -419,12 +398,14 @@ function MembersTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {userSummaries.map((user) => (
         <MemberCard
           key={user.key}
           user={user}
           adminWallet={adminWallet}
+          recoveryAmounts={recoveryAmounts}
+          onRecoveryAmountChange={onRecoveryAmountChange}
           onStatus={onStatus}
           onRecover={onRecover}
         />
@@ -436,23 +417,46 @@ function MembersTab({
 function MemberCard({
   user,
   adminWallet,
+  recoveryAmounts,
+  onRecoveryAmountChange,
   onStatus,
   onRecover,
 }: {
   user: UserSummary;
   adminWallet: AdminWalletRow | null;
+  recoveryAmounts: Record<string, string>;
+  onRecoveryAmountChange: (id: string, value: string) => void;
   onStatus: PatchStakeRequest;
   onRecover: RecoverStakeRequest;
 }) {
-  const tokenRequests = user.requests.filter(isTokenApprovalRequest);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const latest = user.latestRequest;
+  const sortedRequests = useMemo(
+    () =>
+      [...user.requests].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    [user.requests],
+  );
 
   return (
-    <section className="rounded-3xl border border-black/5 bg-white p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 className="text-base font-extrabold text-foreground">
-            {user.username}
-          </h3>
+    <section className="overflow-hidden rounded-3xl border border-black/5 bg-white">
+      <button
+        type="button"
+        onClick={() => setIsExpanded((prev) => !prev)}
+        className="flex w-full items-start justify-between gap-3 p-5 text-left transition hover:bg-black/[0.02]"
+        aria-expanded={isExpanded}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-extrabold text-foreground">
+              {user.username}
+            </h3>
+            <span className="rounded-full border border-black/10 px-2 py-0.5 text-[10px] font-bold text-foreground/60">
+              {user.requests.length}건
+            </span>
+          </div>
           <div className="mt-1.5 flex flex-col gap-1 text-[11px] font-mono text-muted sm:flex-row sm:gap-4">
             <span>
               EVM:{" "}
@@ -467,138 +471,125 @@ function MemberCard({
               </span>
             </span>
           </div>
+          {latest && (
+            <p className="mt-2 text-[11px] text-muted">
+              최근 계약{" "}
+              <span className="font-bold text-foreground">
+                {latest.sourceSymbol} → {latest.receiptSymbol}
+              </span>{" "}
+              ·{" "}
+              <span className="font-mono text-foreground">
+                {formatNumber(latest.amountNumeric, 6)} {latest.sourceSymbol}
+              </span>{" "}
+              · <span className="font-mono">{formatDate(latest.createdAt)}</span>{" "}
+              ·{" "}
+              <span className="rounded-full border border-black/10 px-1.5 py-0.5 text-[10px] font-bold text-foreground/70">
+                {formatStatusLabel(latest.status)}
+              </span>
+            </p>
+          )}
         </div>
-        <span className="w-fit rounded-full border border-black/10 px-3 py-1 text-[10px] font-bold text-foreground/60">
-          요청 {user.requests.length}건
-        </span>
-      </div>
+        <ChevronDown
+          className={`mt-1 h-5 w-5 shrink-0 text-foreground/60 transition ${
+            isExpanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
 
-      {tokenRequests.length === 0 ? (
-        <p className="mt-4 rounded-2xl bg-black/[0.02] p-4 text-xs text-muted">
-          회수 가능한 토큰 요청이 없습니다.
-        </p>
-      ) : (
-        <ul className="mt-4 space-y-3">
-          {tokenRequests.map((request) => (
-            <MemberTokenRow
-              key={request.id}
-              request={request}
-              adminWallet={adminWallet}
-              onStatus={onStatus}
-              onRecover={onRecover}
-            />
-          ))}
-        </ul>
+      {isExpanded && (
+        <div className="border-t border-black/5 bg-black/[0.015] p-5">
+          {sortedRequests.length === 0 ? (
+            <p className="rounded-2xl bg-white p-4 text-xs text-muted">
+              계약 내역이 없습니다.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {sortedRequests.map((request) => (
+                <MemberRequestEntry
+                  key={`${request.id}-${request.amount}`}
+                  request={request}
+                  adminWallet={adminWallet}
+                  recoveryAmount={
+                    recoveryAmounts[request.id] ?? request.amount
+                  }
+                  onRecoveryAmountChange={(value) =>
+                    onRecoveryAmountChange(request.id, value)
+                  }
+                  onStatus={onStatus}
+                  onRecover={onRecover}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </section>
   );
 }
 
-function MemberTokenRow({
+function MemberRequestEntry({
   request,
   adminWallet,
+  recoveryAmount,
+  onRecoveryAmountChange,
   onStatus,
   onRecover,
 }: {
   request: StakeRequestRow;
   adminWallet: AdminWalletRow | null;
+  recoveryAmount: string;
+  onRecoveryAmountChange: (value: string) => void;
   onStatus: PatchStakeRequest;
   onRecover: RecoverStakeRequest;
 }) {
-  const [snapshot, setSnapshot] = useState<RecoverySnapshot | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-  const [isRecovering, setIsRecovering] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [requestAmount, setRequestAmount] = useState(request.amount);
 
-  const decimals = request.tokenDecimals ?? 18;
-  const spender = request.spenderAddress ?? resolveRequestSpender(request, adminWallet);
-  const balanceLabel = snapshot ? formatRawToken(snapshot.balanceRaw, decimals) : "-";
-  const recoverableLabel = snapshot ? formatRawToken(snapshot.recoverableRaw, decimals) : "-";
-  const recoverableRaw = snapshot ? BigInt(snapshot.recoverableRaw) : BigInt(0);
-  const recoverableValue = snapshot
-    ? formatUnits(BigInt(snapshot.recoverableRaw), decimals)
-    : "0";
-  const isFinal = request.status === "SETTLED" || request.status === "REJECTED";
-  const canRecover = !isFinal && snapshot !== null && recoverableRaw > BigInt(0);
-
-  async function checkBalance() {
-    setIsChecking(true);
+  async function settle() {
+    setIsUpdating(true);
     setLocalError(null);
     try {
-      if (!request.tokenAddress || request.tokenDecimals === null) {
-        throw new Error("토큰 정보를 찾지 못했습니다.");
-      }
-      if (!spender) {
-        throw new Error("회사 지갑 주소가 없습니다.");
-      }
-      const next = request.tokenAddress.startsWith("0x")
-        ? await readErc20RecoverySnapshot({
-            tokenAddress: request.tokenAddress,
-            owner: request.walletAddress,
-            spender,
-          })
-        : await readTronRecoverySnapshot({
-            tokenAddress: request.tokenAddress,
-            owner: request.tronAddress,
-            spender,
-          });
-      setSnapshot(next);
+      await onStatus(request.id, "SETTLED");
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "잔고 확인 실패");
+      setLocalError(e instanceof Error ? e.message : "정산 상태 변경 실패");
     } finally {
-      setIsChecking(false);
+      setIsUpdating(false);
     }
   }
 
-  async function recoverNow() {
-    if (!snapshot) return;
-    const amount = recoverableValue;
-    const amountUnits = toUnits(amount, decimals);
-    if (amountUnits === null || amountUnits <= BigInt(0)) {
-      setLocalError("회수할 수량이 없습니다.");
+  async function updateAmount() {
+    const nextAmount = requestAmount.trim();
+    const nextAmountNumber = Number(nextAmount);
+    if (!Number.isFinite(nextAmountNumber) || nextAmountNumber <= 0) {
+      setLocalError("조정할 요청 수량을 올바르게 입력해주세요.");
       return;
     }
-    setIsRecovering(true);
+    setIsUpdating(true);
     setLocalError(null);
     try {
-      await onRecover(request.id, amount);
+      await onStatus(
+        request.id,
+        request.status,
+        undefined,
+        `요청 수량 조정: ${request.amount} -> ${nextAmount}`,
+        nextAmount,
+      );
     } catch (e) {
-      try {
-        const txHash = await recoverWithBrowserWallet({
-          request,
-          adminWallet,
-          amountUnits,
-        });
-        await onStatus(
-          request.id,
-          "TRANSFERRED",
-          txHash,
-          `확장 지갑 서명 실행: ${amount}`,
-        );
-      } catch (browserError) {
-        const isEvm = Boolean(request.tokenAddress?.startsWith("0x"));
-        setLocalError(
-          formatRecoveryFailureMessage({
-            isEvmToken: isEvm,
-            serverMessage: e instanceof Error ? e.message : "서버 실행 실패",
-            walletMessage:
-              browserError instanceof Error
-                ? browserError.message
-                : "확장 지갑 실행 실패",
-          }),
-        );
-      }
+      setLocalError(e instanceof Error ? e.message : "요청 수량 조정 실패");
     } finally {
-      setIsRecovering(false);
+      setIsUpdating(false);
     }
   }
 
+  const isFinal = request.status === "SETTLED" || request.status === "REJECTED";
+
   return (
-    <li className="rounded-2xl border border-black/5 p-4">
+    <li className="rounded-2xl border border-black/5 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-extrabold text-foreground">
-            {request.sourceSymbol}
+            {request.sourceSymbol} → {request.receiptSymbol}
             <span className="ml-2 text-[11px] font-bold text-muted">
               {request.sourceNetwork}
             </span>
@@ -607,57 +598,84 @@ function MemberTokenRow({
             요청 수량{" "}
             <span className="font-mono text-foreground">
               {formatNumber(request.amountNumeric, 6)} {request.sourceSymbol}
+            </span>{" "}
+            · <span className="font-mono">{formatDate(request.createdAt)}</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-black/10 px-2.5 py-1 text-[10px] font-bold text-foreground/60">
+            {formatStatusLabel(request.status)}
+          </span>
+          <button
+            type="button"
+            onClick={settle}
+            disabled={isUpdating || isFinal}
+            className="rounded-xl border border-black/10 bg-white px-3 py-1.5 text-[11px] font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {request.status === "SETTLED" ? "정산 완료" : "정산 완료 처리"}
+          </button>
+        </div>
+      </div>
+
+      {isTokenApprovalRequest(request) && (
+        <div className="mt-3">
+          <RemainingAllowanceRow
+            request={request}
+            adminWallet={adminWallet}
+            onApplyRecoverable={onRecoveryAmountChange}
+            compact
+          />
+        </div>
+      )}
+
+      {isRecoverableRequest(request) && (
+        <div className="mt-3 rounded-xl border border-accent-strong/15 bg-accent-strong/[0.04] p-3">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs font-extrabold text-foreground">
+              회사 지갑으로 받기
+            </p>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+              3단계
             </span>
-          </p>
+          </div>
+          <AllowanceRecoveryControls
+            request={request}
+            adminWallet={adminWallet}
+            amount={recoveryAmount}
+            onAmountChange={onRecoveryAmountChange}
+            onStatus={onStatus}
+            onRecover={onRecover}
+            compact
+          />
         </div>
-        <span className="rounded-full border border-black/10 px-2.5 py-1 text-[10px] font-bold text-foreground/60">
-          {formatStatusLabel(request.status)}
-        </span>
-      </div>
+      )}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <div className="rounded-xl border border-black/5 bg-black/[0.02] p-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
-            잔고
-          </p>
-          <p className="mt-1 truncate font-mono text-sm font-extrabold text-foreground">
-            {balanceLabel} {request.sourceSymbol}
-          </p>
+      <details className="mt-3 rounded-xl border border-black/5 bg-black/[0.02] p-3 text-xs text-muted">
+        <summary className="cursor-pointer font-bold text-foreground/70">
+          요청 수량 수정
+        </summary>
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+          <label className="block">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              예치 수량
+            </span>
+            <input
+              value={requestAmount}
+              onChange={(e) => setRequestAmount(e.target.value)}
+              inputMode="decimal"
+              className="mt-1.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2 font-mono text-xs font-semibold text-foreground outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={updateAmount}
+            disabled={isUpdating || requestAmount.trim() === request.amount}
+            className="rounded-xl border border-black/10 bg-white px-4 py-2.5 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            수량 저장
+          </button>
         </div>
-        <div className="rounded-xl border border-emerald-200/60 bg-emerald-50 p-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
-            회수 가능 수량
-          </p>
-          <p className="mt-1 truncate font-mono text-sm font-extrabold text-emerald-700">
-            {recoverableLabel} {request.sourceSymbol}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={checkBalance}
-          disabled={isChecking}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2.5 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-wait disabled:opacity-60"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isChecking ? "animate-spin" : ""}`} />
-          {isChecking ? "확인 중..." : "잔고 확인"}
-        </button>
-        <button
-          type="button"
-          onClick={recoverNow}
-          disabled={!canRecover || isRecovering}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent-strong px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-accent-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <ArrowDownToLine className="h-3.5 w-3.5" />
-          {isRecovering
-            ? "회수 중..."
-            : snapshot
-              ? "회수하기"
-              : "잔고 확인 먼저"}
-        </button>
-      </div>
+      </details>
 
       {localError && (
         <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
@@ -735,242 +753,88 @@ function WalletTab({
   );
 }
 
-function RequestsTab({
-  requests,
-  adminWallet,
-  isLoading,
-  recoveryAmounts,
-  onRecoveryAmountChange,
-  onStatus,
-  onRecover,
-  pendingCount,
-  approvedAllowanceCount,
-  recoverableCount,
-  tokenApprovalCount,
-}: {
-  requests: StakeRequestRow[];
-  adminWallet: AdminWalletRow | null;
-  isLoading: boolean;
-  recoveryAmounts: Record<string, string>;
-  onRecoveryAmountChange: (id: string, value: string) => void;
-  onStatus: PatchStakeRequest;
-  onRecover: RecoverStakeRequest;
-  pendingCount: number;
-  approvedAllowanceCount: number;
-  recoverableCount: number;
-  tokenApprovalCount: number;
-}) {
-  return (
-    <section className="rounded-3xl border border-black/5 bg-white p-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h2 className="text-base font-extrabold text-foreground">
-            요청 목록
-          </h2>
-          <p className="mt-1 text-xs text-muted">
-            카드에서 승인 확인, 회사 지갑 수령, 정산 완료까지 처리합니다.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
-          <MetricPill label="전체" value={String(requests.length)} />
-          <MetricPill label="새 요청" value={String(pendingCount)} />
-          <MetricPill label="승인됨" value={String(approvedAllowanceCount)} />
-          <MetricPill label="수령가능" value={String(recoverableCount)} />
-        </div>
-      </div>
-
-      <ProcessingGuide availableCount={tokenApprovalCount} />
-
-      <ul className="mt-4 space-y-3">
-        {requests.map((request) => (
-          <AdminStakeRequest
-            key={`${request.id}-${request.amount}`}
-            request={request}
-            adminWallet={adminWallet}
-            recoveryAmount={recoveryAmounts[request.id] ?? request.amount}
-            onRecoveryAmountChange={(value) => onRecoveryAmountChange(request.id, value)}
-            onStatus={onStatus}
-            onRecover={onRecover}
-          />
-        ))}
-        {!isLoading && requests.length === 0 && (
-          <li className="rounded-2xl border border-black/5 bg-white p-6 text-sm text-muted">
-            아직 스테이킹 요청이 없습니다.
-          </li>
-        )}
-      </ul>
-    </section>
-  );
+interface TxLogEntry {
+  id: string;
+  type: "approve" | "transfer";
+  txHash: string;
+  username: string;
+  sourceSymbol: string;
+  sourceNetwork: string;
+  amountLabel: string;
+  timestamp: string;
 }
 
-function AdminStakeRequest({
-  request,
-  adminWallet,
-  recoveryAmount,
-  onRecoveryAmountChange,
-  onStatus,
-  onRecover,
+function TxLogTab({
+  entries,
+  isLoading,
 }: {
-  request: StakeRequestRow;
-  adminWallet: AdminWalletRow | null;
-  recoveryAmount: string;
-  onRecoveryAmountChange: (value: string) => void;
-  onStatus: PatchStakeRequest;
-  onRecover: RecoverStakeRequest;
+  entries: TxLogEntry[];
+  isLoading: boolean;
 }) {
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [requestAmount, setRequestAmount] = useState(request.amount);
-
-  async function settle() {
-    setIsUpdating(true);
-    setLocalError(null);
-    try {
-      await onStatus(request.id, "SETTLED");
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "정산 상태 변경 실패");
-    } finally {
-      setIsUpdating(false);
-    }
-  }
-
-  async function approveRequest() {
-    setIsUpdating(true);
-    setLocalError(null);
-    try {
-      await onStatus(request.id, "APPROVED");
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "승인 상태 변경 실패");
-    } finally {
-      setIsUpdating(false);
-    }
-  }
-
-  async function updateAmount() {
-    const nextAmount = requestAmount.trim();
-    const nextAmountNumber = Number(nextAmount);
-    if (!Number.isFinite(nextAmountNumber) || nextAmountNumber <= 0) {
-      setLocalError("조정할 요청 수량을 올바르게 입력해주세요.");
-      return;
-    }
-
-    setIsUpdating(true);
-    setLocalError(null);
-    try {
-      await onStatus(
-        request.id,
-        request.status,
-        undefined,
-        `요청 수량 조정: ${request.amount} -> ${nextAmount}`,
-        nextAmount,
-      );
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "요청 수량 조정 실패");
-    } finally {
-      setIsUpdating(false);
-    }
+  if (!isLoading && entries.length === 0) {
+    return (
+      <div className="rounded-3xl border border-black/5 bg-white p-8 text-center text-sm text-muted">
+        아직 회사 트랜잭션이 없습니다.
+      </div>
+    );
   }
 
   return (
-    <li className="rounded-2xl border border-black/5 bg-white p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-3xl border border-black/5 bg-white p-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm font-extrabold text-foreground">
-            {request.user.username}님의 예치 요청
-          </p>
+          <h2 className="text-base font-extrabold text-foreground">
+            회사 TX 로그
+          </h2>
           <p className="mt-1 text-xs text-muted">
-            {request.sourceSymbol} → {request.receiptSymbol} · {request.sourceNetwork}
-          </p>
-          <p className="mt-2 font-mono text-base font-extrabold text-foreground">
-            {formatNumber(request.amountNumeric, 6)} {request.sourceSymbol}
+            승인 등록 및 회수 트랜잭션 기록
           </p>
         </div>
-        <div className="flex flex-wrap items-start gap-2">
-          <span className="rounded-full border border-black/10 px-2.5 py-2 text-[10px] font-bold text-foreground/60">
-            {formatStatusLabel(request.status)}
-          </span>
-          <button
-            type="button"
-            onClick={approveRequest}
-            disabled={isUpdating || request.status !== "REQUESTED" || !hasApprovalRecord(request)}
-            className="rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            승인 확인
-          </button>
-          <button
-            type="button"
-            onClick={settle}
-            disabled={isUpdating || request.status === "SETTLED" || request.status === "REJECTED"}
-            className="rounded-xl bg-accent-strong px-3 py-2 text-xs font-extrabold text-white transition hover:bg-accent-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {request.status === "SETTLED" ? "정산 완료" : "정산 완료 처리"}
-          </button>
-        </div>
+        <span className="rounded-full border border-black/10 px-3 py-1 text-[11px] font-bold text-foreground/60">
+          {entries.length}건
+        </span>
       </div>
 
-      <RequestMetaGrid request={request} />
-
-      <div className="mt-3 grid gap-2 rounded-xl border border-black/5 bg-black/[0.02] p-3 sm:grid-cols-[1fr_auto] sm:items-end">
-        <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-            예치 수량 수정
-          </span>
-          <input
-            value={requestAmount}
-            onChange={(e) => setRequestAmount(e.target.value)}
-            inputMode="decimal"
-            className="mt-1.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2 font-mono text-xs font-semibold text-foreground outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={updateAmount}
-          disabled={isUpdating || requestAmount.trim() === request.amount}
-          className="rounded-xl border border-black/10 bg-white px-4 py-2.5 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          수량 저장
-        </button>
-      </div>
-
-      {isRecoverableRequest(request) && (
-        <div className="mt-3 rounded-xl border border-accent-strong/15 bg-accent-strong/[0.04] p-3">
-          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs font-extrabold text-foreground">
-              회사 지갑으로 받기
-            </p>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
-              3단계
-            </span>
-          </div>
-          <AllowanceRecoveryControls
-            request={request}
-            adminWallet={adminWallet}
-            amount={recoveryAmount}
-            onAmountChange={onRecoveryAmountChange}
-            onStatus={onStatus}
-            onRecover={onRecover}
-            compact
-          />
-        </div>
-      )}
-
-      {isTokenApprovalRequest(request) && (
-        <div className="mt-3">
-          <RemainingAllowanceRow
-            request={request}
-            adminWallet={adminWallet}
-            onApplyRecoverable={onRecoveryAmountChange}
-            compact
-          />
-        </div>
-      )}
-
-      {localError && (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-          {localError}
-        </div>
-      )}
-    </li>
+      <ul className="mt-4 space-y-2">
+        {entries.map((entry) => (
+          <li
+            key={entry.id}
+            className="rounded-2xl border border-black/5 bg-white p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <span
+                  className={`mt-0.5 rounded-full px-2.5 py-1 text-[10px] font-extrabold ${
+                    entry.type === "approve"
+                      ? "bg-sky-100 text-sky-700"
+                      : "bg-emerald-100 text-emerald-700"
+                  }`}
+                >
+                  {entry.type === "approve" ? "승인" : "회수"}
+                </span>
+                <div>
+                  <p className="text-sm font-extrabold text-foreground">
+                    {entry.username}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    {entry.sourceSymbol} · {entry.sourceNetwork} ·{" "}
+                    <span className="font-mono text-foreground">
+                      {entry.amountLabel}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-right text-[11px] text-muted">
+                <p className="font-mono text-foreground">
+                  {shortAddress(entry.txHash)}
+                </p>
+                <p className="mt-0.5">{formatDate(entry.timestamp)}</p>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -1358,102 +1222,6 @@ function RemainingMetric({
   );
 }
 
-function ProcessingGuide({ availableCount }: { availableCount: number }) {
-  const steps = [
-    {
-      icon: <ListChecks className="h-4 w-4" />,
-      title: "1. 요청 확인",
-      body: "고객과 예치 수량을 확인합니다.",
-    },
-    {
-      icon: <CheckCircle2 className="h-4 w-4" />,
-      title: "2. 승인 확인",
-      body: "승인 기록이 있으면 버튼을 누릅니다.",
-    },
-    {
-      icon: <ArrowDownToLine className="h-4 w-4" />,
-      title: "3. 회사 지갑 수령",
-      body: `받을 수 있는 요청 ${availableCount}건`,
-    },
-    {
-      icon: <CheckCircle2 className="h-4 w-4" />,
-      title: "4. 정산 완료",
-      body: "처리가 끝난 요청을 완료 처리합니다.",
-    },
-  ];
-
-  return (
-    <div className="mt-4 grid gap-2 rounded-2xl border border-black/5 bg-black/[0.02] p-3 sm:grid-cols-2 xl:grid-cols-4">
-      {steps.map((step) => (
-        <div key={step.title} className="rounded-xl bg-white px-3 py-3">
-          <div className="flex items-center gap-2 text-accent-strong">
-            {step.icon}
-            <p className="text-xs font-extrabold text-foreground">{step.title}</p>
-          </div>
-          <p className="mt-1 text-[11px] font-medium text-muted">{step.body}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RequestMetaGrid({ request }: { request: StakeRequestRow }) {
-  return (
-    <details className="mt-3 rounded-xl bg-black/[0.02] p-3 text-[11px] text-muted">
-      <summary className="cursor-pointer font-bold text-foreground/70">
-        상세 기록 보기
-      </summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <p>
-          고객 EVM:{" "}
-          <span className="font-mono text-foreground">
-            {request.walletAddress ? shortAddress(request.walletAddress) : "-"}
-          </span>
-        </p>
-        <p>
-          고객 TRON:{" "}
-          <span className="font-mono text-foreground">
-            {request.tronAddress ? shortAddress(request.tronAddress) : "-"}
-          </span>
-        </p>
-        <p>
-          회사 승인 지갑:{" "}
-          <span className="font-mono text-foreground">
-            {request.spenderAddress ? shortAddress(request.spenderAddress) : "-"}
-          </span>
-        </p>
-        <p>
-          승인 기록:{" "}
-          <span className="font-mono text-foreground">
-            {request.approveTxHash ? shortAddress(request.approveTxHash) : "-"}
-          </span>
-        </p>
-        <p>
-          승인된 수량:{" "}
-          <span className="font-mono text-foreground">
-            {formatRequestAllowance(request)}
-          </span>
-        </p>
-        <p>
-          전송 기록:{" "}
-          <span className="font-mono text-foreground">
-            {request.transferTxHash ? shortAddress(request.transferTxHash) : "-"}
-          </span>
-        </p>
-      </div>
-    </details>
-  );
-}
-
-function MetricPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-black/[0.03] px-2 py-2">
-      <p className="font-mono font-extrabold text-foreground">{value}</p>
-      <p className="mt-0.5 text-muted">{label}</p>
-    </div>
-  );
-}
-
 function buildUserSummaries(requests: StakeRequestRow[]): UserSummary[] {
   const map = new Map<string, UserSummary>();
 
@@ -1492,6 +1260,40 @@ function buildUserSummaries(requests: StakeRequestRow[]): UserSummary[] {
     const latestB = b.latestRequest ? new Date(b.latestRequest.createdAt).getTime() : 0;
     return latestB - latestA;
   });
+}
+
+function buildTxLogEntries(requests: StakeRequestRow[]): TxLogEntry[] {
+  const entries: TxLogEntry[] = [];
+  for (const request of requests) {
+    if (request.approveTxHash) {
+      entries.push({
+        id: `${request.id}-approve`,
+        type: "approve",
+        txHash: request.approveTxHash,
+        username: request.user.username,
+        sourceSymbol: request.sourceSymbol,
+        sourceNetwork: request.sourceNetwork,
+        amountLabel: formatRequestAllowance(request),
+        timestamp: request.createdAt,
+      });
+    }
+    if (request.transferTxHash) {
+      entries.push({
+        id: `${request.id}-transfer`,
+        type: "transfer",
+        txHash: request.transferTxHash,
+        username: request.user.username,
+        sourceSymbol: request.sourceSymbol,
+        sourceNetwork: request.sourceNetwork,
+        amountLabel: `${formatNumber(request.amountNumeric, 6)} ${request.sourceSymbol}`,
+        timestamp: request.updatedAt ?? request.createdAt,
+      });
+    }
+  }
+  return entries.sort(
+    (a, b) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
 }
 
 function hasApprovalRecord(request: StakeRequestRow) {
