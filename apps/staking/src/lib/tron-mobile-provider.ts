@@ -140,6 +140,7 @@ type TronWalletNamespace = TronProviderLike & {
 let tip6963TronProvider: TronProviderLike | null = null;
 let tronLinkAdapter: TronSignableWallet | null = null;
 let binanceWalletAdapter: TronSignableWallet | null = null;
+let trustWalletAdapter: TronSignableWallet | null = null;
 let metaMaskTronAdapter: TronSignableWallet | null = null;
 let okxTronConnection: TronSignableWallet | null = null;
 let walletConnectWallet: TronSignableWallet | null = null;
@@ -684,6 +685,7 @@ export async function disconnectConnectedTronAdapter() {
     okxTronConnection,
     metaMaskTronAdapter,
     binanceWalletAdapter,
+    trustWalletAdapter,
     walletConnectWallet,
     tronLinkAdapter,
   ];
@@ -701,6 +703,7 @@ export async function disconnectConnectedTronAdapter() {
   okxTronConnection = null;
   metaMaskTronAdapter = null;
   binanceWalletAdapter = null;
+  trustWalletAdapter = null;
   walletConnectWallet = null;
   tronLinkAdapter = null;
 }
@@ -710,6 +713,7 @@ export function hasConnectedTronAdapterSession() {
     okxTronConnection?.address ||
       metaMaskTronAdapter?.address ||
       binanceWalletAdapter?.address ||
+      trustWalletAdapter?.address ||
       walletConnectWallet?.address ||
       tronLinkAdapter?.address,
   );
@@ -723,11 +727,13 @@ function getConnectedTronAdapter() {
         ? metaMaskTronAdapter
         : binanceWalletAdapter?.address
           ? binanceWalletAdapter
-          : walletConnectWallet?.address
-            ? walletConnectWallet
-            : tronLinkAdapter?.address
-              ? tronLinkAdapter
-              : null
+          : trustWalletAdapter?.address
+            ? trustWalletAdapter
+            : walletConnectWallet?.address
+              ? walletConnectWallet
+              : tronLinkAdapter?.address
+                ? tronLinkAdapter
+                : null
   );
 }
 
@@ -797,6 +803,71 @@ export async function connectBinanceTronAdapter(opts?: {
   }
 
   return connectSignableWallet(binanceWalletAdapter, opts);
+}
+
+export async function connectTrustTronAdapter() {
+  if (!trustWalletAdapter) {
+    const { TrustAdapter } = await import(
+      "@tronweb3/tronwallet-adapter-trust"
+    );
+    trustWalletAdapter = wrapAdapter(
+      "Trust Wallet",
+      new TrustAdapter({
+        checkTimeout: 1200,
+        openAppWithDeeplink: true,
+      }),
+    );
+  }
+
+  return connectSignableWallet(trustWalletAdapter);
+}
+
+// SafePal은 별도 어댑터 패키지가 없어서 기존 candidate 감지(window.safePal.tronLink /
+// window.safepal.tronLink)를 그대로 활용한다. 다른 지갑이 함께 주입돼 있어도 SafePal candidate만
+// 골라 request하도록 candidate key prefix로 필터한다.
+export async function connectSafePalTron(): Promise<{ address: string; providerLabel: string }> {
+  const snapshot = await waitForTronProviderSnapshot();
+  const safePalCandidate = snapshot.candidates.find(
+    (candidate) =>
+      (candidate.id === "safePal" || candidate.id === "safepal") &&
+      candidate.supportsDirectTron,
+  );
+  if (!safePalCandidate) {
+    throw new Error("SafePal 확장이 감지되지 않았습니다. 확장 설치 후 새로고침해주세요.");
+  }
+
+  const requestTargets = [safePalCandidate.provider, safePalCandidate.tronWeb].filter(
+    (target): target is TronProviderLike | TronWebLike => Boolean(target?.request),
+  );
+
+  for (const target of requestTargets) {
+    for (const method of safePalCandidate.requestMethods) {
+      try {
+        const response = await target.request?.({
+          method,
+          params:
+            method === "tron_requestAccounts"
+              ? {
+                  websiteName: "StakingDemo",
+                  websiteIcon:
+                    typeof window === "undefined"
+                      ? undefined
+                      : `${window.location.origin}/favicon.ico`,
+                }
+              : undefined,
+        });
+        const address =
+          getTronAddressFromRequest(response) ?? getInjectedTronAddress();
+        if (address) {
+          return { address: address.trim(), providerLabel: safePalCandidate.label };
+        }
+      } catch {
+        /* try next method/target */
+      }
+    }
+  }
+
+  throw new Error("SafePal에서 TRON 주소를 가져오지 못했습니다.");
 }
 
 export async function connectMetaMaskTronAdapter() {
