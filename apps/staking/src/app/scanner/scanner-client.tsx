@@ -3,12 +3,22 @@
 import { useMemo, useState } from "react";
 import { ArrowDownUp, ShieldCheck, Search, Filter } from "lucide-react";
 import { STAKING_OPTIONS, type StakingOption } from "@/lib/mock-data";
+import { LST_PRODUCTS } from "@/lib/staking-assets";
 import { cn } from "@/lib/utils";
 
 type Category = StakingOption["category"] | "전체";
 type SortKey = "apy" | "platform" | "coin";
 
 const CATEGORIES: Category[] = ["전체", "거래소", "DeFi", "지갑"];
+
+// 대시보드(/dashboard, /a/me/my-assets)의 자산 리스트와 동일한 코인만 스캐너에 노출하기 위한 필터.
+// LST_PRODUCTS의 sourceSymbol을 모두 모아두고 STAKING_OPTIONS를 그 집합으로 거른다.
+const DASHBOARD_COIN_SYMBOLS = new Set(
+  LST_PRODUCTS.map((product) => product.sourceSymbol.toUpperCase()),
+);
+const DASHBOARD_STAKING_OPTIONS = STAKING_OPTIONS.filter((option) =>
+  DASHBOARD_COIN_SYMBOLS.has(option.coin.toUpperCase()),
+);
 
 export function ScannerClient() {
   const [search, setSearch] = useState("");
@@ -18,7 +28,7 @@ export function ScannerClient() {
 
   const filtered = useMemo(() => {
     const lower = search.trim().toLowerCase();
-    let list = STAKING_OPTIONS.filter((o) => {
+    let list = DASHBOARD_STAKING_OPTIONS.filter((o) => {
       const matchSearch =
         !lower ||
         o.coin.toLowerCase().includes(lower) ||

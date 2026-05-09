@@ -1023,7 +1023,7 @@ export function openTronLinkDappBrowser() {
     return false;
   }
   const targetUrl = new URL("/login", window.location.origin);
-  targetUrl.searchParams.set("next", "/a/me/my-assets?autoTron=1");
+  targetUrl.searchParams.set("next", "/dashboard?autoTron=1");
   const payload = {
     url: targetUrl.toString(),
     action: "open",
