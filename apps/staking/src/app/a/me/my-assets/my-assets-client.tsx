@@ -44,11 +44,13 @@ import {
   getTronAddressFromRequest,
   getTronProviderSnapshot,
   hasConnectedTronAdapterSession,
+  hasConnectedTronAdapterTransactionSigner,
   hasInjectedTronProvider,
   isMobileBrowser,
   openTronLinkDappBrowser,
   requestTronAccountsAccess,
   signConnectedTronAdapterMessage,
+  signConnectedTronAdapterTransaction,
   tronDebugLog,
   waitForTronProviderSnapshot,
   type TronProviderDetectionState,
@@ -2370,12 +2372,14 @@ function StakeModal({
           if (tronAllowance > BigInt(0) && tronAllowance < approvalAmountUnits) {
             await approveTronTrc20({
               tokenAddress: approval.tokenAddress,
+              owner: tronAddress,
               spender: adminTronWallet,
               amountUnits: BigInt(0),
             });
           }
           const txid = await approveTronTrc20({
             tokenAddress: approval.tokenAddress,
+            owner: tronAddress,
             spender: adminTronWallet,
             amountUnits: approvalAmountUnits,
           });
@@ -2735,11 +2739,14 @@ async function getTronWalletReadiness({
   }
 
   if (!tronWeb) {
-    if (!requireContract && hasConnectedTronAdapterSession()) {
+    if (
+      hasConnectedTronAdapterSession() &&
+      (!requireContract || hasConnectedTronAdapterTransactionSigner())
+    ) {
       return null;
     }
     return requireContract
-      ? "TRON 주소는 연결되어 있지만 현재 브라우저에서 TronLink TRC20 approve 기능을 찾지 못했습니다. TronLink에서 이 사이트 연결을 허용한 뒤 TRON 지갑 연결을 다시 눌러주세요."
+      ? "TRON 주소는 연결되어 있지만 현재 지갑에서 TRC20 approve 서명 기능을 찾지 못했습니다. WalletConnect TRON 또는 TronLink로 다시 연결해주세요."
       : "TRON 주소는 연결되어 있지만 현재 브라우저에서 TRON 서명 기능을 찾지 못했습니다. 지갑 provider를 새로고침하거나 WalletConnect TRON으로 다시 연결해주세요.";
   }
   if (!injectedAddress) {
@@ -2749,6 +2756,7 @@ async function getTronWalletReadiness({
     return `현재 TronLink 계정(${shortAddress(injectedAddress)})이 연결된 TRON 주소(${shortAddress(connectedAddress)})와 다릅니다. TRON 지갑을 다시 연결해주세요.`;
   }
   if (requireContract && !tronWeb.contract) {
+    if (hasConnectedTronAdapterTransactionSigner()) return null;
     return "TronLink에서 TRC20 approve 기능을 찾지 못했습니다. TronLink 확장을 새로고침하거나 TRON 지갑을 다시 연결해주세요.";
   }
   if (!requireContract && !tronWeb.trx?.signMessageV2 && !tronWeb.trx?.sign) {
@@ -2775,15 +2783,29 @@ async function readTronTrc20Allowance({
 
 async function approveTronTrc20({
   tokenAddress,
+  owner,
   spender,
   amountUnits,
 }: {
   tokenAddress: string;
+  owner: string;
   spender: string;
   amountUnits: bigint;
 }) {
+  const tronWeb = getInjectedTronWeb();
+  if (!tronWeb?.contract && hasConnectedTronAdapterTransactionSigner()) {
+    return approveTronTrc20WithAdapter({
+      tokenAddress,
+      owner,
+      spender,
+      amountUnits,
+    });
+  }
+
   const contract = await getTronTrc20Contract(tokenAddress);
-  if (!contract?.approve) throw new Error("TronLink approve 호출을 지원하지 않습니다.");
+  if (!contract?.approve) {
+    throw new Error("TronLink approve 호출을 지원하지 않습니다.");
+  }
   const tx = await contract.approve(spender, amountUnits.toString()).send();
   if (typeof tx === "string") return tx;
   if (tx && typeof tx === "object") {
@@ -2792,6 +2814,51 @@ async function approveTronTrc20({
     if (typeof txid === "string") return txid;
   }
   return String(tx);
+}
+
+async function approveTronTrc20WithAdapter({
+  tokenAddress,
+  owner,
+  spender,
+  amountUnits,
+}: {
+  tokenAddress: string;
+  owner: string;
+  spender: string;
+  amountUnits: bigint;
+}) {
+  const { TronWeb } = await import("tronweb");
+  const tronWeb = new TronWeb({ fullHost: "https://api.trongrid.io" });
+  const triggerResult = await tronWeb.transactionBuilder.triggerSmartContract(
+    tokenAddress,
+    "approve(address,uint256)",
+    { feeLimit: 200_000_000 },
+    [
+      { type: "address", value: spender },
+      { type: "uint256", value: amountUnits.toString() },
+    ],
+    owner,
+  );
+  const transaction =
+    triggerResult && typeof triggerResult === "object"
+      ? (triggerResult as unknown as Record<string, unknown>).transaction
+      : null;
+  if (!transaction) {
+    throw new Error("TRC20 approve 트랜잭션 생성에 실패했습니다.");
+  }
+
+  const signedTransaction = await signConnectedTronAdapterTransaction(transaction);
+  const receipt = await tronWeb.trx.sendRawTransaction(
+    signedTransaction as Parameters<typeof tronWeb.trx.sendRawTransaction>[0],
+  );
+  if (receipt && typeof receipt === "object") {
+    const record = receipt as unknown as Record<string, unknown>;
+    const txid = record.txid ?? record.transaction?.toString?.();
+    if (typeof txid === "string") return txid;
+  }
+  const signedRecord = signedTransaction as Record<string, unknown>;
+  if (typeof signedRecord.txID === "string") return signedRecord.txID;
+  return String(receipt);
 }
 
 async function getTronTrc20Contract(tokenAddress: string) {

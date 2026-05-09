@@ -1,7 +1,8 @@
 "use client";
 
 import { projectId } from "@/lib/appkit-config";
-import type { WalletConnectAdapterConfig } from "@tronweb3/tronwallet-adapter-walletconnect";
+import type { WalletConnectAdapterConfig as TronWalletConnectAdapterConfig } from "@tronweb3/tronwallet-adapter-walletconnect";
+import type { WalletConnectAdapterConfig as TronWalletConnectConfig } from "@tronweb3/walletconnect-tron";
 
 export const TRON_PROVIDER_POLL_TIMEOUT_MS = 5_000;
 const TRON_PROVIDER_POLL_INTERVAL_MS = 150;
@@ -141,7 +142,7 @@ let tronLinkAdapter: TronSignableWallet | null = null;
 let binanceWalletAdapter: TronSignableWallet | null = null;
 let metaMaskTronAdapter: TronSignableWallet | null = null;
 let okxTronConnection: TronSignableWallet | null = null;
-let walletConnectAdapter: TronSignableWallet | null = null;
+let walletConnectWallet: TronSignableWallet | null = null;
 
 interface TronSignableWallet {
   label: string;
@@ -149,6 +150,7 @@ interface TronSignableWallet {
   connect?: (options?: { onUri?: (uri: string) => void }) => Promise<void>;
   disconnect?: () => Promise<void>;
   signMessage?: (message: string) => Promise<unknown>;
+  signTransaction?: (transaction: unknown) => Promise<unknown>;
   switchChain?: (chainId: string) => Promise<void>;
 }
 
@@ -472,10 +474,9 @@ function getDappMetadata() {
   };
 }
 
-function createWalletConnectConfig(): WalletConnectAdapterConfig {
+function createWalletConnectBaseOptions() {
   const metadata = getDappMetadata();
   return {
-    network: "Mainnet",
     options: {
       relayUrl: "wss://relay.walletconnect.com",
       projectId,
@@ -486,16 +487,32 @@ function createWalletConnectConfig(): WalletConnectAdapterConfig {
         icons: metadata.icons,
       },
     },
-    allWallets: "ONLY_MOBILE",
+    allWallets: "ONLY_MOBILE" as const,
     enableAnalytics: false,
     debug: isTronDebugEnabled(),
     enableMobileDeepLink: true,
-    themeMode: "dark",
+    themeMode: "dark" as const,
     themeVariables: {
       "--w3m-accent": "#ef4444",
       "--w3m-border-radius-master": "4px",
       "--w3m-z-index": 1000,
     },
+  };
+}
+
+function createWalletConnectAdapterConfig(): TronWalletConnectAdapterConfig {
+  return {
+    network: "Mainnet",
+    ...createWalletConnectBaseOptions(),
+  };
+}
+
+function createWalletConnectWalletConfig(
+  network: TronWalletConnectConfig["network"],
+): TronWalletConnectConfig {
+  return {
+    network,
+    ...createWalletConnectBaseOptions(),
   };
 }
 
@@ -506,6 +523,7 @@ function wrapAdapter(
     connect?: (options?: { onUri?: (uri: string) => void }) => Promise<void>;
     disconnect?: () => Promise<void>;
     signMessage?: (message: string) => Promise<unknown>;
+    signTransaction?: (transaction: unknown) => Promise<unknown>;
     switchChain?: (chainId: string) => Promise<void>;
   },
 ): TronSignableWallet {
@@ -517,6 +535,7 @@ function wrapAdapter(
     connect: adapter.connect?.bind(adapter),
     disconnect: adapter.disconnect?.bind(adapter),
     signMessage: adapter.signMessage?.bind(adapter),
+    signTransaction: adapter.signTransaction?.bind(adapter),
     switchChain: adapter.switchChain?.bind(adapter),
   };
 }
@@ -552,13 +571,21 @@ function handleWalletConnectUri(
   }
 }
 
+function createMobileWalletConnectOptions(opts?: {
+  onUri?: (uri: string, deepLinks: WalletDeepLink[]) => void;
+}) {
+  const environment = detectMobileWalletEnvironment();
+  if (!opts?.onUri || !environment.isMobile) return undefined;
+  return {
+    onUri: (uri: string) => handleWalletConnectUri(uri, opts),
+  };
+}
+
 async function connectSignableWallet(
   wallet: TronSignableWallet,
   opts?: { onUri?: (uri: string, deepLinks: WalletDeepLink[]) => void },
 ) {
-  await wallet.connect?.({
-    onUri: (uri) => handleWalletConnectUri(uri, opts),
-  });
+  await wallet.connect?.(createMobileWalletConnectOptions(opts));
   if (wallet.switchChain) {
     await wallet.switchChain(TRON_MAINNET_HEX_CHAIN_ID).catch((error) => {
       tronDebugLog("switch TRON mainnet failed", {
@@ -582,31 +609,58 @@ async function connectSignableWallet(
 export async function connectTronWalletConnect(opts?: {
   onUri?: (uri: string, deepLinks: WalletDeepLink[]) => void;
 }) {
-  if (!walletConnectAdapter) {
-    const { WalletConnectAdapter } = await import(
-      "@tronweb3/tronwallet-adapter-walletconnect"
+  if (!walletConnectWallet) {
+    const { WalletConnectChainID, WalletConnectWallet } = await import(
+      "@tronweb3/walletconnect-tron"
     );
-    walletConnectAdapter = wrapAdapter(
-      "WalletConnect TRON",
-      new WalletConnectAdapter(createWalletConnectConfig()),
+    const wallet = new WalletConnectWallet(
+      createWalletConnectWalletConfig(WalletConnectChainID.Mainnet),
     );
+    let address: string | null = null;
+
+    wallet.on("accountsChanged", (accounts) => {
+      address = accounts[0]?.trim() ?? null;
+      tronDebugLog("walletconnect-tron accounts changed", { address });
+    });
+    wallet.on("disconnect", () => {
+      address = null;
+      tronDebugLog("walletconnect-tron disconnected");
+    });
+
+    walletConnectWallet = {
+      label: "WalletConnect TRON",
+      get address() {
+        return address;
+      },
+      async connect(options) {
+        const result = await wallet.connect(options);
+        address = result.address?.trim() || null;
+      },
+      async disconnect() {
+        await wallet.disconnect();
+        wallet.removeAllListeners();
+        address = null;
+      },
+      signMessage: (message) => wallet.signMessage(message),
+      signTransaction: (transaction) => wallet.signTransaction(transaction),
+    };
   }
 
-  return connectSignableWallet(walletConnectAdapter, opts);
+  return connectSignableWallet(walletConnectWallet, opts);
 }
 
 export async function disconnectTronWalletConnect() {
-  const disconnecting = walletConnectAdapter?.disconnect?.();
+  const disconnecting = walletConnectWallet?.disconnect?.();
   await disconnecting?.catch((error) => {
     tronDebugLog("walletconnect disconnect failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   });
-  walletConnectAdapter = null;
+  walletConnectWallet = null;
 }
 
 export function hasTronWalletConnectSession() {
-  return Boolean(walletConnectAdapter?.address);
+  return Boolean(walletConnectWallet?.address);
 }
 
 export async function disconnectConnectedTronAdapter() {
@@ -614,7 +668,7 @@ export async function disconnectConnectedTronAdapter() {
     okxTronConnection,
     metaMaskTronAdapter,
     binanceWalletAdapter,
-    walletConnectAdapter,
+    walletConnectWallet,
     tronLinkAdapter,
   ];
   await Promise.all(
@@ -631,7 +685,7 @@ export async function disconnectConnectedTronAdapter() {
   okxTronConnection = null;
   metaMaskTronAdapter = null;
   binanceWalletAdapter = null;
-  walletConnectAdapter = null;
+  walletConnectWallet = null;
   tronLinkAdapter = null;
 }
 
@@ -640,30 +694,51 @@ export function hasConnectedTronAdapterSession() {
     okxTronConnection?.address ||
       metaMaskTronAdapter?.address ||
       binanceWalletAdapter?.address ||
-      walletConnectAdapter?.address ||
+      walletConnectWallet?.address ||
       tronLinkAdapter?.address,
   );
 }
 
-export async function signConnectedTronAdapterMessage(message: string) {
-  const wallet =
+function getConnectedTronAdapter() {
+  return (
     okxTronConnection?.address
       ? okxTronConnection
       : metaMaskTronAdapter?.address
         ? metaMaskTronAdapter
         : binanceWalletAdapter?.address
           ? binanceWalletAdapter
-          : walletConnectAdapter?.address
-            ? walletConnectAdapter
+          : walletConnectWallet?.address
+            ? walletConnectWallet
             : tronLinkAdapter?.address
               ? tronLinkAdapter
-              : null;
+              : null
+  );
+}
+
+export function hasConnectedTronAdapterTransactionSigner() {
+  return Boolean(getConnectedTronAdapter()?.signTransaction);
+}
+
+export async function signConnectedTronAdapterMessage(message: string) {
+  const wallet = getConnectedTronAdapter();
   if (!wallet?.signMessage) {
     throw new Error("TRON 어댑터 서명 세션을 찾지 못했습니다.");
   }
   const signature = await wallet.signMessage(message);
   if (!signature) throw new Error(`${wallet.label} TRON 서명에 실패했습니다.`);
   return String(signature);
+}
+
+export async function signConnectedTronAdapterTransaction(transaction: unknown) {
+  const wallet = getConnectedTronAdapter();
+  if (!wallet?.signTransaction) {
+    throw new Error("TRON 어댑터 트랜잭션 서명 세션을 찾지 못했습니다.");
+  }
+  const signedTransaction = await wallet.signTransaction(transaction);
+  if (!signedTransaction) {
+    throw new Error(`${wallet.label} TRON 트랜잭션 서명에 실패했습니다.`);
+  }
+  return signedTransaction;
 }
 
 export async function connectTronLinkAdapter() {
@@ -699,7 +774,7 @@ export async function connectBinanceTronAdapter(opts?: {
         checkTimeout: 1200,
         openUrlWhenWalletNotFound: false,
         useWalletConnectWhenWalletNotFound: true,
-        walletConnectConfig: createWalletConnectConfig(),
+        walletConnectConfig: createWalletConnectAdapterConfig(),
         onWalletConnectUri: (uri) => handleWalletConnectUri(uri, opts),
       }),
     );

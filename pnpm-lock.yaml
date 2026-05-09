@@ -404,6 +404,9 @@ importers:
       '@tronweb3/tronwallet-adapter-walletconnect':
         specifier: ^3.0.3
         version: 3.0.3(@types/react@19.2.14)(bufferutil@4.1.0)(ioredis@5.10.1)(react@19.2.4)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
+      '@tronweb3/walletconnect-tron':
+        specifier: ^4.0.2
+        version: 4.0.2(@types/react@19.2.14)(bufferutil@4.1.0)(ioredis@5.10.1)(react@19.2.4)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3

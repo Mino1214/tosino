@@ -25,6 +25,7 @@
     "@tronweb3/tronwallet-adapter-binance": "^1.0.4",
     "@tronweb3/tronwallet-adapter-tronlink": "^1.1.16",
     "@tronweb3/tronwallet-adapter-walletconnect": "^3.0.3",
+    "@tronweb3/walletconnect-tron": "^4.0.2",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "jose": "^6.2.3",
