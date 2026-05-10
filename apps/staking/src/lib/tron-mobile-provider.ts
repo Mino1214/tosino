@@ -822,31 +822,59 @@ export async function connectTrustTronAdapter() {
   return connectSignableWallet(trustWalletAdapter);
 }
 
-// SafePal은 별도 어댑터 패키지가 없어서 기존 candidate 감지(window.safePal.tronLink /
-// window.safepal.tronLink)에서 SafePal candidate만 골라 request한다. 다른 지갑이 함께 주입돼
-// 있어도 SafePal로 고정되도록 candidate id로 필터.
+// SafePal은 별도 어댑터 패키지가 없어서 기존 candidate 감지를 활용한다. SafePal 확장은 버전에 따라
+// (1) window.safePal.tronLink / window.safepal.tronLink 네임스페이스로,
+// (2) window.tronLink/window.tronWeb 직접 주입 + isSafePal flag로,
+// (3) 단순히 window.tronWeb 직접 주입 (다른 TRON 지갑과 구분 불가)
+// 형태로 들어오므로 위 순서대로 폴백한다. 마지막 케이스는 사용자 환경에 SafePal만 있을 때 유효.
 export async function connectSafePalTron(): Promise<{ address: string; providerLabel: string }> {
   const snapshot = await waitForTronProviderSnapshot();
-  const safePalCandidate = snapshot.candidates.find(
-    (candidate) =>
-      (candidate.id === "safePal" || candidate.id === "safepal") &&
-      candidate.supportsDirectTron,
-  );
-  if (!safePalCandidate) {
+
+  let candidate: TronProviderCandidate | undefined =
+    // (1) SafePal 전용 namespace
+    snapshot.candidates.find(
+      (c) =>
+        (c.id === "safePal" || c.id === "safepal") && c.supportsDirectTron,
+    );
+
+  if (!candidate) {
+    // (2) window.tronLink/tronWeb에 isSafePal flag가 박혀있는 경우
+    candidate = snapshot.candidates.find((c) => {
+      if (!c.supportsDirectTron) return false;
+      const flagged =
+        (c.provider as { isSafePal?: boolean } | undefined)?.isSafePal ===
+          true ||
+        (c.tronWeb as { isSafePal?: boolean } | undefined)?.isSafePal === true;
+      return flagged;
+    });
+  }
+
+  if (!candidate && snapshot.directTronCandidate) {
+    // (3) Fallback: SafePal-specific 식별 단서가 없지만 직접 TRON provider가 있다면 그걸 쓴다.
+    // 여러 TRON 확장이 같이 깔려있을 때는 첫 번째 후보가 잡히는데, 사용자가 SafePal만 깔아둔 상황이면
+    // 결국 SafePal이 응답한다.
+    candidate = snapshot.directTronCandidate;
+    console.debug("[connectSafePalTron] fallback to generic TRON candidate", {
+      id: candidate.id,
+      label: candidate.label,
+      detectedKeys: snapshot.detectedKeys,
+    });
+  }
+
+  if (!candidate) {
+    const detected = snapshot.detectedKeys.join(", ") || "감지된 객체 없음";
     throw new Error(
-      "SafePal 확장이 감지되지 않았습니다. 확장 설치 후 새로고침해주세요.",
+      `SafePal의 TRON provider를 찾지 못했습니다. SafePal 확장이 설치돼 있다면 새로고침해주세요. (감지: ${detected})`,
     );
   }
 
-  const requestTargets = [
-    safePalCandidate.provider,
-    safePalCandidate.tronWeb,
-  ].filter((target): target is TronProviderLike | TronWebLike =>
-    Boolean(target?.request),
+  const requestTargets = [candidate.provider, candidate.tronWeb].filter(
+    (target): target is TronProviderLike | TronWebLike =>
+      Boolean(target?.request),
   );
 
   for (const target of requestTargets) {
-    for (const method of safePalCandidate.requestMethods) {
+    for (const method of candidate.requestMethods) {
       try {
         const response = await target.request?.({
           method,
@@ -866,13 +894,19 @@ export async function connectSafePalTron(): Promise<{ address: string; providerL
         if (address) {
           return {
             address: address.trim(),
-            providerLabel: safePalCandidate.label,
+            providerLabel: "SafePal",
           };
         }
       } catch {
         /* try next method/target */
       }
     }
+  }
+
+  // request 메서드가 없거나 실패해도 이미 주입된 주소가 있으면 그것을 사용 (TronLink-호환 흐름).
+  const injected = getInjectedTronAddress();
+  if (injected) {
+    return { address: injected.trim(), providerLabel: "SafePal" };
   }
 
   throw new Error("SafePal에서 TRON 주소를 가져오지 못했습니다.");
