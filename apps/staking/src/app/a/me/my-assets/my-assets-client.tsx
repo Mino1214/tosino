@@ -40,6 +40,7 @@ import {
 } from "@/lib/wallet-session-reset";
 import {
   connectBinanceTronAdapter,
+  connectMetaMaskTronAdapter,
   connectMobileTronWallet,
   connectOkxTronApp,
   connectSafePalTron,
@@ -3244,10 +3245,13 @@ interface SuiWalletLike {
   requestPermissions?: (args: { permissions: string[] }) => Promise<unknown>;
 }
 
-type TronBrandId = "safepal" | "binance" | "okx" | "trust";
+type TronBrandId = "safepal" | "binance" | "okx" | "trust" | "metamask";
 
 // EVM 연결 시 사용된 wagmi connector 이름/id를 보고 같은 지갑의 TRON 어댑터로 라우팅한다.
 // 매치되는 게 없으면 null을 반환하고 호출 측에서 기본 자동 감지 흐름으로 fallback.
+//
+// SafePal/Binance/OKX/Trust는 다른 매치보다 먼저 검사한다 — MetaMask 확장이 다른 지갑과 함께
+// 깔려있을 때 connector name에 "MetaMask"가 같이 나오는 케이스가 있어서 후순위 폴백 처리.
 export function tronBrandFromConnector(
   connectorId: string | null,
   connectorName: string | null,
@@ -3263,6 +3267,9 @@ export function tronBrandFromConnector(
     return "okx";
   }
   if (haystack.includes("trust")) return "trust";
+  if (haystack.includes("metamask") || haystack.includes("meta mask")) {
+    return "metamask";
+  }
   return null;
 }
 
@@ -3621,6 +3628,12 @@ function useTronWallet(opts: {
           connectionSourceRef.current = "adapter";
         } else if (brand === "trust") {
           result = await connectTrustTronAdapter();
+          connectionSourceRef.current = "adapter";
+        } else if (brand === "metamask") {
+          // @metamask/connect-tron는 MetaMask Snap을 통해 TRON을 지원한다. 첫 호출 시 사용자에게
+          // Snap 설치 권한 요청이 뜬다. 같은 시드 BIP44 path 195로 derive되므로 MetaMask UI에 보이는
+          // TRON 주소와 일치한다.
+          result = await connectMetaMaskTronAdapter();
           connectionSourceRef.current = "adapter";
         } else {
           throw new Error(`지원하지 않는 지갑: ${brand}`);
