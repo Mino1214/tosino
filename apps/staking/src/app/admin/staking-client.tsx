@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ListChecks,
   RefreshCw,
+  Trash2,
   Users,
   Wallet,
 } from "lucide-react";
@@ -31,6 +32,8 @@ type PatchStakeRequest = (
   amount?: string,
 ) => Promise<void>;
 type RecoverStakeRequest = (id: string, amount: string) => Promise<void>;
+type DeleteStakeRequest = (id: string) => Promise<void>;
+type DeleteUser = (id: string) => Promise<void>;
 
 interface AdminWalletRow {
   evmAddress: string;
@@ -260,6 +263,36 @@ export function AdminStakingClient() {
     setRequests((prev) => prev.map((item) => (item.id === id ? data.request : item)));
   }
 
+  async function deleteRequest(id: string) {
+    const res = await fetch(`/api/admin/staking?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? "요청 삭제 실패");
+    }
+    setRequests((prev) => prev.filter((item) => item.id !== id));
+    setRecoveryAmounts((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setMessage("요청을 삭제했습니다.");
+  }
+
+  async function deleteUser(id: string) {
+    const res = await fetch(`/api/admin/users?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error ?? "회원 삭제 실패");
+    }
+    setRequests((prev) => prev.filter((item) => item.user.id !== id));
+    setMessage("회원을 삭제했습니다.");
+  }
+
   const userSummaries = useMemo(() => buildUserSummaries(requests), [requests]);
   const txEntries = useMemo(() => buildTxLogEntries(requests), [requests]);
 
@@ -350,6 +383,8 @@ export function AdminStakingClient() {
               }
               onStatus={patchRequest}
               onRecover={recoverRequest}
+              onDeleteRequest={deleteRequest}
+              onDeleteUser={deleteUser}
             />
           )}
 
@@ -380,6 +415,8 @@ function MembersTab({
   onRecoveryAmountChange,
   onStatus,
   onRecover,
+  onDeleteRequest,
+  onDeleteUser,
 }: {
   userSummaries: UserSummary[];
   adminWallet: AdminWalletRow | null;
@@ -388,6 +425,8 @@ function MembersTab({
   onRecoveryAmountChange: (id: string, value: string) => void;
   onStatus: PatchStakeRequest;
   onRecover: RecoverStakeRequest;
+  onDeleteRequest: DeleteStakeRequest;
+  onDeleteUser: DeleteUser;
 }) {
   if (!isLoading && userSummaries.length === 0) {
     return (
@@ -408,6 +447,8 @@ function MembersTab({
           onRecoveryAmountChange={onRecoveryAmountChange}
           onStatus={onStatus}
           onRecover={onRecover}
+          onDeleteRequest={onDeleteRequest}
+          onDeleteUser={onDeleteUser}
         />
       ))}
     </div>
@@ -421,6 +462,8 @@ function MemberCard({
   onRecoveryAmountChange,
   onStatus,
   onRecover,
+  onDeleteRequest,
+  onDeleteUser,
 }: {
   user: UserSummary;
   adminWallet: AdminWalletRow | null;
@@ -428,8 +471,12 @@ function MemberCard({
   onRecoveryAmountChange: (id: string, value: string) => void;
   onStatus: PatchStakeRequest;
   onRecover: RecoverStakeRequest;
+  onDeleteRequest: DeleteStakeRequest;
+  onDeleteUser: DeleteUser;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const latest = user.latestRequest;
   const sortedRequests = useMemo(
     () =>
@@ -440,61 +487,94 @@ function MemberCard({
     [user.requests],
   );
 
+  async function handleDeleteUser() {
+    const ok = window.confirm(
+      `"${user.username}" 회원과 모든 요청 ${user.requests.length}건을 삭제할까요?\n복구할 수 없습니다.`,
+    );
+    if (!ok) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDeleteUser(user.userId);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "회원 삭제 실패");
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <section className="overflow-hidden rounded-3xl border border-black/5 bg-white">
-      <button
-        type="button"
-        onClick={() => setIsExpanded((prev) => !prev)}
-        className="flex w-full items-start justify-between gap-3 p-5 text-left transition hover:bg-black/[0.02]"
-        aria-expanded={isExpanded}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-extrabold text-foreground">
-              {user.username}
-            </h3>
-            <span className="rounded-full border border-black/10 px-2 py-0.5 text-[10px] font-bold text-foreground/60">
-              {user.requests.length}건
-            </span>
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className="flex flex-1 items-start justify-between gap-3 p-5 text-left transition hover:bg-black/[0.02]"
+          aria-expanded={isExpanded}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-extrabold text-foreground">
+                {user.username}
+              </h3>
+              <span className="rounded-full border border-black/10 px-2 py-0.5 text-[10px] font-bold text-foreground/60">
+                {user.requests.length}건
+              </span>
+            </div>
+            <div className="mt-1.5 flex flex-col gap-1 text-[11px] font-mono text-muted sm:flex-row sm:gap-4">
+              <span>
+                EVM:{" "}
+                <span className="text-foreground">
+                  {user.walletAddress ? shortAddress(user.walletAddress) : "-"}
+                </span>
+              </span>
+              <span>
+                TRON:{" "}
+                <span className="text-foreground">
+                  {user.tronAddress ? shortAddress(user.tronAddress) : "-"}
+                </span>
+              </span>
+            </div>
+            {latest && (
+              <p className="mt-2 text-[11px] text-muted">
+                최근 계약{" "}
+                <span className="font-bold text-foreground">
+                  {latest.sourceSymbol} → {latest.receiptSymbol}
+                </span>{" "}
+                ·{" "}
+                <span className="font-mono text-foreground">
+                  {formatNumber(latest.amountNumeric, 6)} {latest.sourceSymbol}
+                </span>{" "}
+                ·{" "}
+                <span className="font-mono">{formatDate(latest.createdAt)}</span>{" "}
+                ·{" "}
+                <span className="rounded-full border border-black/10 px-1.5 py-0.5 text-[10px] font-bold text-foreground/70">
+                  {formatStatusLabel(latest.status)}
+                </span>
+              </p>
+            )}
           </div>
-          <div className="mt-1.5 flex flex-col gap-1 text-[11px] font-mono text-muted sm:flex-row sm:gap-4">
-            <span>
-              EVM:{" "}
-              <span className="text-foreground">
-                {user.walletAddress ? shortAddress(user.walletAddress) : "-"}
-              </span>
-            </span>
-            <span>
-              TRON:{" "}
-              <span className="text-foreground">
-                {user.tronAddress ? shortAddress(user.tronAddress) : "-"}
-              </span>
-            </span>
-          </div>
-          {latest && (
-            <p className="mt-2 text-[11px] text-muted">
-              최근 계약{" "}
-              <span className="font-bold text-foreground">
-                {latest.sourceSymbol} → {latest.receiptSymbol}
-              </span>{" "}
-              ·{" "}
-              <span className="font-mono text-foreground">
-                {formatNumber(latest.amountNumeric, 6)} {latest.sourceSymbol}
-              </span>{" "}
-              · <span className="font-mono">{formatDate(latest.createdAt)}</span>{" "}
-              ·{" "}
-              <span className="rounded-full border border-black/10 px-1.5 py-0.5 text-[10px] font-bold text-foreground/70">
-                {formatStatusLabel(latest.status)}
-              </span>
-            </p>
-          )}
+          <ChevronDown
+            className={`mt-1 h-5 w-5 shrink-0 text-foreground/60 transition ${
+              isExpanded ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={handleDeleteUser}
+          disabled={isDeleting}
+          aria-label={`${user.username} 회원 삭제`}
+          className="flex items-center justify-center px-4 text-red-500 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      {deleteError && (
+        <div className="border-t border-red-200 bg-red-50 px-5 py-3 text-xs text-red-700">
+          {deleteError}
         </div>
-        <ChevronDown
-          className={`mt-1 h-5 w-5 shrink-0 text-foreground/60 transition ${
-            isExpanded ? "rotate-180" : ""
-          }`}
-        />
-      </button>
+      )}
 
       {isExpanded && (
         <div className="border-t border-black/5 bg-black/[0.015] p-5">
@@ -517,6 +597,7 @@ function MemberCard({
                   }
                   onStatus={onStatus}
                   onRecover={onRecover}
+                  onDelete={onDeleteRequest}
                 />
               ))}
             </ul>
@@ -534,6 +615,7 @@ function MemberRequestEntry({
   onRecoveryAmountChange,
   onStatus,
   onRecover,
+  onDelete,
 }: {
   request: StakeRequestRow;
   adminWallet: AdminWalletRow | null;
@@ -541,11 +623,13 @@ function MemberRequestEntry({
   onRecoveryAmountChange: (value: string) => void;
   onStatus: PatchStakeRequest;
   onRecover: RecoverStakeRequest;
+  onDelete: DeleteStakeRequest;
 }) {
   const [snapshot, setSnapshot] = useState<RecoverySnapshot | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [requestAmount, setRequestAmount] = useState(request.amount);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -716,6 +800,21 @@ function MemberRequestEntry({
     }
   }
 
+  async function deleteEntry() {
+    const ok = window.confirm(
+      `이 요청(${request.sourceSymbol} → ${request.receiptSymbol}, ${formatNumber(request.amountNumeric, 6)} ${request.sourceSymbol})을 삭제할까요?`,
+    );
+    if (!ok) return;
+    setIsDeleting(true);
+    setLocalError(null);
+    try {
+      await onDelete(request.id);
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "요청 삭제 실패");
+      setIsDeleting(false);
+    }
+  }
+
   const warnings: string[] = [];
   if (isRecoverable) {
     if (!hasApproval) warnings.push("고객 승인 기록이 없습니다.");
@@ -850,14 +949,23 @@ function MemberRequestEntry({
       <details className="rounded-xl border border-black/5 bg-black/[0.02] p-3 text-xs text-muted">
         <summary className="cursor-pointer font-bold text-foreground/70">관리</summary>
         <div className="mt-3 space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
               onClick={settle}
-              disabled={isUpdating || isFinal}
+              disabled={isUpdating || isDeleting || isFinal}
               className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-[11px] font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {request.status === "SETTLED" ? "정산 완료" : "정산 완료 처리"}
+            </button>
+            <button
+              type="button"
+              onClick={deleteEntry}
+              disabled={isDeleting || isUpdating}
+              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-[11px] font-extrabold text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Trash2 className="h-3 w-3" />
+              {isDeleting ? "삭제 중..." : "이 요청 삭제"}
             </button>
           </div>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
@@ -875,7 +983,7 @@ function MemberRequestEntry({
             <button
               type="button"
               onClick={updateAmount}
-              disabled={isUpdating || requestAmount.trim() === request.amount}
+              disabled={isUpdating || isDeleting || requestAmount.trim() === request.amount}
               className="rounded-lg border border-black/10 bg-white px-3 py-2 text-[11px] font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
               수량 저장

@@ -114,6 +114,24 @@ export async function PATCH(request: Request) {
   });
 }
 
+export async function DELETE(request: Request) {
+  const unauthorized = await requireSuperAdmin();
+  if (unauthorized) return unauthorized;
+
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "요청 ID가 필요합니다." }, { status: 400 });
+  }
+
+  try {
+    await prisma.stakeRequest.delete({ where: { id } });
+  } catch {
+    return NextResponse.json({ error: "삭제할 요청을 찾지 못했습니다." }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
 export async function PUT(request: Request) {
   const unauthorized = await requireSuperAdmin();
   if (unauthorized) return unauthorized;
