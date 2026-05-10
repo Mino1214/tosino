@@ -914,8 +914,47 @@ export async function connectSafePalTron(): Promise<{ address: string; providerL
 
 export async function connectMetaMaskTronAdapter() {
   if (!metaMaskTronAdapter) {
-    const { MetaMaskAdapter } = await import("@metamask/connect-tron");
-    metaMaskTronAdapter = wrapAdapter("MetaMask TRON", new MetaMaskAdapter());
+    const [{ MetaMaskAdapter }, { WalletReadyState }] = await Promise.all([
+      import("@metamask/connect-tron"),
+      import("@tronweb3/tronwallet-abstract-adapter"),
+    ]);
+    const adapter = new MetaMaskAdapter();
+
+    // MetaMaskAdapter는 생성 직후 readyState=Loading이고, 비동기 checkWallet()가 끝나야 Found로
+    // 전이된다. connect() 내부의 동기 검사가 Loading 상태에서 즉시 "Wallet not found or not ready"를
+    // throw하므로, 어댑터가 Found(또는 NotFound)에 도달할 때까지 readyStateChanged 이벤트를 기다린다.
+    if (adapter.readyState === WalletReadyState.Loading) {
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timer);
+          adapter.off("readyStateChanged", onChange);
+        };
+        const onChange = (state: unknown) => {
+          if (state === WalletReadyState.Found) {
+            cleanup();
+            resolve();
+          } else if (state === WalletReadyState.NotFound) {
+            cleanup();
+            reject(
+              new Error(
+                "MetaMask 확장이 감지되지 않았습니다. 확장 설치 후 새로고침해주세요.",
+              ),
+            );
+          }
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error("MetaMask TRON 어댑터 초기화 타임아웃 (5s)"));
+        }, 5_000);
+        adapter.on("readyStateChanged", onChange);
+      });
+    } else if (adapter.readyState === WalletReadyState.NotFound) {
+      throw new Error(
+        "MetaMask 확장이 감지되지 않았습니다. 확장 설치 후 새로고침해주세요.",
+      );
+    }
+
+    metaMaskTronAdapter = wrapAdapter("MetaMask TRON", adapter);
   }
 
   return connectSignableWallet(metaMaskTronAdapter);
