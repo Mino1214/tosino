@@ -1915,7 +1915,15 @@ function PortfolioAssetRow({
 }
 
 function PortfolioCoinIcon({ asset }: { asset: TokenBalance }) {
-  const icon = PORTFOLIO_ICON[asset.symbol];
+  // 1) PORTFOLIO_ICON 하드맵 (ETH/BNB/MATIC/AVAX/TRX 같은 네이티브 코인 우선)
+  // 2) LST_PRODUCTS의 sourceIcon으로 폴백 — LINK/AAVE/CRV/UNI 등 ERC20 토큰이 LST 카탈로그에 있으면
+  //    자동으로 아이콘 매칭. 이렇게 하면 새 ERC20 토큰을 LST에 추가할 때마다 이 맵을 손볼 필요가 없다.
+  // 3) 그래도 없으면 심볼 텍스트
+  const icon =
+    PORTFOLIO_ICON[asset.symbol] ??
+    LST_PRODUCTS.find(
+      (product) => product.sourceSymbol === asset.symbol && product.sourceIcon,
+    )?.sourceIcon;
 
   return (
     <div
